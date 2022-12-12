@@ -15,7 +15,8 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
             cmake {
-                cppFlags ''
+                cppFlags '-std=c++17'
+                arguments "-DANDROID_STL=c++_shared"
             }
         }
     }
@@ -29,6 +30,10 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+    }
+    buildFeatures{
+        prefab true
+        viewBinding true
     }
     externalNativeBuild {
         cmake {
