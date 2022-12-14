@@ -9,7 +9,6 @@ extern "C" {
 extern "C" {
 void android_main(struct android_app* state);
 };
-
 #include "YERM_PC/logger.hpp"
 
 void android_main(struct android_app* app) {
