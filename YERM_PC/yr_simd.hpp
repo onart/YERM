@@ -38,7 +38,7 @@ namespace onart{
     /// @param src 값을 제공할 배열
     template <class T>
     inline void set4(T* dst, const T* src){
-        memcpy(vec,val,4*sizeof(T));
+        memcpy(dst,src,4*sizeof(T));
     }
 
     /// @brief 배열을 앞에서부터 원하는 수만큼 주어진 값으로 초기화합니다.
@@ -108,7 +108,7 @@ namespace onart{
     inline void addAll(T* vec, const T* val, size_t size){
         size_t i = 4;
 		for (; i <= size; i += 4) {
-			add4<T>(vec + (i - 4), val4 + (i - 4));
+			add4<T>(vec + (i - 4), val + (i - 4));
 		}
 		for (i -= 4; i < size; i++) {
 			vec[i] += val[i];
@@ -154,7 +154,7 @@ namespace onart{
     inline void subAll(T* vec, const T* val, size_t size){
         size_t i = 4;
 		for (; i <= size; i += 4) {
-			sub4<T>(vec + (i - 4), val4 + (i - 4));
+			sub4<T>(vec + (i - 4), val + (i - 4));
 		}
 		for (i -= 4; i < size; i++) {
 			vec[i] -= val[i];
@@ -200,7 +200,7 @@ namespace onart{
     inline void mulAll(T* vec, const T* val, size_t size){
         size_t i = 4;
 		for (; i <= size; i += 4) {
-			mul4<T>(vec + (i - 4), val4 + (i - 4));
+			mul4<T>(vec + (i - 4), val + (i - 4));
 		}
 		for (i -= 4; i < size; i++) {
 			vec[i] *= val[i];
@@ -246,7 +246,7 @@ namespace onart{
     inline void divAll(T* vec, const T* val, size_t size){
         size_t i = 4;
 		for (; i <= size; i += 4) {
-			div4<T>(vec + (i - 4), val4 + (i - 4));
+			div4<T>(vec + (i - 4), val + (i - 4));
 		}
 		for (i -= 4; i < size; i++) {
 			vec[i] /= val[i];
@@ -272,6 +272,9 @@ namespace onart{
         vec[2] = -std::abs(vec[2]);
         vec[3] = -std::abs(vec[3]);
     }
+
+    /// @brief 역제곱근을 리턴합니다.
+    inline double rsqrt(double d) { return 1.0 / sqrt(d); }
 
 #ifndef YR_NOSIMD
 #if BOOST_HW_SIMD_X86 >= BOOST_HW_SIMD_X86_SSE2_VERSION
@@ -629,6 +632,7 @@ namespace onart{
     /// @brief 주어진 float의 역제곱근을 리턴합니다. 제곱근보다 빠르지만 오차가 있을 수 있습니다.
     inline float rsqrt(float f){
         __m128 m = _mm_set_ss(f);
+        m = _mm_rsqrt_ss(m);
         _mm_store_ss(&f,m);
         return f;
     }

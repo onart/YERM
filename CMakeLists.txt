@@ -13,6 +13,7 @@ else()
         YERM_PC/main.cpp
         YERM_PC/logger.hpp
         YERM_PC/yr_simd.hpp
+        YERM_PC/yr_math.hpp
     )
     set_target_properties(yerm PROPERTIES BUILD_RPATH ".")
     target_include_directories(yerm PUBLIC externals)
