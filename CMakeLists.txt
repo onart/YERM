@@ -14,6 +14,8 @@ else()
         YERM_PC/logger.hpp
         YERM_PC/yr_simd.hpp
         YERM_PC/yr_math.hpp
+        YERM_PC/yr_sys.h
+        YERM_PC/yr_sys.cpp
     )
     set_target_properties(yerm PROPERTIES BUILD_RPATH ".")
     target_include_directories(yerm PUBLIC externals)
@@ -27,7 +29,7 @@ else()
                 ${CMAKE_SOURCE_DIR}/externals/shaderc/libshaderc_shared.dll
                 ${CMAKE_BINARY_DIR}/bin/libshaderc_shared.dll)
     else()
-        target_link_libraries(yerm glfw3 vulkan shaderc_shared)
+        target_link_libraries(yerm glfw3 vulkan shaderc_shared dl pthread X11) # TODO: X11 부분을 타겟에 잘 맞게 분류
         add_custom_command(TARGET yerm POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
                 ${CMAKE_SOURCE_DIR}/externals/shaderc/libshaderc_shared.so

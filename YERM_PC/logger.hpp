@@ -1,3 +1,4 @@
+// Unlicense.
 // C++11 or newer needed
 #ifndef __OA_LOGGER_HPP__
 #define __OA_LOGGER_HPP__

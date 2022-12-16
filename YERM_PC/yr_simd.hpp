@@ -1105,10 +1105,10 @@ namespace onart{
     inline void fastReciprocal4(float* vec){ vec[0]=1/vec[0]; vec[1]=1/vec[1]; vec[2]=1/vec[2]; vec[3]=1/vec[3]; }
     /// @brief float 4개를 int 4개로 바꿉니다. (버림 적용)
     inline void float2int32(const float* val, int32_t* vec){
-        vec[0]=const_cast<int32_t>(val[0]);
-        vec[1]=const_cast<int32_t>(val[1]);
-        vec[2]=const_cast<int32_t>(val[2]);
-        vec[3]=const_cast<int32_t>(val[3]);
+        vec[0]=(int32_t)(val[0]);
+        vec[1]=(int32_t)(val[1]);
+        vec[2]=(int32_t)(val[2]);
+        vec[3]=(int32_t)(val[3]);
     }
 #endif
 
