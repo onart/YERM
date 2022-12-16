@@ -51,12 +51,12 @@ namespace onart{
         size_t i = 4;
         T val4[4];
         set4<T>(val4, val); // 컴파일러의 XMM 최적화를 더 쉽게 하기 위해서
-		for (; i <= size; i += 4) {
-			set4<T>(vec + (i - 4), val4);
-		}
-		for (i -= 4; i < size; i++) {
-			vec[i] = val;
-		}
+        for (; i <= size; i += 4) {
+            set4<T>(vec + (i - 4), val4);
+        }
+        for (i -= 4; i < size; i++) {
+            vec[i] = val;
+        }
     }
 
     /// @brief 배열을 앞에서부터 원하는 만큼 주어진 값으로 초기화합니다. memcpy를 사용하는 것과 같습니다.
@@ -91,12 +91,12 @@ namespace onart{
         size_t i = 4;
         T val4[4];
         set4<T>(val4, val); // 컴파일러의 XMM 최적화를 더 쉽게 하기 위해서
-		for (; i <= size; i += 4) {
-			add4<T>(vec + (i - 4), val4);
-		}
-		for (i -= 4; i < size; i++) {
-			vec[i] += val;
-		}
+        for (; i <= size; i += 4) {
+            add4<T>(vec + (i - 4), val4);
+        }
+        for (i -= 4; i < size; i++) {
+            vec[i] += val;
+        }
     }
 
     /// @brief 배열 앞에서부터 주어진 값을 누적합니다.
@@ -107,12 +107,12 @@ namespace onart{
     template<class T>
     inline void addAll(T* vec, const T* val, size_t size){
         size_t i = 4;
-		for (; i <= size; i += 4) {
-			add4<T>(vec + (i - 4), val + (i - 4));
-		}
-		for (i -= 4; i < size; i++) {
-			vec[i] += val[i];
-		}
+        for (; i <= size; i += 4) {
+            add4<T>(vec + (i - 4), val + (i - 4));
+        }
+        for (i -= 4; i < size; i++) {
+            vec[i] += val[i];
+        }
     }
 
     /// @brief 배열 앞 4개에서 주어진 값을 뺍니다. 
@@ -137,12 +137,12 @@ namespace onart{
         size_t i = 4;
         T val4[4];
         set4<T>(val4, val); // 컴파일러의 XMM 최적화를 더 쉽게 하기 위해서
-		for (; i <= size; i += 4) {
-			sub4<T>(vec + (i - 4), val4);
-		}
-		for (i -= 4; i < size; i++) {
-			vec[i] -= val;
-		}
+        for (; i <= size; i += 4) {
+            sub4<T>(vec + (i - 4), val4);
+        }
+        for (i -= 4; i < size; i++) {
+            vec[i] -= val;
+        }
     }
 
     /// @brief 배열 앞에서부터 주어진 값을 뺍니다.
@@ -153,12 +153,12 @@ namespace onart{
     template<class T>
     inline void subAll(T* vec, const T* val, size_t size){
         size_t i = 4;
-		for (; i <= size; i += 4) {
-			sub4<T>(vec + (i - 4), val + (i - 4));
-		}
-		for (i -= 4; i < size; i++) {
-			vec[i] -= val[i];
-		}
+        for (; i <= size; i += 4) {
+            sub4<T>(vec + (i - 4), val + (i - 4));
+        }
+        for (i -= 4; i < size; i++) {
+            vec[i] -= val[i];
+        }
     }
 
     /// @brief 배열 앞 4개에 주어진 값을 곱합니다.
@@ -183,12 +183,12 @@ namespace onart{
         size_t i = 4;
         T val4[4];
         set4<T>(val4, val); // 컴파일러의 XMM 최적화를 더 쉽게 하기 위해서
-		for (; i <= size; i += 4) {
-			mul4<T>(vec + (i - 4), val4);
-		}
-		for (i -= 4; i < size; i++) {
-			vec[i] *= val;
-		}
+        for (; i <= size; i += 4) {
+            mul4<T>(vec + (i - 4), val4);
+        }
+        for (i -= 4; i < size; i++) {
+            vec[i] *= val;
+        }
     }
 
     /// @brief 배열 앞에서부터 주어진 값을 곱합니다.
@@ -199,12 +199,12 @@ namespace onart{
     template<class T>
     inline void mulAll(T* vec, const T* val, size_t size){
         size_t i = 4;
-		for (; i <= size; i += 4) {
-			mul4<T>(vec + (i - 4), val + (i - 4));
-		}
-		for (i -= 4; i < size; i++) {
-			vec[i] *= val[i];
-		}
+        for (; i <= size; i += 4) {
+            mul4<T>(vec + (i - 4), val + (i - 4));
+        }
+        for (i -= 4; i < size; i++) {
+            vec[i] *= val[i];
+        }
     }
 
     /// @brief 배열 앞 4개를 주어진 값으로 나눕니다. 
@@ -229,12 +229,12 @@ namespace onart{
         size_t i = 4;
         T val4[4];
         set4<T>(val4, val); // 컴파일러의 XMM 최적화를 더 쉽게 하기 위해서
-		for (; i <= size; i += 4) {
-			div4<T>(vec + (i - 4), val4);
-		}
-		for (i -= 4; i < size; i++) {
-			vec[i] /= val;
-		}
+        for (; i <= size; i += 4) {
+            div4<T>(vec + (i - 4), val4);
+        }
+        for (i -= 4; i < size; i++) {
+            vec[i] /= val;
+        }
     }
 
     /// @brief 배열 앞에서부터 주어진 값으로 나눕니다.
@@ -245,12 +245,12 @@ namespace onart{
     template<class T>
     inline void divAll(T* vec, const T* val, size_t size){
         size_t i = 4;
-		for (; i <= size; i += 4) {
-			div4<T>(vec + (i - 4), val + (i - 4));
-		}
-		for (i -= 4; i < size; i++) {
-			vec[i] /= val[i];
-		}
+        for (; i <= size; i += 4) {
+            div4<T>(vec + (i - 4), val + (i - 4));
+        }
+        for (i -= 4; i < size; i++) {
+            vec[i] /= val[i];
+        }
     }
 
     /// @brief 배열 앞에서부터 4개를 절댓값으로 바꿉니다.
@@ -271,6 +271,13 @@ namespace onart{
         vec[1] = -std::abs(vec[1]);
         vec[2] = -std::abs(vec[2]);
         vec[3] = -std::abs(vec[3]);
+    }
+
+    /// @brief 배열 앞에서부터 4개의 부호를 반전합니다. -1을 곱하는 것과 속도가 같거나 빠르게 되어 있습니다.
+    /// @tparam T 
+    template<class T>
+    inline void neg4(T* vec){
+        mul4(vec, -1);
     }
 
     /// @brief 역제곱근을 리턴합니다.
@@ -322,7 +329,7 @@ namespace onart{
     template<>
     inline void add4<float>(float* vec, const float* val){
         __m128 b = _mm_add_ps(_mm_loadu_ps(vec), _mm_loadu_ps(val));
-		_mm_storeu_ps(vec, b);
+        _mm_storeu_ps(vec, b);
     }
 
     /// @brief double 배열의 앞 4개에 주어진 값을 누적합니다.
@@ -395,7 +402,7 @@ namespace onart{
     template<>
     inline void sub4<float>(float* vec, const float* val){
         __m128 b = _mm_sub_ps(_mm_loadu_ps(vec), _mm_loadu_ps(val));
-		_mm_storeu_ps(vec, b);
+        _mm_storeu_ps(vec, b);
     }
 
     /// @brief double 배열의 앞 4개에서 주어진 값을 뺍니다.
@@ -468,7 +475,7 @@ namespace onart{
     template<>
     inline void mul4<float>(float* vec, const float* val){
         __m128 b = _mm_mul_ps(_mm_loadu_ps(vec), _mm_loadu_ps(val));
-		_mm_storeu_ps(vec, b);
+        _mm_storeu_ps(vec, b);
     }
 
     /// @brief double 배열의 앞 4개에 주어진 값을 곱합니다.
@@ -546,7 +553,7 @@ namespace onart{
     template<>
     inline void div4<float>(float* vec, const float* val){
         __m128 b = _mm_div_ps(_mm_loadu_ps(vec), _mm_loadu_ps(val));
-		_mm_storeu_ps(vec, b);
+        _mm_storeu_ps(vec, b);
     }
 
     /// @brief double 배열의 앞 4개를 주어진 값으로 나눕니다.
@@ -570,34 +577,53 @@ namespace onart{
     template<>
     inline void abs4<float>(float* vec){
         __m128 m = _mm_loadu_ps(vec);
-		constexpr int32_t imask = 0x7fffffff;
-		m = _mm_and_ps(m, _mm_set_ps1(*(float*)&imask));
-		_mm_storeu_ps(vec, m);
+        constexpr int32_t imask = 0x7fffffff;
+        m = _mm_and_ps(m, _mm_set_ps1(*(float*)&imask));
+        _mm_storeu_ps(vec, m);
     }
 
     /// @brief float 배열 앞 4개를 절댓값이 같은 음수로 바꿉니다.
     template<>
     inline void mabs4<float>(float* vec){
         __m128 m = _mm_loadu_ps(vec);
-		m = _mm_or_ps(m, _mm_set_ps1(-0.0f));
-		_mm_storeu_ps(vec, m);
+        m = _mm_or_ps(m, _mm_set_ps1(-0.0f));
+        _mm_storeu_ps(vec, m);
     }
 
-    /// @brief float 배열 앞 4개를 절댓값으로 바꿉니다.
+    /// @brief float 배열 앞 4개의 부호를 반전시킵니다.
+    template<>
+    inline void neg4<float>(float* vec){
+        __m128 m = _mm_loadu_ps(vec);
+        m = _mm_xor_ps(m, _mm_set_ps1(-0.0f));
+        _mm_storeu_ps(vec, m);
+    }
+ 
+    /// @brief double 배열 앞 4개를 절댓값으로 바꿉니다.
     template<>
     inline void abs4<double>(double* vec){
-        __m128d m = _mm_loadu_pd(vec);
-		constexpr int64_t imask = 0x7fffffffffffffff;
-		m = _mm_and_pd(m, _mm_set1_pd(*(double*)&imask));
-		_mm_storeu_pd(vec, m);
+        __m128d m;
+        constexpr int64_t imask = 0x7fffffffffffffff;
+        __m128d ands = _mm_set1_pd(*(double*)&imask);
+        m = _mm_and_pd(_mm_loadu_pd(vec), ands); _mm_storeu_pd(vec, m);
+        m = _mm_and_pd(_mm_loadu_pd(vec + 2), ands); _mm_storeu_pd(vec + 2, m);
     }
 
-    /// @brief float 배열 앞 4개를 절댓값이 같은 음수로 바꿉니다.
+    /// @brief double 배열 앞 4개를 절댓값이 같은 음수로 바꿉니다.
     template<>
     inline void mabs4<double>(double* vec){
-        __m128d m = _mm_loadu_pd(vec);
-		m = _mm_or_pd(m, _mm_set1_pd(-0.0));
-		_mm_storeu_pd(vec, m);
+        __m128d m;
+        __m128d mzero = _mm_set1_pd(-0.0);
+        m = _mm_or_pd(_mm_loadu_pd(vec), mzero); _mm_storeu_pd(vec, m);
+        m = _mm_or_pd(_mm_loadu_pd(vec+2), mzero); _mm_storeu_pd(vec+2, m);
+    }
+
+    /// @brief double 배열 앞 4개의 부호를 반전시킵니다.
+    template<>
+    inline void neg4<double>(double* vec){
+        __m128d m;
+        __m128d mzero = _mm_set1_pd(-0.0);
+        m = _mm_xor_pd(_mm_loadu_pd(vec), mzero); _mm_storeu_pd(vec, m);
+        m = _mm_xor_pd(_mm_loadu_pd(vec+2), mzero); _mm_storeu_pd(vec+2, m);
     }
 
     /// @brief float 배열에서 앞 4개를 양의 제곱근을 적용한 값으로 바꿉니다. 음수 검사는 하지 않고 nan으로 변합니다.
@@ -656,8 +682,8 @@ namespace onart{
     /// @brief float 4개를 int 4개로 바꿉니다. (버림 적용)
     inline void float2int32(const float* val, int32_t* vec){
         __m128 v = _mm_loadu_ps(val);
-		__m128i i = _mm_cvttps_epi32(v);
-		_mm_storeu_si128((__m128i*)vec, i);
+        __m128i i = _mm_cvttps_epi32(v);
+        _mm_storeu_si128((__m128i*)vec, i);
     }
 
     /// @brief 2바이트 정수 배열에 다른 배열의 대응 상분을 더합니다. 오버플로는 발생하지 않으며 값을 넘어갈 경우 최대/최솟값으로 고정됩니다.
@@ -666,15 +692,15 @@ namespace onart{
     /// @param size 누적할 개수
     inline void addsAll(int16_t* vec, const int16_t* val, size_t size){
         size_t i;
-		for (i = 8; i < size; i += 8) {
-			__m128i ves = _mm_loadu_si128((__m128i*)(vec + i - 8));
-			__m128i ver = _mm_loadu_si128((__m128i*)(val + i - 8));
-			ves = _mm_adds_epi16(ves, ver);
-			_mm_storeu_si128((__m128i*)(vec + i - 8), ves);
-		}
-		for (i -= 8; i < size; i++) {
-			vec[i] += val[i];
-		}
+        for (i = 8; i < size; i += 8) {
+            __m128i ves = _mm_loadu_si128((__m128i*)(vec + i - 8));
+            __m128i ver = _mm_loadu_si128((__m128i*)(val + i - 8));
+            ves = _mm_adds_epi16(ves, ver);
+            _mm_storeu_si128((__m128i*)(vec + i - 8), ves);
+        }
+        for (i -= 8; i < size; i++) {
+            vec[i] += val[i];
+        }
     }
 
     /// @brief 2바이트 정수 배열의 각각의 값에 실수를 곱합니다. 곱하는 실수가 [0,1] 범위일 경우에만 정상적으로 계산해 줍니다. 최대 2의 오차가 발생할 수 있습니다.
@@ -683,19 +709,19 @@ namespace onart{
     /// @param size 
     inline void mulAll(int16_t* vec, float val, size_t size) {
         assert(val <= 1.0f && val >= 0.0f && "이 함수에서 곱해지는 실수의 값은 [0,1] 범위만 허용됩니다.");
-		int16_t v2 = (int16_t)((float)val * 32768.0f);
-		__m128i v = _mm_set1_epi16(v2);
-		size_t i;
-		for (i = 8; i < size; i += 8) {
-			__m128i ves = _mm_loadu_si128((__m128i*)(vec + i - 8));
-			ves = _mm_mulhi_epi16(ves, v);
-			ves = _mm_slli_epi16(ves, 1);
-			_mm_storeu_si128((__m128i*)(vec + i - 8), ves);
-		}
-		for (i -= 8; i < size; i++) {
-			vec[i] = (int16_t)((float)vec[i] * val);
-		}
-	}
+        int16_t v2 = (int16_t)((float)val * 32768.0f);
+        __m128i v = _mm_set1_epi16(v2);
+        size_t i;
+        for (i = 8; i < size; i += 8) {
+            __m128i ves = _mm_loadu_si128((__m128i*)(vec + i - 8));
+            ves = _mm_mulhi_epi16(ves, v);
+            ves = _mm_slli_epi16(ves, 1);
+            _mm_storeu_si128((__m128i*)(vec + i - 8), ves);
+        }
+        for (i -= 8; i < size; i++) {
+            vec[i] = (int16_t)((float)vec[i] * val);
+        }
+    }
 
 
 #elif BOOST_HW_SIMD_ARM >= BOOST_HW_SIMD_ARM_NEON_VERSION
@@ -955,7 +981,25 @@ namespace onart{
         vst1q_s32(vec, vmulq_n_s32(vabsq_s32(vld1q_s32(vec)),-1));
     }
 
-        
+    /// @brief float 배열 앞 4개의 부호를 반전시킵니다.
+    template<>
+    inline void neg4<float32_t>(float32_t* vec){
+        vst1q_f32(vec, vnegq_f32(vld1q_f32(vec)));
+    }
+
+    /// @brief float 배열 앞 4개의 부호를 반전시킵니다.
+    template<>
+    inline void neg4<float64_t>(float64_t* vec){
+        vst1q_f64(vec, vnegq_f64(vld1q_f64(vec)));
+        vst1q_f64(vec+2, vnegq_f64(vld1q_f64(vec+2)));
+    }
+
+    /// @brief float 배열 앞 4개의 부호를 반전시킵니다.
+    template<>
+    inline void neg4<int32_t>(int32_t* vec){
+        vst1q_s32(vec, vnegq_s32(vld1q_s32(vec)));
+    }
+
     /// @brief float 배열에서 앞 4개를 양의 제곱근을 적용한 값으로 바꿉니다. 음수 검사는 하지 않고 nan으로 변합니다.
     inline void sqrt4(float32_t* vec){
         vst1q_f32(vec, vsqrtq_f32(vld1q_f32(vec)));
@@ -1003,15 +1047,15 @@ namespace onart{
     /// @param size 누적할 개수
     inline void addsAll(int16_t* vec, const int16_t* val, size_t size){
         size_t i;
-		for (i = 8; i < size; i += 8) {
+        for (i = 8; i < size; i += 8) {
             int16x8_t ves = vld1q_s16(vec + i - 8);
             int16x8_t ver = vld1q_s16(val + i - 8);
             ves = vqaddq_s16(ves, ver); // saturated 합
             vst1q_s16(vec + i - 8, ves);
-		}
-		for (i -= 8; i < size; i++) {
-			vec[i] += val[i];
-		}
+        }
+        for (i -= 8; i < size; i++) {
+            vec[i] += val[i];
+        }
     }
 
     /// @brief 2바이트 정수 배열의 각각의 값에 실수를 곱합니다. 곱하는 실수가 [0,1] 범위일 경우에만 정상적으로 계산해 줍니다. 최대 2의 오차가 발생할 수 있습니다.
@@ -1020,18 +1064,18 @@ namespace onart{
     /// @param size 
     inline void mulAll(int16_t* vec, float val, size_t size) {
         assert(val <= 1.0f && val >= 0.0f && "이 함수에서 곱해지는 실수의 값은 [0,1] 범위만 허용됩니다.");
-		int16_t v2 = (int16_t)((float)val * 32768.0f);
-		size_t i;
-		for (i = 8; i < size; i += 8) {
+        int16_t v2 = (int16_t)((float)val * 32768.0f);
+        size_t i;
+        for (i = 8; i < size; i += 8) {
             int16x8_t ves = vld1q_s16(vec + i - 8);
             ves = vqdmulhq_n_s16(ves, v2);
             ves = vshlq_n_s16(ves, 1);
             vst1q_s16(vec + i - 8, ves);
-		}
-		for (i -= 8; i < size; i++) {
-			vec[i] = (int16_t)((float)vec[i] * val);
-		}
-	}
+        }
+        for (i -= 8; i < size; i++) {
+            vec[i] = (int16_t)((float)vec[i] * val);
+        }
+    }
 
 #endif
 #endif
