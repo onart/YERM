@@ -27,7 +27,13 @@ add_library( # Sets the name of the library.
              SHARED
 
              # Provides a relative path to your source file(s).
-             yerm_android.cpp )
+             yerm_android.cpp
+             ../../../../../YERM_PC/logger.hpp
+             ../../../../../YERM_PC/yr_simd.hpp
+             ../../../../../YERM_PC/yr_math.hpp
+             ../../../../../YERM_PC/yr_sys.h
+             ../../../../../YERM_PC/yr_sys.cpp
+        )
 
 # Searches for a specified prebuilt library and stores the path as a
 # variable. Because CMake includes system libraries in the search path by

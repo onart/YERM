@@ -36,7 +36,7 @@ namespace onart{
                 /// @brief utf-8로 된 창 제목입니다. 파일 인코딩에 무관하게 utf-8을 사용하려면 u8"" 리터럴을 이용합니다. 기본값은 "YERM"이며 PC에서만 사용됩니다.
                 char title[128] = u8"YERM";
             };
-            /// @brief 창 객체를 생성합니다. 잘못된 객체를 전달하여 프로그램이 잘못되는
+            /// @brief 창 객체를 생성합니다. 잘못된 객체를 전달하여 프로그램이 잘못되는 경우는 고려하지 않습니다.
             /// @param hd 대상 환경이 android인 경우 android_app 객체를 전달합니다. PC 대상인 경우 이 매개변수는 무시됩니다.
             /// @param options 생성 옵션을 줍니다. 비워 두거나 nullptr를 전달하면 기본 옵션으로 사용됩니다. 자세한 내용은 @ref CreationOptions 구조체를 참고하세요.
             Window(void *hd = nullptr, const CreationOptions *options = nullptr);
@@ -45,11 +45,11 @@ namespace onart{
             void pollEvents();
             /// @brief 현 프레임에 창이 닫히는 경우 true를 리턴합니다. 안드로이드 대상의 경우 화면 회전 시에도 true가 되므로, 반드시 프로그램 종료를 의미하는 것이 아니니 주의하세요.
             bool windowShouldClose();
-            /// @brief 이 창에 대하여 화면의 DPI와 플랫폼의 기본 DPI 비율을 알려줍니다.
+            /// @brief (PC) 이 창에 대하여 화면의 DPI와 플랫폼의 기본 DPI 비율을 알려줍니다. (Android) DPI를 알려줍니다.
             /// @param x x 스케일을 받을 위치입니다. nullptr를 주면 넘어가지 않습니다.
             /// @param y y 스케일을 받을 위치입니다. nullptr를 주면 넘어가지 않습니다.
             void getContentScale(float* x, float* y);
-            /// @brief 화면 표시 영역의 화면 좌표 상 크기를 알려줍니다. 창 관리 단에서 사용하기 위한 것입니다.
+            /// @brief (PC) 화면 표시 영역의 화면 좌표 상 크기를 알려줍니다. 창 관리 단에서 사용하기 위한 것입니다. (Android) @ref getFramebufferSize와 동일합니다.
             /// @param x 가로 길이를 받을 위치입니다. nullptr를 주면 넘어가지 않습니다.
             /// @param y 세로 길이를 받을 위치입니다. nullptr를 주면 넘어가지 않습니다.
             void getSize(int* x, int* y);
@@ -88,7 +88,7 @@ namespace onart{
             /// @brief 모니터 주사율을 리턴합니다.
             /// @param monitor  모니터 번호. 0번은 반드시 주 모니터입니다. 안드로이드 대상에서는 이 값이 무시됩니다.
             /// @return 기본적으로 모니터 주사율을 리턴하며, 유효하지 않은 입력이었던 경우 -1을 리턴합니다.
-            static int getMonitorRefreshRate(int monitor = 0);
+            int getMonitorRefreshRate(int monitor = 0);
             /// @brief 종료하기 전에 이것을 호출해야 합니다.
             static void terminate();
         private:

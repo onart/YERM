@@ -19,12 +19,227 @@
 
 #if BOOST_PLAT_ANDROID
 
-#include 
+#include <game-activity/native_app_glue/android_native_app_glue.h>
+#include "../externals/vulkan/vulkan_android.h"
 
 namespace onart{
+
+#define _HAPP reinterpret_cast<android_app*>(window)
+    
+    /// @brief 안드로이드 환경의 기본 이벤트에 대한 콜백으로 쓰입니다.
+    static void handleCmd(android_app* app, int32_t cmd){
+        switch (cmd) {
+        case NativeAppGlueAppCmd::APP_CMD_CONFIG_CHANGED:
+            {
+                // 장치 구성 속성이 변경된 경우
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_CONTENT_RECT_CHANGED:
+            {
+                // 창의 표시 영역이 변경된 경우 (app->contentRect 확인)
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_DESTROY:
+            {
+                // 액티비티 종료됨.
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_GAINED_FOCUS:
+            {
+                // 액티비티가 포커스를 받은 경우.
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_INIT_WINDOW:
+            {
+                // app->window를 통해 창 표면을 사용할 수 있게 됨.
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_LOST_FOCUS:
+            {
+                // 액티비티가 포커스를 잃은 경우.
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_LOW_MEMORY:
+            {
+                // 메모리가 부족하다는 경고라고 합니다.
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_PAUSE:
+            {
+                // 액티비티가 중지된 경우.
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_RESUME:
+            {
+                // 액티비티가 재개된 경우.
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_SAVE_STATE:
+            {
+                // 여기서는 여러분이 만든 임의의 컨텍스트를 저장해 두는 게 좋습니다.
+                // app->savedState를 활용하고, app->savedStateSize를 세팅합니다.
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_START:
+            {
+                // 액티비티가 시작된 경우.
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_STOP:
+            {
+                // 액티비티가 정지된 경우.
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_TERM_WINDOW:
+            {
+                // window가 종료되려는 경우.
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_WINDOW_INSETS_CHANGED:
+            {
+                // Window 인셋이 변경된 경우.
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_WINDOW_REDRAW_NEEDED:
+            {
+                // ANativeWindow를 깔끔하게 다시 그려야 합니다.
+                Window* w = (Window*)app->userData;
+                int x,y;
+                w->getFramebufferSize(&x,&y);
+                if(w->windowSizeCallback) w->windowSizeCallback(x,y);
+                break;
+            }
+        case NativeAppGlueAppCmd::APP_CMD_WINDOW_RESIZED:
+            {
+                // ANativeWindow 크기가 변한 경우.
+                break;
+            }
+        case NativeAppGlueAppCmd::UNUSED_APP_CMD_INPUT_CHANGED:
+            {
+                // Unused. Reserved for future use when usage of AInputQueue will be supported
+                break;
+            }
+        default:
+            break;
+        }
+    }
+
+    /// @brief 들어온 입력이 있으면 처리합니다.
+    static void onInput(android_app* app){
+        android_input_buffer* inputs=android_app_swap_input_buffers(app);
+        if(inputs){
+            for(uint64_t i=0;i<inputs->motionEventsCount;i++){
+                GameActivityMotionEvent& ev = inputs->motionEvents[i];
+                switch (ev.action & AMOTION_EVENT_ACTION_MASK) {
+                    case AMOTION_EVENT_ACTION_DOWN:
+                        // if(ev.pointerCount) ev.pointers[0].rawX;
+                        break;
+                    case AMOTION_EVENT_ACTION_UP:
+                        break;
+                    case AMOTION_EVENT_ACTION_MOVE:
+                        break;
+                    default:
+                        // 참고: https://developer.android.com/reference/android/view/MotionEvent#constants_1
+                        break;
+                }
+            }
+            for(uint64_t i=0;i<inputs->keyEventsCount;i++){
+                GameActivityKeyEvent& ev = inputs->keyEvents[i];
+                switch (ev.action) {
+                    case AKEY_EVENT_ACTION_DOWN:
+                        // ev.keyCode
+                        // ev.unicodeChar
+                        // AKEYCODE_X
+                        break;
+                    case AKEY_EVENT_ACTION_UP:
+                        break;
+                    case AKEY_EVENT_ACTION_MULTIPLE:
+                        // Multiple duplicate key events have occurred in a row,
+                        // or a complex string is being delivered.
+                        // The repeat_count property of the key event contains the number of times the given key code should be executed.
+                        break;
+                    default:
+                        // 참고: https://developer.android.com/reference/android/view/KeyEvent#constants_1
+                        break;
+                }
+            }
+            // 아래를 호출하지 않으면 이벤트 버퍼가 가득 찹니다.
+            android_app_clear_key_events(inputs);
+            android_app_clear_motion_events(inputs);
+        }
+}
+
     bool Window::init(){
         return true;
     }
+
+    Window::Window(void* hd, const CreationOptions* options): window(hd) {
+        _HAPP->onAppCmd = onart::handleCmd;
+        _HAPP->userData = this;
+    }
+
+    Window::~Window(){ }
+
+    void Window::pollEvents(){
+        int events;
+        android_poll_source* source;
+        while(ALooper_pollAll(0, nullptr, &events, (void**)&source) >= 0) {
+            if(source != nullptr){
+                source->process(source->app, source);
+                onart::onInput(_HAPP);
+            }
+            if(_HAPP->destroyRequested){
+                break;
+            }
+        }
+    }
+
+    bool Window::windowShouldClose(){
+        return _HAPP->destroyRequested;
+    }
+
+    void Window::getContentScale(float* x, float* y){
+        AConfiguration* configuration = AConfiguration_new();
+        AConfiguration_fromAssetManager(configuration, _HAPP->activity->assetManager);
+        int32_t density = AConfiguration_getDensity(configuration);
+        AConfiguration_delete(configuration);
+        if(x) *x = density;
+        if(y) *y = density;
+    }
+
+    void Window::getFramebufferSize(int* x, int* y){
+        if(x) *x = ANativeWindow_getWidth(_HAPP->window);
+        if(y) *y = ANativeWindow_getHeight(_HAPP->window);
+    }
+
+    void Window::getSize(int* x,int* y){
+        getFramebufferSize(x,y);
+    }
+
+    VkResult Window::createWindowSurface(VkInstance instance, VkSurfaceKHR* surface){
+        VkAndroidSurfaceCreateInfoKHR info{};
+        info.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
+        info.window = _HAPP->window;
+        PFN_vkCreateAndroidSurfaceKHR vkCreateAndroidSurfaceKHR = (PFN_vkCreateAndroidSurfaceKHR)vkGetInstanceProcAddr(instance, "vkCreateAndroidSurfaceKHR");
+        if(vkCreateAndroidSurfaceKHR) return vkCreateAndroidSurfaceKHR(instance, &info, nullptr, surface);
+        LOGWITH("Error: Failed to dispatch procedure vkCreateAndroidSurfaceKHR");
+        return VkResult::VK_ERROR_UNKNOWN;
+    }
+
+    int Window::getMonitorRefreshRate(int monitor){
+        return 60; // TODO: Swappy 없이 실제 값 구하기가 가능한가?
+    }
+
+    int Window::getMonitorCount(){
+        return 1;
+    }
+
+    void Window::setSize(unsigned, unsigned){ }
+    void Window::setWindowed(int,int,int,int){ }
+    void Window::setFullScreen(int){ }
+    void Window::terminate() { }
+
+#undef _HAPP
 }
 
 #else
@@ -79,10 +294,16 @@ namespace onart{
         glfwSetMouseButtonCallback(gw, onart::mouseButtonCallback);
         glfwSetCursorPosCallback(gw, onart::mousePosCallback);
         glfwSetScrollCallback(gw, onart::scrollCallback);
+        // TODO:
+        // glfwSetWindowFocusCallback PC/Android 활성/비활성.
+        //
+        // glfwSetWindowCloseCallback PC 창 닫기
+        // glfwSetWindowIconifyCallback PC/Android 최소화/복원(Android는 window destroy에 해당)
+        
     }
 
     Window::~Window(){
-
+        glfwDestroyWindow((GLFWwindow*)window);
     }
 
     int Window::getMonitorRefreshRate(int monitor){

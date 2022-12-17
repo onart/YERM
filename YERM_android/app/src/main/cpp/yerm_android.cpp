@@ -10,8 +10,8 @@ extern "C" {
 void android_main(struct android_app* state);
 };
 #include "YERM_PC/logger.hpp"
+#include "YERM_PC/yr_sys.h"
 
 void android_main(struct android_app* app) {
-    LOGHERE;
-    LOGWITH(1233);
+    onart::Window window(app);
 }
