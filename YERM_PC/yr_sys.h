@@ -41,16 +41,39 @@ namespace onart{
             /// @param options 생성 옵션을 줍니다. 비워 두거나 nullptr를 전달하면 기본 옵션으로 사용됩니다. 자세한 내용은 @ref CreationOptions 구조체를 참고하세요.
             Window(void *hd = nullptr, const CreationOptions *options = nullptr);
             ~Window();
-            /// @brief
+            /// @brief 발생한 창 이벤트에 대한 처리를 수행합니다. 등록한 콜백 함수들도 호출됩니다.
             void pollEvents();
             /// @brief 현 프레임에 창이 닫히는 경우 true를 리턴합니다. 안드로이드 대상의 경우 화면 회전 시에도 true가 되므로, 반드시 프로그램 종료를 의미하는 것이 아니니 주의하세요.
             bool windowShouldClose();
+            /// @brief 이 창에 대하여 화면의 DPI와 플랫폼의 기본 DPI 비율을 알려줍니다.
+            /// @param x x 스케일을 받을 위치입니다. nullptr를 주면 넘어가지 않습니다.
+            /// @param y y 스케일을 받을 위치입니다. nullptr를 주면 넘어가지 않습니다.
+            void getContentScale(float* x, float* y);
+            /// @brief 화면 표시 영역의 화면 좌표 상 크기를 알려줍니다. 창 관리 단에서 사용하기 위한 것입니다.
+            /// @param x 가로 길이를 받을 위치입니다. nullptr를 주면 넘어가지 않습니다.
+            /// @param y 세로 길이를 받을 위치입니다. nullptr를 주면 넘어가지 않습니다.
+            void getSize(int* x, int* y);
+            /// @brief 화면 표시 영역의 픽셀 크기를 알려줍니다. 그래픽스 단에서 사용하기 위한 것입니다.
+            /// @param x 가로 길이를 받을 위치입니다. nullptr를 주면 넘어가지 않습니다.
+            /// @param y 세로 길이를 받을 위치입니다. nullptr를 주면 넘어가지 않습니다.
+            void getFramebufferSize(int* x, int* y);
+            /// @brief 창 크기를 설정합니다.
+            void setSize(unsigned x, unsigned y);
+            /// @brief 전체화면인 창에 대하여 창 모드로 바꾸거나, 창 위치와 크기를 바꿉니다. PC 플랫폼 이외에서는 동작하지 않습니다.
+            /// @param xpos 창 좌측의 위치(화면 좌표)입니다. 비워 두거나 음수를 주는 경우 주 모니터의 가운데로 맞춥니다.
+            /// @param ypos 창 상단의 위치(화면 좌표)입니다. 비워 두거나 음수를 주는 경우 주 모니터의 가운데로 맞춥니다.
+            /// @param width 창 가로 길이(화면 좌표)입니다. 비워 두거나 음수를 주는 경우 주 모니터의 반으로 맞춥니다.
+            /// @param height 창 세로 길이(화면 좌표)입니다. 비워 두거나 음수를 주는 경우 주 모니터의 반으로 맞춥니다.
+            void setWindowed(int xpos = -1, int ypos = -1, int width=-1, int height = -1);
+            /// @brief 주어진 모니터에 대하여 전체 화면으로 바꿉니다. PC 플랫폼 이외에서는 동작하지 않습니다.
+            /// @param monitor 모니터 번호
+            void setFullScreen(int monitor = 0);
             /// @brief 창 표면을 생성합니다.
             /// @param instance 인스턴스입니다.
             /// @param surface 생성 성공 시 창 표면 핸들을 이 위치로 리턴합니다.
             /// @return 결과 코드입니다.
             VkResult createWindowSurface(VkInstance instance, VkSurfaceKHR* surface);
-            /// @brief 창 크기가 변경될 때 호출될 함수입니다. 시그니처: void(int [가로 길이], int [세로 길이])
+            /// @brief 창 크기가 변경될 때 호출될 함수입니다. 시그니처: void(int [가로 길이(픽셀)], int [세로 길이(픽셀)])
             std::function<void(int, int)> windowSizeCallback;
             /// @brief 키 입력, 모바일 (가상)버튼 등에 대한 콜백을 등록합니다. 시그니처: void(int [키코드], int [스캔코드], int [동작코드], int [shift 등 추가])
             std::function<void(int, int, int, int)> keyCallback;
@@ -60,13 +83,19 @@ namespace onart{
             std::function<void(double, double)> posCallback;
             /// @brief 마우스 휠, 트랙볼 등에 의한 스크롤 콜백을 등록합니다. PC에서만 사용됩니다. 시그니처: void(double [x 오프셋, 주로 0 아니면 1], double [y 오프셋, 주로 0 아니면 1])
             std::function<void(double, double)> scrollCallback;
+            /// @brief 현재 연결되어 있는 모니터의 수를 리턴합니다. 안드로이드 대상에서는 반드시 1이 리턴됩니다.
+            static int getMonitorCount();
+            /// @brief 모니터 주사율을 리턴합니다.
+            /// @param monitor  모니터 번호. 0번은 반드시 주 모니터입니다. 안드로이드 대상에서는 이 값이 무시됩니다.
+            /// @return 기본적으로 모니터 주사율을 리턴하며, 유효하지 않은 입력이었던 경우 -1을 리턴합니다.
+            static int getMonitorRefreshRate(int monitor = 0);
             /// @brief 종료하기 전에 이것을 호출해야 합니다.
             static void terminate();
         private:
             /// @brief 라이브러리 초기 세팅을 수행합니다.
             /// @return 초기화에 성공하면 true를 리턴합니다.
             static bool init();
-            /// @brief 내부적으로 플랫폼별 중심 객체를 사용합니다. PC 플랫폼은 GLFWwindow*, 안드로이드는 android_app입니다.
+            /// @brief 내부적으로 플랫폼별 중심 객체를 사용합니다. PC 플랫폼은 GLFWwindow*, 안드로이드는 android_app*입니다.
             void *window = nullptr;
     };
 }

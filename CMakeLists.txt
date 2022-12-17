@@ -9,6 +9,8 @@ else()
     message(STATUS "Build system: ${CMAKE_GENERATOR}")
     project("yerm")
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_compile_options("$<$<C_COMPILER_ID:MSVC>:/utf-8>")
+    add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
     add_executable(yerm
         YERM_PC/main.cpp
         YERM_PC/logger.hpp
@@ -23,11 +25,12 @@ else()
     if(MSVC)
         set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
         set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
+        add_compile_options("/utf-8")
         target_link_libraries(yerm glfw3_mt vulkan-1 ktx shaderc_shared)
-        add_custom_command(TARGET yerm POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-                ${CMAKE_SOURCE_DIR}/externals/shaderc/libshaderc_shared.dll
-                ${CMAKE_BINARY_DIR}/bin/libshaderc_shared.dll)
+        #add_custom_command(TARGET yerm POST_BUILD
+        #COMMAND ${CMAKE_COMMAND} -E copy
+                #${CMAKE_SOURCE_DIR}/externals/shaderc/libshaderc_shared.dll
+                #${CMAKE_BINARY_DIR}/bin/libshaderc_shared.dll)
     else()
         target_link_libraries(yerm glfw3 vulkan shaderc_shared dl pthread X11) # TODO: X11 부분을 타겟에 잘 맞게 분류
         add_custom_command(TARGET yerm POST_BUILD

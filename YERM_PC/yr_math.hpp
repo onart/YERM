@@ -337,9 +337,9 @@ namespace onart{
         /// @brief 다른 행렬과 연산합니다.
         inline mat3 operator-(const mat3 &m) { return mat3(*this) -= m; }
         /// @brief i행 벡터를 리턴합니다. 0~2만 입력 가능합니다. 
-        inline vec3 row(unsigned i) const { assert(i <= 2); return vec3(a + i * 3); }
+        inline vec3 row(size_t i) const { assert(i <= 2); return vec3(a + i * 3); }
         /// @brief i열 벡터를 리턴합니다. 0~2만 입력 가능합니다. 
-        inline vec3 col(unsigned i) const { assert(i <= 2); return vec3(a[i], a[i + 3], a[i + 6]); }
+        inline vec3 col(size_t i) const { assert(i <= 2); return vec3(a[i], a[i + 3], a[i + 6]); }
         
         /// @brief 행렬곱을 수행합니다.
         inline mat3 operator*(const mat3& m) const {
@@ -456,9 +456,9 @@ namespace onart{
         /// @brief 다른 행렬과 성분별로 연산합니다.
         inline mat4 operator-(const mat4& m) const { return mat4(*this) -= m; }
         /// @brief n행 벡터를 리턴합니다. (0 베이스)
-        inline vec4 row(unsigned i) const { assert(i < 4); return vec4(a + 4 * i); }
+        inline vec4 row(size_t i) const { assert(i < 4); return vec4(a + 4 * i); }
         /// @brief n열 벡터를 리턴합니다. (0 베이스)
-        inline vec4 col(unsigned i) const { assert(i < 4); return vec4(a[i], a[i + 4], a[i + 8], a[i + 12]); }
+        inline vec4 col(size_t i) const { assert(i < 4); return vec4(a[i], a[i + 4], a[i + 8], a[i + 12]); }
 
         /// @brief 행렬끼리 곱합니다.
         inline mat4 operator*(const mat4& m) const{

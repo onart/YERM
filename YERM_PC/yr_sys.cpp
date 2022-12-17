@@ -74,7 +74,7 @@ namespace onart{
         }
         GLFWwindow *gw = (GLFWwindow *)window;
         glfwSetWindowUserPointer(gw, this);
-        glfwSetWindowSizeCallback(gw, onart::windowSizeCallback);
+        glfwSetFramebufferSizeCallback(gw, onart::windowSizeCallback);
         glfwSetKeyCallback(gw, onart::keyCallback);
         glfwSetMouseButtonCallback(gw, onart::mouseButtonCallback);
         glfwSetCursorPosCallback(gw, onart::mousePosCallback);
@@ -83,6 +83,17 @@ namespace onart{
 
     Window::~Window(){
 
+    }
+
+    int Window::getMonitorRefreshRate(int monitor){
+        init();
+        int count;
+        GLFWmonitor** monitors = glfwGetMonitors(&count);
+        if((unsigned)monitor < (unsigned)count){
+            return glfwGetVideoMode(monitors[monitor])->refreshRate;
+        }
+        LOGWITH("Invalid monitor number");
+        return -1;
     }
 
     bool Window::windowShouldClose(){
@@ -96,6 +107,58 @@ namespace onart{
 
     void Window::pollEvents(){
         glfwPollEvents();
+    }
+
+    void Window::getContentScale(float* x, float* y){
+        glfwGetWindowContentScale((GLFWwindow*)window, x, y);
+    }
+
+    void Window::setSize(unsigned x, unsigned y){
+        glfwSetWindowSize((GLFWwindow*)window, x, y);
+    }
+
+    void Window::getSize(int* x, int* y){
+        glfwGetWindowSize((GLFWwindow*)window, x, y);
+    }
+
+    void Window::getFramebufferSize(int* x, int* y){
+        glfwGetFramebufferSize((GLFWwindow*)window, x, y);
+    }
+
+    void Window::setFullScreen(int monitor){
+        int count;
+        GLFWmonitor** monitors = glfwGetMonitors(&count);
+        if((unsigned)monitor < (unsigned)count){
+            glfwSetWindowMonitor((GLFWwindow*)window, monitors[monitor], 0, 0, 0, 0, GLFW_DONT_CARE);
+        }
+        LOGWITH("Invalid monitor number");
+    }
+
+    void Window::setWindowed(int xpos, int ypos, int width, int height){
+        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+        const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+        if(width <= 0){ width = mode->width; }
+        if(height <= 0) { height = mode->height; }
+        if(xpos < 0){
+            glfwGetMonitorPos(monitor, &xpos, nullptr);
+            xpos += (mode->width - width) / 2;
+        }
+        if(ypos < 0){
+            glfwGetMonitorPos(monitor, nullptr, &ypos);
+            ypos += (mode->height - height) / 2;
+        }
+        glfwSetWindowMonitor((GLFWwindow*)window, nullptr, xpos, ypos, width, height, GLFW_DONT_CARE);
+    }
+
+    int Window::getMonitorCount(){
+        init();
+        int count;
+        glfwGetMonitors(&count);
+        return count;
+    }
+
+    VkResult Window::createWindowSurface(VkInstance instance, VkSurfaceKHR* surface){
+        return glfwCreateWindowSurface(instance, (GLFWwindow*)window, nullptr, surface);
     }
 
     void Window::terminate(){
