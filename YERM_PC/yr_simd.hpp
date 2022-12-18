@@ -280,6 +280,37 @@ namespace onart{
         mul4(vec, -1);
     }
 
+    /// @brief 벡터 성분 섞기를 위한 인수입니다.
+    enum class SWIZZLE_SYMBOL { X=0, Y=1, Z=2, W=3, R=0, G=1, B=2, A=3, S=0, T=1, P=2, Q=3 };
+    constexpr SWIZZLE_SYMBOL SWIZZLE_X = SWIZZLE_SYMBOL::X;
+    constexpr SWIZZLE_SYMBOL SWIZZLE_Y = SWIZZLE_SYMBOL::Y;
+    constexpr SWIZZLE_SYMBOL SWIZZLE_Z = SWIZZLE_SYMBOL::Z;
+    constexpr SWIZZLE_SYMBOL SWIZZLE_W = SWIZZLE_SYMBOL::W;
+    constexpr SWIZZLE_SYMBOL SWIZZLE_R = SWIZZLE_SYMBOL::R;
+    constexpr SWIZZLE_SYMBOL SWIZZLE_G = SWIZZLE_SYMBOL::G;
+    constexpr SWIZZLE_SYMBOL SWIZZLE_B = SWIZZLE_SYMBOL::B;
+    constexpr SWIZZLE_SYMBOL SWIZZLE_A = SWIZZLE_SYMBOL::A;
+    constexpr SWIZZLE_SYMBOL SWIZZLE_S = SWIZZLE_SYMBOL::S;
+    constexpr SWIZZLE_SYMBOL SWIZZLE_T = SWIZZLE_SYMBOL::T;
+    constexpr SWIZZLE_SYMBOL SWIZZLE_P = SWIZZLE_SYMBOL::P;
+    constexpr SWIZZLE_SYMBOL SWIZZLE_Q = SWIZZLE_SYMBOL::Q;
+
+    /// @brief 벡터 성분 섞기를 위한 인수입니다.
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
+    inline constexpr int SWIZZLE_IMM = ((int)P3 << 6) | ((int)P2 << 4) | ((int)P1 << 2) | (int)P0;
+    
+    /// @brief 배열의 앞 4개 성분을 주어진 대로 섞습니다.
+    /// ARM Neon에는 직접적으로 swizzle/shuffle을 명시한 게 없음. 참고 https://documentation-service.arm.com/static/616d26aae4f35d248467d648?token=
+    template<class T, SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
+    inline void swizzle4(T* vec){
+        T temp[4];
+        temp[0] = vec[(int)P0];
+        temp[1] = vec[(int)P1];
+        temp[2] = vec[(int)P2];
+        temp[3] = vec[(int)P3];
+        memcpy(vec, temp, sizeof(temp));
+    }
+
     /// @brief 역제곱근을 리턴합니다.
     inline double rsqrt(double d) { return 1.0 / sqrt(d); }
 
@@ -624,6 +655,90 @@ namespace onart{
         __m128d mzero = _mm_set1_pd(-0.0);
         m = _mm_xor_pd(_mm_loadu_pd(vec), mzero); _mm_storeu_pd(vec, m);
         m = _mm_xor_pd(_mm_loadu_pd(vec+2), mzero); _mm_storeu_pd(vec+2, m);
+    }
+
+    /// @brief float 배열 앞 4개를 원하는 대로 섞습니다.
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
+    inline void swizzle4(float* vec){
+        __m128 m = _mm_loadu_ps(vec);
+        m = _mm_shuffle_ps(m, m, (SWIZZLE_IMM<P0,P1,P2,P3>));
+        _mm_storeu_ps(vec, m);
+    }
+
+    /// @brief double 배열 앞 4개를 원하는 대로 섞습니다.
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
+    inline void swizzle4(double* vec){
+        __m128d m1 = _mm_loadu_pd(vec);
+        __m128d m2 = _mm_loadu_pd(vec + 2);
+        if constexpr (P0 >= SWIZZLE_Z) {
+            if constexpr (P1 >= SWIZZLE_Z) {
+                constexpr int IMM0 = P0 == SWIZZLE_W;
+                constexpr int IMM1 = P1 == SWIZZLE_W;
+                __m128d m3 = _mm_shuffle_pd(m2, m2, (IMM1 << 1) | IMM0);
+                _mm_storeu_pd(vec, m3);
+            }
+            else {
+                constexpr int IMM0 = P0 == SWIZZLE_W;
+                constexpr int IMM1 = P1 == SWIZZLE_Y;
+                __m128d m3 = _mm_shuffle_pd(m2, m1, (IMM1 << 1) | IMM0);
+                _mm_storeu_pd(vec, m3);
+            }
+        }
+        else if constexpr (P1 >= SWIZZLE_Z) {
+            constexpr int IMM0 = P0 == SWIZZLE_Y;
+            constexpr int IMM1 = P1 == SWIZZLE_W;
+            __m128d m3 = _mm_shuffle_pd(m1, m2, (IMM1 << 1) | IMM0);
+            _mm_storeu_pd(vec, m3);
+        }
+        else {
+            constexpr int IMM0 = P0 == SWIZZLE_Y;
+            constexpr int IMM1 = P1 == SWIZZLE_Y;
+            __m128d m3 = _mm_shuffle_pd(m1, m1, (IMM1 << 1) | IMM0);
+            _mm_storeu_pd(vec, m3);
+        }
+
+        if constexpr (P2 >= SWIZZLE_Z) {
+            if constexpr (P3 >= SWIZZLE_Z) {
+                constexpr int IMM0 = P2 == SWIZZLE_W;
+                constexpr int IMM1 = P3 == SWIZZLE_W;
+                __m128d m3 = _mm_shuffle_pd(m2, m2, (IMM1 << 1) | IMM0);
+                _mm_storeu_pd(vec + 2, m3);
+            }
+            else {
+                constexpr int IMM0 = P2 == SWIZZLE_W;
+                constexpr int IMM1 = P3 == SWIZZLE_Y;
+                __m128d m3 = _mm_shuffle_pd(m2, m1, (IMM1 << 1) | IMM0);
+                _mm_storeu_pd(vec + 2, m3);
+            }
+        }
+        else if constexpr (P3 >= SWIZZLE_Z) {
+            constexpr int IMM0 = P2 == SWIZZLE_Y;
+            constexpr int IMM1 = P3 == SWIZZLE_W;
+            __m128d m3 = _mm_shuffle_pd(m1, m2, (IMM1 << 1) | IMM0);
+            _mm_storeu_pd(vec + 2, m3);
+        }
+        else {
+            constexpr int IMM0 = P2 == SWIZZLE_Y;
+            constexpr int IMM1 = P3 == SWIZZLE_Y;
+            __m128d m3 = _mm_shuffle_pd(m1, m1, (IMM1 << 1) | IMM0);
+            _mm_storeu_pd(vec + 2, m3);
+        }
+    }
+
+    /// @brief int32_t 배열 앞 4개를 원하는 대로 섞습니다.
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
+    inline void swizzle4(int32_t* vec){
+        __m128i m = _mm_loadu_si128((__m128i*)vec);
+        m = _mm_shuffle_epi32(m, (SWIZZLE_IMM<P0, P1, P2, P3>));
+        _mm_storeu_si128((__m128i*)vec, m);
+    }
+
+    /// @brief uint32_t 배열 앞 4개를 원하는 대로 섞습니다.
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
+    inline void swizzle4(uint32_t* vec){
+        __m128i m = _mm_loadu_si128((__m128i*)vec);
+        m = _mm_shuffle_epi32(m, (SWIZZLE_IMM<P0, P1, P2, P3>));
+        _mm_storeu_si128((__m128i*)vec, m);
     }
 
     /// @brief float 배열에서 앞 4개를 양의 제곱근을 적용한 값으로 바꿉니다. 음수 검사는 하지 않고 nan으로 변합니다.
@@ -1110,6 +1225,22 @@ namespace onart{
         vec[2]=(int32_t)(val[2]);
         vec[3]=(int32_t)(val[3]);
     }
+
+    /// @brief 배열의 앞 4개 성분을 템플릿 인수로 주어진 대로 섞습니다.
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
+    inline void swizzle4(float* vec){ swizzle4<float, P0, P1, P2, P3>(vec); }
+
+    /// @brief 배열의 앞 4개 성분을 템플릿 인수로 주어진 대로 섞습니다.
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
+    inline void swizzle4(double* vec){ swizzle4<double, P0, P1, P2, P3>(vec); }
+
+    /// @brief 배열의 앞 4개 성분을 템플릿 인수로 주어진 대로 섞습니다.
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
+    inline void swizzle4(int32_t* vec){ swizzle4<int32_t, P0, P1, P2, P3>(vec); }
+
+    /// @brief 배열의 앞 4개 성분을 템플릿 인수로 주어진 대로 섞습니다.
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
+    inline void swizzle4(uint32_t* vec){ swizzle4<uint32_t, P0, P1, P2, P3>(vec); }
 #endif
 
 }
