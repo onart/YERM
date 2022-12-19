@@ -11,7 +11,9 @@ void android_main(struct android_app* state);
 };
 #include "YERM_PC/logger.hpp"
 #include "YERM_PC/yr_sys.h"
+#include "YERM_PC/yr_game.h"
 
 void android_main(struct android_app* app) {
-    onart::Window window(app);
+    onart::Game game;
+    game.start(app);
 }

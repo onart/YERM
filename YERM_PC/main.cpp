@@ -1,10 +1,13 @@
 #include "logger.hpp"
 #include "yr_math.hpp"
+#include "yr_game.h"
+
 #include <filesystem>
 
 using namespace onart;
 
 int main(int argc, char* argv[]){
-    dvec3 a{1.0, 2.0,3.0, 4.0};
-    LOGWITH(a.zzxz());
+    std::filesystem::current_path(std::filesystem::path(argv[0]).parent_path());
+    Game game;
+    game.start();
 }

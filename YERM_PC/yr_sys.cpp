@@ -176,6 +176,7 @@ namespace onart{
     Window::Window(void* hd, const CreationOptions* options): window(hd) {
         _HAPP->onAppCmd = onart::handleCmd;
         _HAPP->userData = this;
+        isOn = true;
     }
 
     Window::~Window(){ }
@@ -261,7 +262,7 @@ namespace onart{
     /// @brief GLFW 이벤트 콜백과 사용자 지정 콜백을 연결합니다.
     static void mouseButtonCallback(GLFWwindow* window, int key, int action, int mods) {
         Window *w = (Window*)glfwGetWindowUserPointer(window);
-        if(w->clickTouchCallback) w->clickTouchCallback(key, action, mods);
+        if(w->clickCallback) w->clickCallback(key, action, mods);
     }
     /// @brief GLFW 이벤트 콜백과 사용자 지정 콜백을 연결합니다.
     static void mousePosCallback(GLFWwindow* window, double x, double y){
@@ -277,6 +278,7 @@ namespace onart{
     Window::Window(void *hd, const CreationOptions *options){
         CreationOptions defaultOpts;
         if (!options) options = &defaultOpts;
+        init();
         glfwWindowHint(GLFW_DECORATED, options->decorated);
         glfwWindowHint(GLFW_RESIZABLE, options->resizable);
         glfwWindowHint(GLFW_VISIBLE, false);
@@ -294,12 +296,13 @@ namespace onart{
         glfwSetMouseButtonCallback(gw, onart::mouseButtonCallback);
         glfwSetCursorPosCallback(gw, onart::mousePosCallback);
         glfwSetScrollCallback(gw, onart::scrollCallback);
+        glfwShowWindow(gw);
         // TODO:
         // glfwSetWindowFocusCallback PC/Android 활성/비활성.
         //
         // glfwSetWindowCloseCallback PC 창 닫기
         // glfwSetWindowIconifyCallback PC/Android 최소화/복원(Android는 window destroy에 해당)
-        
+        isOn=true;
     }
 
     Window::~Window(){

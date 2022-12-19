@@ -40,6 +40,7 @@ namespace onart{
             /// @param hd 대상 환경이 android인 경우 android_app 객체를 전달합니다. PC 대상인 경우 이 매개변수는 무시됩니다.
             /// @param options 생성 옵션을 줍니다. 비워 두거나 nullptr를 전달하면 기본 옵션으로 사용됩니다. 자세한 내용은 @ref CreationOptions 구조체를 참고하세요.
             Window(void *hd = nullptr, const CreationOptions *options = nullptr);
+            Window(const Window&)=delete;
             ~Window();
             /// @brief 발생한 창 이벤트에 대한 처리를 수행합니다. 등록한 콜백 함수들도 호출됩니다.
             void pollEvents();
@@ -68,6 +69,8 @@ namespace onart{
             /// @brief 주어진 모니터에 대하여 전체 화면으로 바꿉니다. PC 플랫폼 이외에서는 동작하지 않습니다.
             /// @param monitor 모니터 번호
             void setFullScreen(int monitor = 0);
+            /// @brief 객체가 정상적으로 생성되었는지 확인합니다.
+            inline bool isNormal(){ return isOn; }
             /// @brief 창 표면을 생성합니다.
             /// @param instance 인스턴스입니다.
             /// @param surface 생성 성공 시 창 표면 핸들을 이 위치로 리턴합니다.
@@ -77,12 +80,13 @@ namespace onart{
             std::function<void(int, int)> windowSizeCallback;
             /// @brief 키 입력, 모바일 (가상)버튼 등에 대한 콜백을 등록합니다. 시그니처: void(int [키코드], int [스캔코드], int [동작코드], int [shift 등 추가])
             std::function<void(int, int, int, int)> keyCallback;
-            /// @brief 마우스 클릭 혹은 터치에 대한 콜백을 등록합니다. 시그니처: void(int [키코드], int [동작코드], int [shift 등 추가])
-            std::function<void(int, int, int)> clickTouchCallback;
+            /// @brief 마우스 클릭에 대한 콜백을 등록합니다. 시그니처: void(int [키코드], int [동작코드], int [shift 등 추가])
+            std::function<void(int, int, int)> clickCallback;
             /// @brief 마우스 이동 혹은 터치스크린 슬라이드 시 호출되는 함수입니다. 시그니처: void(double [x좌표 (왼쪽 끝이 0, 오른쪽 끝이 1)], double [y좌표 (위쪽 끝이 0, 아래쪽 끝이 1)])
             std::function<void(double, double)> posCallback;
             /// @brief 마우스 휠, 트랙볼 등에 의한 스크롤 콜백을 등록합니다. PC에서만 사용됩니다. 시그니처: void(double [x 오프셋, 주로 0 아니면 1], double [y 오프셋, 주로 0 아니면 1])
             std::function<void(double, double)> scrollCallback;
+            
             /// @brief 현재 연결되어 있는 모니터의 수를 리턴합니다. 안드로이드 대상에서는 반드시 1이 리턴됩니다.
             static int getMonitorCount();
             /// @brief 모니터 주사율을 리턴합니다.
@@ -97,6 +101,7 @@ namespace onart{
             static bool init();
             /// @brief 내부적으로 플랫폼별 중심 객체를 사용합니다. PC 플랫폼은 GLFWwindow*, 안드로이드는 android_app*입니다.
             void *window = nullptr;
+            bool isOn = false;
     };
 }
 

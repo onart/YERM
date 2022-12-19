@@ -18,6 +18,8 @@ else()
         YERM_PC/yr_math.hpp
         YERM_PC/yr_sys.h
         YERM_PC/yr_sys.cpp
+        YERM_PC/yr_game.h
+        YERM_PC/yr_game.cpp
     )
     set_target_properties(yerm PROPERTIES BUILD_RPATH ".")
     target_include_directories(yerm PUBLIC externals)
@@ -26,6 +28,7 @@ else()
         set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
         set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
         add_compile_options("/utf-8")
+        set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT yerm) # 재생버튼 눌러서 바로 실행해볼 수 있게 됨
         target_link_libraries(yerm glfw3_mt vulkan-1 ktx shaderc_shared)
         #add_custom_command(TARGET yerm POST_BUILD
         #COMMAND ${CMAKE_COMMAND} -E copy

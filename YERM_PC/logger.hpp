@@ -25,8 +25,10 @@ inline void __logMultiple(const F& first, const T &...extra){
 
 template <class... T>
 inline void __logPosition(const std::string& file, int line, const std::string& func, const T&... extra){
-    std::cout << file << ':' << line << ' ';
-    __logMultiple(func, extra...);
+    std::cout << file << ':' << line << ' ' << func;
+    if constexpr(sizeof...(T) > 0) std::cout << ": ";
+    __logMultiple(extra...);
+
 }
 
 template <class... T>
@@ -46,11 +48,10 @@ inline void __getMultiple(std::ostream& strm, const F& first, const T&... extra)
 
 template <class... T>
 inline std::string __getLogContent(const std::string& file, int line, const std::string& func, const T&... extra) {
-    std::string ret;
     std::ostringstream strm;
-    
-    strm << file << ':' << line << ' ';
-    __getMultiple(strm, func, extra...);
+    strm << file << ':' << line << ' ' << func;
+    if constexpr(sizeof...(T) > 0) strm << ": ";
+    __getMultiple(strm, extra...);
     return strm.str();
 }
 
