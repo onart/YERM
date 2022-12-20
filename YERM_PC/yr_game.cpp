@@ -13,13 +13,13 @@
 // limitations under the License.
 #include "yr_game.h"
 #include "yr_sys.h"
+#include "yr_vulkan.h"
 #include "logger.hpp"
 
 #include "yr_math.hpp"
 
 namespace onart{
 
-    static bool isRunning = false;
     static Game* singleton = nullptr;
     static std::chrono::steady_clock clock;
 
@@ -97,6 +97,7 @@ namespace onart{
     }
 
     bool Game::init() {
+        vk = new VkMachine(window);
         return true;
     }
 

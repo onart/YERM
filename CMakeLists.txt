@@ -20,6 +20,8 @@ else()
         YERM_PC/yr_sys.cpp
         YERM_PC/yr_game.h
         YERM_PC/yr_game.cpp
+        YERM_PC/yr_vulkan.h
+        YERM_PC/yr_vulkan.cpp
     )
     set_target_properties(yerm PROPERTIES BUILD_RPATH ".")
     target_include_directories(yerm PUBLIC externals)

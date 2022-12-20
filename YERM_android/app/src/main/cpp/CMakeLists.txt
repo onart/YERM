@@ -35,6 +35,8 @@ add_library( # Sets the name of the library.
              ../../../../../YERM_PC/yr_sys.cpp
              ../../../../../YERM_PC/yr_game.h
              ../../../../../YERM_PC/yr_game.cpp
+             ../../../../../YERM_PC/yr_vulkan.h
+             ../../../../../YERM_PC/yr_vulkan.cpp
         )
 
 # Searches for a specified prebuilt library and stores the path as a

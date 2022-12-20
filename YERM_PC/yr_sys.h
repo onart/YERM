@@ -15,7 +15,9 @@
 #define __YR_SYS_H__
 
 #include "../externals/vulkan/vulkan.h"
+
 #include <functional>
+#include <vector>
 
 namespace onart{
     /// @brief 창 시스템에 대한 불투명 타입입니다. GLFW와 AGDK의 vulkan 대상 인터페이스를 비슷하게 맞추기 위해 만들어졌습니다.
@@ -71,6 +73,8 @@ namespace onart{
             void setFullScreen(int monitor = 0);
             /// @brief 객체가 정상적으로 생성되었는지 확인합니다.
             inline bool isNormal(){ return isOn; }
+            /// @brief Vulkan instance에서 활성화해야 할 확장 이름들을 얻어옵니다.
+            std::vector<const char*> requiredInstanceExentsions();
             /// @brief 창 표면을 생성합니다.
             /// @param instance 인스턴스입니다.
             /// @param surface 생성 성공 시 창 표면 핸들을 이 위치로 리턴합니다.
@@ -86,7 +90,8 @@ namespace onart{
             std::function<void(double, double)> posCallback;
             /// @brief 마우스 휠, 트랙볼 등에 의한 스크롤 콜백을 등록합니다. PC에서만 사용됩니다. 시그니처: void(double [x 오프셋, 주로 0 아니면 1], double [y 오프셋, 주로 0 아니면 1])
             std::function<void(double, double)> scrollCallback;
-            
+            /// @brief window surface가 처음 활성화될 때까지 기다리는 플래그로, 그 이후에는 사용하지 않습니다.
+            bool surfaceAvailable = false;
             /// @brief 현재 연결되어 있는 모니터의 수를 리턴합니다. 안드로이드 대상에서는 반드시 1이 리턴됩니다.
             static int getMonitorCount();
             /// @brief 모니터 주사율을 리턴합니다.

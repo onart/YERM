@@ -25,6 +25,13 @@
 namespace onart{
 
 #define _HAPP reinterpret_cast<android_app*>(window)
+
+    static void initCmd(android_app* app, int32_t cmd){
+        if(cmd == NativeAppGlueAppCmd::APP_CMD_INIT_WINDOW) {
+            Window* w = (Window*)app->userData;
+            w->surfaceAvailable = true;
+        }
+    }
     
     /// @brief 안드로이드 환경의 기본 이벤트에 대한 콜백으로 쓰입니다.
     static void handleCmd(android_app* app, int32_t cmd){
@@ -174,8 +181,26 @@ namespace onart{
     }
 
     Window::Window(void* hd, const CreationOptions* options): window(hd) {
-        _HAPP->onAppCmd = onart::handleCmd;
+        _HAPP->onAppCmd = onart::initCmd;
         _HAPP->userData = this;
+        while(!surfaceAvailable){ 
+            int events;
+            android_poll_source* source;
+            while(ALooper_pollAll(1, nullptr, &events, (void**)&source) >= 0) {
+                if(source != nullptr){
+                    source->process(source->app, source);
+                    android_input_buffer* inputs=android_app_swap_input_buffers(source->app);
+                    if(inputs){
+                        android_app_clear_key_events(inputs);
+                        android_app_clear_motion_events(inputs);
+                    }
+                }
+                if(_HAPP->destroyRequested){
+                    break;
+                }
+            }
+        }
+        _HAPP->onAppCmd = onart::handleCmd;
         isOn = true;
     }
 
@@ -187,7 +212,7 @@ namespace onart{
         while(ALooper_pollAll(0, nullptr, &events, (void**)&source) >= 0) {
             if(source != nullptr){
                 source->process(source->app, source);
-                onart::onInput(_HAPP);
+                onart::onInput(source->app);
             }
             if(_HAPP->destroyRequested){
                 break;
@@ -222,9 +247,13 @@ namespace onart{
         info.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
         info.window = _HAPP->window;
         PFN_vkCreateAndroidSurfaceKHR vkCreateAndroidSurfaceKHR = (PFN_vkCreateAndroidSurfaceKHR)vkGetInstanceProcAddr(instance, "vkCreateAndroidSurfaceKHR");
-        if(vkCreateAndroidSurfaceKHR) return vkCreateAndroidSurfaceKHR(instance, &info, nullptr, surface);
+        if(vkCreateAndroidSurfaceKHR) { return vkCreateAndroidSurfaceKHR(instance, &info, nullptr, surface); }
         LOGWITH("Error: Failed to dispatch procedure vkCreateAndroidSurfaceKHR");
         return VkResult::VK_ERROR_UNKNOWN;
+    }
+
+    std::vector<const char*> Window::requiredInstanceExentsions(){
+        return { VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_ANDROID_SURFACE_EXTENSION_NAME };
     }
 
     int Window::getMonitorRefreshRate(int monitor){
@@ -383,6 +412,18 @@ namespace onart{
 
     VkResult Window::createWindowSurface(VkInstance instance, VkSurfaceKHR* surface){
         return glfwCreateWindowSurface(instance, (GLFWwindow*)window, nullptr, surface);
+    }
+
+    std::vector<const char*> Window::requiredInstanceExentsions(){
+        uint32_t count;
+        const char** names = glfwGetRequiredInstanceExtensions(&count);
+        if(!names){ LOGWITH("GLFW Error"); return {}; }
+        std::vector<const char*> strs;
+        strs.reserve(count);
+        for(uint32_t i = 0; i < count; i++) {
+            strs.push_back(names[i]);
+        }
+        return strs;
     }
 
     void Window::terminate(){
