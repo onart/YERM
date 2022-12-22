@@ -134,16 +134,29 @@ namespace onart{
     /// @brief 들어온 입력이 있으면 처리합니다.
     static void onInput(android_app* app){
         android_input_buffer* inputs=android_app_swap_input_buffers(app);
+        Window* w = (Window*)app->userData;
         if(inputs){
             for(uint64_t i=0;i<inputs->motionEventsCount;i++){
                 GameActivityMotionEvent& ev = inputs->motionEvents[i];
                 switch (ev.action & AMOTION_EVENT_ACTION_MASK) {
                     case AMOTION_EVENT_ACTION_DOWN:
-                        // if(ev.pointerCount) ev.pointers[0].rawX;
-                        break;
                     case AMOTION_EVENT_ACTION_UP:
+                        for(uint32_t j=0;j<ev.pointerCount;j++){
+                            float x = GameActivityPointerAxes_getX(&ev.pointers[j]);
+                            float y = GameActivityPointerAxes_getY(&ev.pointers[j]);
+                            int32_t id = ev.pointers[j].id;
+                            if(ev.source == AINPUT_SOURCE_TOUCHSCREEN) if(w->touchCallback) w->touchCallback(id, ev.action, x, y);
+                            //else if(ev.source == AINPUT_SOURCE_MOUSE) if(w->clickCallback) w->clickCallback(ev.action, x, y);
+                        }
                         break;
                     case AMOTION_EVENT_ACTION_MOVE:
+                        for(uint32_t j = 0;j < ev.pointerCount;j++){
+                            float x = GameActivityPointerAxes_getX(&ev.pointers[j]);
+                            float y = GameActivityPointerAxes_getY(&ev.pointers[j]);
+                            int32_t id = ev.pointers[j].id;
+                            if(ev.source == AINPUT_SOURCE_TOUCHSCREEN) if(w->touchCallback) w->touchCallback(id, ev.action, x, y);
+                            //else if(ev.source == AINPUT_SOURCE_MOUSE) if(w->posCallback) w->posCallback(x, y);
+                        }
                         break;
                     default:
                         // 참고: https://developer.android.com/reference/android/view/MotionEvent#constants_1
@@ -154,11 +167,9 @@ namespace onart{
                 GameActivityKeyEvent& ev = inputs->keyEvents[i];
                 switch (ev.action) {
                     case AKEY_EVENT_ACTION_DOWN:
-                        // ev.keyCode
-                        // ev.unicodeChar
-                        // AKEYCODE_X
-                        break;
                     case AKEY_EVENT_ACTION_UP:
+                        // ev.unicodeChar
+                        if(w->keyCallback) w->keyCallback(ev.keyCode, 0, ev.action, 0);
                         break;
                     case AKEY_EVENT_ACTION_MULTIPLE:
                         // Multiple duplicate key events have occurred in a row,
@@ -212,12 +223,12 @@ namespace onart{
         while(ALooper_pollAll(0, nullptr, &events, (void**)&source) >= 0) {
             if(source != nullptr){
                 source->process(source->app, source);
-                onart::onInput(source->app);
             }
             if(_HAPP->destroyRequested){
                 break;
             }
         }
+        onart::onInput(_HAPP);
     }
 
     bool Window::windowShouldClose(){

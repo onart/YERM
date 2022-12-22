@@ -14,6 +14,7 @@
 #include "yr_game.h"
 #include "yr_sys.h"
 #include "yr_vulkan.h"
+#include "yr_input.h"
 #include "logger.hpp"
 
 #include "yr_math.hpp"
@@ -98,6 +99,10 @@ namespace onart{
 
     bool Game::init() {
         vk = new VkMachine(window);
+        window->clickCallback = Input::click;
+        window->keyCallback = Input::keyboard;
+        window->posCallback = Input::moveCursor;
+        window->touchCallback = Input::touch;
         return true;
     }
 
@@ -108,5 +113,6 @@ namespace onart{
     float Game::tp(){ return singleton->_tp; }
     float Game::dt(){ return singleton->_dt; }
     float Game::idt(){ return singleton->_idt; }
+    int32_t Game::frameNumber(){ return singleton->frame; }
     //static int 
 }

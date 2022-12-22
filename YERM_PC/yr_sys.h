@@ -86,10 +86,12 @@ namespace onart{
             std::function<void(int, int, int, int)> keyCallback;
             /// @brief 마우스 클릭에 대한 콜백을 등록합니다. 시그니처: void(int [키코드], int [동작코드], int [shift 등 추가])
             std::function<void(int, int, int)> clickCallback;
-            /// @brief 마우스 이동 혹은 터치스크린 슬라이드 시 호출되는 함수입니다. 시그니처: void(double [x좌표 (왼쪽 끝이 0, 오른쪽 끝이 1)], double [y좌표 (위쪽 끝이 0, 아래쪽 끝이 1)])
+            /// @brief 마우스 이동 시 호출되는 함수입니다. 시그니처: void(double [x좌표 (왼쪽 끝이 0, 오른쪽 끝이 1)], double [y좌표 (위쪽 끝이 0, 아래쪽 끝이 1)])
             std::function<void(double, double)> posCallback;
-            /// @brief 마우스 휠, 트랙볼 등에 의한 스크롤 콜백을 등록합니다. PC에서만 사용됩니다. 시그니처: void(double [x 오프셋, 주로 0 아니면 1], double [y 오프셋, 주로 0 아니면 1])
+            /// @brief 마우스 휠, 트랙볼 등에 의한 스크롤 콜백을 등록합니다. 시그니처: void(double [x 오프셋, 주로 0 아니면 1], double [y 오프셋, 주로 0 아니면 1])
             std::function<void(double, double)> scrollCallback;
+            /// @brief 터치 동작 중 터치 다운/업/슬라이드에 대한 콜백을 등록합니다. 현재 PC에서는 지원되지 않습니다. 시그니처: void(int [터치 id], int [동작코드], float [현재 x좌표], float[현재 y좌표])
+            std::function<void(int, int, float, float)> touchCallback;
             /// @brief window surface가 처음 활성화될 때까지 기다리는 플래그로, 그 이후에는 사용하지 않습니다.
             bool surfaceAvailable = false;
             /// @brief 현재 연결되어 있는 모니터의 수를 리턴합니다. 안드로이드 대상에서는 반드시 1이 리턴됩니다.
