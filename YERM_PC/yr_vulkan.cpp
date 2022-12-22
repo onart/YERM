@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#define VMA_IMPLEMENTATION
 #include "yr_vulkan.h"
 #include "logger.hpp"
 #include "yr_sys.h"
@@ -28,6 +29,12 @@ namespace onart {
     static uint64_t assessPhysicalDevice(VkPhysicalDevice);
     /// @brief 주어진 장치에 대한 가상 장치를 생성합니다.
     static VkDevice createDevice(VkPhysicalDevice, int, int);
+    /// @brief 주어진 장치에 대한 메모리 관리자를 세팅합니다.
+    static VmaAllocator createAllocator(VkInstance, VkPhysicalDevice, VkDevice);
+    /// @brief 명령 풀을 생성합니다.
+    static VkCommandPool createCommandPool(VkDevice, int qIndex);
+    /// @brief 이미지로부터 뷰를 생성합니다.
+    static VkImageView createImageView(VkDevice, VkImage, VkImageViewType, VkFormat, int, int, VkImageAspectFlagBits);
 
     /// @brief 활성화할 장치 확장
     constexpr const char* VK_DESIRED_DEVICE_EXT[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
@@ -46,36 +53,155 @@ namespace onart {
         }
 
         VkResult result;
-        if((result = window->createWindowSurface(instance, &surface)) != VK_SUCCESS){
+        if((result = window->createWindowSurface(instance, &surface.handle)) != VK_SUCCESS){
             LOGWITH("Failed to create Window surface:", result);
-            vkDestroyInstance(instance, nullptr);
+            vkDestroyInstance(instance, nullptr); instance = nullptr;
             return;
         }
-        LOGHERE;
 
         bool isCpu;
         int gq, pq;
-        if(!(card = findPhysicalDevice(instance, surface, &isCpu, &gq, &pq))) {
+        if(!(card = findPhysicalDevice(instance, surface.handle, &isCpu, &gq, &pq))) {
             LOGWITH("Couldn\'t find any appropriate graphics device");
-            vkDestroySurfaceKHR(instance, surface, nullptr);
-            vkDestroyInstance(instance, nullptr);
+            vkDestroySurfaceKHR(instance, surface.handle, nullptr); surface.handle = 0;
+            vkDestroyInstance(instance, nullptr); instance = nullptr;
             return;
         }
         if(isCpu) LOGWITH("Warning: this device is CPU");
-        LOGHERE;
         // properties.limits.minMemorymapAlignment, minTexelBufferOffsetAlignment, minUniformBufferOffsetAlignment, minStorageBufferOffsetAlignment, optimalBufferCopyOffsetAlignment, optimalBufferCopyRowPitchAlignment를 저장
         
+        checkSurfaceHandle();
+
         if(!(device = createDevice(card, gq, pq))) {
-            vkDestroySurfaceKHR(instance, surface, nullptr);
-            vkDestroyInstance(instance, nullptr);
+            vkDestroySurfaceKHR(instance, surface.handle, nullptr); surface.handle = 0;
+            vkDestroyInstance(instance, nullptr); instance = nullptr;
             return;
         }
 
         vkGetDeviceQueue(device, gq, 0, &graphicsQueue);
         vkGetDeviceQueue(device, pq, 0, &presentQueue);
 
+
+        if(!(allocator = createAllocator(instance, card, device))){
+            vkDestroyDevice(device, nullptr); device = nullptr;
+            vkDestroySurfaceKHR(instance, surface.handle, nullptr); surface.handle = 0;
+            vkDestroyInstance(instance, nullptr); instance = nullptr;
+            return;
+        }
+
+        if(!(gCommandPool = createCommandPool(device, gq))){
+            vmaDestroyAllocator(allocator); allocator = nullptr;
+            vkDestroyDevice(device, nullptr); device = nullptr;
+            vkDestroySurfaceKHR(instance, surface.handle, nullptr); surface.handle = 0;
+            vkDestroyInstance(instance, nullptr); instance = nullptr;
+            return;
+        }
+
+        allocateCommandBuffers(sizeof(baseBuffer)/sizeof(baseBuffer[0]), true, baseBuffer);
+        if(!baseBuffer[0]){
+            vkDestroyCommandPool(device, gCommandPool, nullptr); gCommandPool = 0;
+            vmaDestroyAllocator(allocator); allocator = nullptr;
+            vkDestroyDevice(device, nullptr); device = nullptr;
+            vkDestroySurfaceKHR(instance, surface.handle, nullptr); surface.handle = 0;
+            vkDestroyInstance(instance, nullptr); instance = nullptr;
+        }
+        int w,h;
+        window->getSize(&w,&h);
+        createSwapchain(w, h, gq, pq);
+
         singleton = this;
     }
+
+    void VkMachine::allocateCommandBuffers(int count, bool isPrimary, VkCommandBuffer* buffers){
+        VkCommandBufferAllocateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        bufferInfo.level = isPrimary ? VK_COMMAND_BUFFER_LEVEL_PRIMARY : VK_COMMAND_BUFFER_LEVEL_SECONDARY;
+        bufferInfo.commandPool = gCommandPool;
+        bufferInfo.commandBufferCount = count;
+        VkResult result;
+        if((result = vkAllocateCommandBuffers(device, &bufferInfo, buffers))!=VK_SUCCESS){
+            LOGWITH("Failed to allocate command buffers:", result);
+            buffers[0] = nullptr;
+        }
+    }
+
+    void VkMachine::checkSurfaceHandle(){
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(card, surface.handle, &surface.caps);
+        uint32_t count;
+        vkGetPhysicalDeviceSurfaceFormatsKHR(card, surface.handle, &count, nullptr);
+        if(count == 0) LOGWITH("Fatal: no available surface format?");
+        std::vector<VkSurfaceFormatKHR> formats(count);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(card, surface.handle, &count, formats.data());
+        surface.format = formats[0];
+        for(VkSurfaceFormatKHR& form:formats){
+            if(form.colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR && form.format == VK_FORMAT_B8G8R8A8_SRGB){
+                surface.format = form;
+            }
+        }
+    }
+
+    void VkMachine::createSwapchain(uint32_t width, uint32_t height, uint32_t gq, uint32_t pq){
+        VkSwapchainCreateInfoKHR scInfo{};
+        scInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+        scInfo.surface = surface.handle;
+        scInfo.minImageCount = 2;
+        scInfo.imageFormat = surface.format.format;
+        scInfo.imageColorSpace = surface.format.colorSpace;
+        scInfo.imageExtent.width = std::clamp(width, surface.caps.minImageExtent.width, surface.caps.maxImageExtent.width);
+        scInfo.imageExtent.height = std::clamp(height, surface.caps.minImageExtent.height, surface.caps.maxImageExtent.height);
+        scInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+        scInfo.imageArrayLayers = 1;
+        scInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        scInfo.preTransform = VkSurfaceTransformFlagBitsKHR::VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+        scInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        scInfo.clipped = VK_TRUE;
+        scInfo.oldSwapchain = swapchain.handle;
+        uint32_t qfi[2] = {gq, pq};
+        if(gq == pq){
+            scInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        }
+        else{
+            scInfo.queueFamilyIndexCount = 2;
+            scInfo.pQueueFamilyIndices = qfi;
+        }
+
+        VkSwapchainKHR newSc;
+        VkResult result;
+        if((result = vkCreateSwapchainKHR(device, &scInfo, nullptr, &newSc))!=VK_SUCCESS){
+            LOGWITH("Failed to create swapchain:",result);
+            return;
+        }
+        for(VkImageView v: swapchain.imageView){
+            vkDestroyImageView(device, v, nullptr);
+        }
+        swapchain.imageView.clear();
+        vkDestroySwapchainKHR(device, swapchain.handle, nullptr);
+        swapchain.handle = newSc;
+        swapchain.extent = scInfo.imageExtent;
+        uint32_t count;
+        vkGetSwapchainImagesKHR(device, swapchain.handle, &count, nullptr);
+        std::vector<VkImage> images(count);
+        swapchain.imageView.resize(count);
+        vkGetSwapchainImagesKHR(device, swapchain.handle, &count, images.data());
+        for(size_t i = 0;i < count;i++){
+            swapchain.imageView[i] = createImageView(device,images[i],VK_IMAGE_VIEW_TYPE_2D,surface.format.format,1,0,VK_IMAGE_ASPECT_COLOR_BIT);
+            if(swapchain.imageView[i] == 0) {
+                return;
+            }
+        }
+        
+    }
+
+    VkMachine::~VkMachine(){
+        for(VkImageView v: swapchain.imageView){ vkDestroyImageView(device, v, nullptr); }
+        vkDestroySwapchainKHR(device, swapchain.handle, nullptr);
+        vmaDestroyAllocator(allocator);
+        vkDestroyDevice(device, nullptr);
+        vkDestroySurfaceKHR(instance, surface.handle, nullptr);
+        vkDestroyInstance(instance, nullptr);
+    }
+
+    // static함수들 구현
 
     VkInstance createInstance(Window* window){
         VkResult result;
@@ -86,9 +212,9 @@ namespace onart {
         appInfo.sType= VK_STRUCTURE_TYPE_APPLICATION_INFO;
         appInfo.pEngineName = "YERM";
         appInfo.pApplicationName = "YERM";
-        appInfo.applicationVersion = VK_MAKE_API_VERSION(0,1,0,0);
-        appInfo.apiVersion = VK_MAKE_API_VERSION(1,0,0,0);
-        appInfo.engineVersion = VK_MAKE_API_VERSION(0,1,0,0);
+        appInfo.applicationVersion = VK_MAKE_API_VERSION(0,0,1,0);
+        appInfo.apiVersion = VK_API_VERSION_1_0;
+        appInfo.engineVersion = VK_MAKE_API_VERSION(0,0,1,0);
 
         std::vector<const char*> windowExt = window->requiredInstanceExentsions();
 
@@ -167,15 +293,17 @@ namespace onart {
         vkGetPhysicalDeviceProperties(card, &properties);
         vkGetPhysicalDeviceFeatures(card, &features);
         uint64_t score = 0;
-        // device type: 현재 총 3비트 할당, 이후 여유를 위해 8비트로 가정함.
+        // device type: 현재 총 4비트 할당, 이후 여유를 위해 8비트로 가정함.
         switch (properties.deviceType)
         {
         case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:    // CPU와 별도의 GPU
-        case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:  // CPU와 직접적으로 연계되는 부분이 있는 GPU
             score |= (1ULL << 63);
             break;
         case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:     // GPU 자원의 일부가 가상화되었을 수 있음
             score |= (1ULL << 62);
+            break;
+        case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:  // CPU와 직접적으로 연계되는 부분이 있는 GPU (내장그래픽은 여기 포함)
+            score |= (1ULL << 61);
             break;
         //case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_CPU:
         //case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_OTHER:
@@ -230,6 +358,54 @@ namespace onart {
         if((result = vkCreateDevice(card, &deviceInfo, nullptr, &ret)) != VK_SUCCESS){
             LOGWITH("Failed to create Vulkan device:", result);
             return nullptr;
+        }
+        return ret;
+    }
+
+    VmaAllocator createAllocator(VkInstance instance, VkPhysicalDevice card, VkDevice device){
+        VmaAllocator ret;
+
+        VmaAllocatorCreateInfo allocInfo{};
+        allocInfo.instance = instance;
+        allocInfo.physicalDevice = card;
+        allocInfo.device = device;
+        allocInfo.vulkanApiVersion = VK_API_VERSION_1_0;
+        VkResult result;
+        if((result = vmaCreateAllocator(&allocInfo, &ret)) != VK_SUCCESS){
+            LOGWITH("Failed to create VMA object:",result);
+            return nullptr;
+        }
+        return ret;
+    }
+
+    VkCommandPool createCommandPool(VkDevice device, int qIndex) {
+        VkCommandPool ret;
+        VkCommandPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        poolInfo.queueFamilyIndex = qIndex;
+        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        VkResult result;
+        if((result = vkCreateCommandPool(device, &poolInfo, nullptr, &ret)) != VK_SUCCESS){
+            LOGWITH("Failed to create command pool:", result);
+            return 0;
+        }
+        return ret;
+    }
+
+    VkImageView createImageView(VkDevice device, VkImage image, VkImageViewType type, VkFormat format, int levelCount, int layerCount, VkImageAspectFlagBits aspect){
+        VkImageViewCreateInfo ivInfo{};
+        ivInfo.format = format;
+        ivInfo.image = image;
+        ivInfo.viewType = type;
+        ivInfo.subresourceRange.aspectMask = aspect;
+        ivInfo.subresourceRange.baseArrayLayer = 0;
+        ivInfo.subresourceRange.layerCount = layerCount;
+        ivInfo.subresourceRange.levelCount = levelCount;
+        VkImageView ret;
+        VkResult result;
+        if((result = vkCreateImageView(device, &ivInfo, nullptr, &ret)) != VK_SUCCESS){
+            LOGWITH("Failed to create image view:",result);
+            return 0;
         }
         return ret;
     }

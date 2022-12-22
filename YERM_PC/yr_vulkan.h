@@ -15,6 +15,9 @@
 #define __YR_VULKAN_H__
 
 #include "../externals/vulkan/vulkan.h"
+#define VMA_VULKAN_VERSION 1000000
+#include "../externals/vulkan/vk_mem_alloc.h"
+#include <vector>
 
 namespace onart {
 
@@ -32,16 +35,39 @@ namespace onart {
             VkMachine(Window*);
             /// @brief 2D에 최적화된 Vulkan 컨텍스트를 생성합니다.
             VkMachine(Window*, int);
+            /// @brief 그래픽스/전송 명령 버퍼를 풀로부터 할당합니다.
+            /// @param count 할당할 수
+            /// @param isPrimary true면 주 버퍼, false면 보조 버퍼입니다.
+            /// @param buffers 버퍼가 들어갑니다. count 길이 이상의 배열이어야 하며, 할당 실패 시 첫 번째에 nullptr가 들어갑니다.
+            void allocateCommandBuffers(int count, bool isPrimary, VkCommandBuffer* buffers);
+            /// @brief 창 표면 초기화 이후 호출되어 특성을 파악합니다.
+            void checkSurfaceHandle();
+            /// @brief 기존 스왑체인을 제거하고 다시 생성하며, 스왑체인에 대한 이미지뷰도 가져옵니다.
+            void createSwapchain(uint32_t width, uint32_t height, uint32_t gq, uint32_t pq);
+            ~VkMachine();
             /// @brief 이 클래스 객체는 Game, Game2 밖에서는 생성, 소멸 호출이 불가능합니다.
             void operator delete(void*){}
         private:
             static VkMachine* singleton;
             VkInstance instance = nullptr;
-            VkSurfaceKHR surface = 0;
+            struct{
+                VkSurfaceKHR handle;
+                VkSurfaceCapabilitiesKHR caps;
+                VkSurfaceFormatKHR format;
+            } surface;
             VkPhysicalDevice card = nullptr;
             VkDevice device = nullptr;
             VkQueue graphicsQueue = nullptr;
             VkQueue presentQueue = nullptr;
+            VkCommandPool gCommandPool = 0;
+            VkCommandBuffer baseBuffer[1]={};
+            struct{
+                VkSwapchainKHR handle = 0;
+                VkExtent2D extent;
+                std::vector<VkImageView> imageView;
+            }swapchain;
+            
+            VmaAllocator allocator = nullptr;
     };
 }
 

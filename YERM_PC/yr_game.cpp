@@ -92,7 +92,7 @@ namespace onart{
 
     void Game::finalize(){
         delete window;
-        //delete vk;
+        delete vk;
         Window::terminate();
     }
 
