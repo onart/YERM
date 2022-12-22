@@ -285,8 +285,11 @@ namespace onart{
             /// @brief 터치 입력에 관한 개별 정보입니다.
             struct TouchInfo{
                 friend class Input;
-                vec2 pos; // 좌측 상단이 0,0이며 단위는 픽셀
-                int64_t id; // 프로그램 실행 이후 터치마다 고유하게 부여되는 ID
+				/// @brief 좌측 상단이 0,0이며 단위는 픽셀입니다.
+                vec2 pos;
+				/// @brief 터치가 시작되면서 부여된 ID입니다. 같은 ID인 객체는 항상 같은 위치에서 찾을 수 있습니다. 지나간 ID는 다시 부여되지 않습니다.
+                int64_t id;
+				/// @brief 이 터치가 시작된 프레임 번호이거나 터치가 끝난 프레임 번호의 부호 반전을 담고 있습니다. 직접 사용해도 되지만 멤버함수를 사용하는 것이 더 편합니다.
                 int frame;
                 /// @brief 지금 프레임에 이 터치가 발생한 경우 true를 리턴합니다.
                 bool isPressedNow() const;
@@ -311,7 +314,10 @@ namespace onart{
             /// @brief 터치 위치를 저장합니다.
             static void touch(int id, int action, float x, float y);
         public:
+            /// @brief 현재 프레임의 터치 상태를 확인할 수 있습니다. 현재 PC 버전에서는 사용할 수 없습니다.
             static const decltype(_touches)& touches;
+			/// @brief 현재 프레임의 마우스 위치입니다.
+			static const dvec2& mousePosition;
     };
 }
 

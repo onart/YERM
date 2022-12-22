@@ -7,6 +7,7 @@ namespace onart{
     dvec2 Input::mousePos;
     Input::TouchInfo Input::_touches[4]{};
     const decltype(Input::_touches)& Input::touches(_touches);
+    const dvec2& Input::mousePosition(mousePos);
 
     bool Input::isKeyDown(KeyCode key){
         return pressedKey[(int)key] > 0;
