@@ -200,11 +200,11 @@ namespace onart{
             while(ALooper_pollAll(1, nullptr, &events, (void**)&source) >= 0) {
                 if(source != nullptr){
                     source->process(source->app, source);
-                    android_input_buffer* inputs=android_app_swap_input_buffers(source->app);
-                    if(inputs){
-                        android_app_clear_key_events(inputs);
-                        android_app_clear_motion_events(inputs);
-                    }
+                        android_input_buffer* inputs=android_app_swap_input_buffers(source->app);
+                        if(inputs){
+                            android_app_clear_key_events(inputs);
+                            android_app_clear_motion_events(inputs);
+                        }
                 }
                 if(_HAPP->destroyRequested){
                     break;
@@ -232,7 +232,7 @@ namespace onart{
     }
 
     bool Window::windowShouldClose(){
-        return _HAPP->destroyRequested;
+        return shouldClose; // TODO: 화면 회전 시 액티비티가 파괴되고 재생성될 때, android_main 함수가 리턴하기 전까지 액티비티가 재생성되지 않음. 따라서 컨텍스트는 스택이 아닌 힙 또는 전역 범위에 생성되어 명시적 종료에 의해서만 해제되어야 함
     }
 
     void Window::getContentScale(float* x, float* y){
@@ -273,6 +273,10 @@ namespace onart{
 
     int Window::getMonitorCount(){
         return 1;
+    }
+
+    void Window::close(){
+        shouldClose = true;
     }
 
     void Window::setSize(unsigned, unsigned){ }
@@ -364,9 +368,13 @@ namespace onart{
         return glfwWindowShouldClose((GLFWwindow*)window);
     }
 
+    void Window::close(){
+        glfwWindowShouldClose((GLFWwindow*)window);
+    }
+
     bool Window::init(){
-        static bool isOn = false;
-        return isOn || (isOn = glfwInit());
+        static bool isGLFWOn = false;
+        return isGLFWOn || (isGLFWOn = glfwInit());
     }
 
     void Window::pollEvents(){

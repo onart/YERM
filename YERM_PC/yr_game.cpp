@@ -22,9 +22,8 @@
 namespace onart{
 
     static Game* singleton = nullptr;
-    static std::chrono::steady_clock clock;
 
-    Game::Game():longTp(clock.now()), _dt(0), _idt(0), _tp(0), frame(1), vk(nullptr), window(nullptr){ }
+    Game::Game():longTp(std::chrono::steady_clock::now()), _dt(0), _idt(0), _tp(0), frame(1), vk(nullptr), window(nullptr){ }
 
     int Game::start(void* hd, Window::CreationOptions* opt){
         if(singleton) return 2;
@@ -40,14 +39,13 @@ namespace onart{
             Window::terminate();
             return 1;
         }
-
         singleton = this;
         
         // set window callbacks here...
 
         for(frame = 1; !window->windowShouldClose(); frame++) {
             window->pollEvents();
-            std::chrono::duration<float, std::ratio<1>> longDt = clock.now() - longTp;
+            std::chrono::duration<float, std::ratio<1>> longDt = std::chrono::steady_clock::now() - longTp;
             float temp = longDt.count();
             _dt = temp - _tp;
             _tp = temp;
@@ -79,7 +77,7 @@ namespace onart{
 
         for(frame = 1; !window->windowShouldClose(); frame++) {
             window->pollEvents();
-            std::chrono::duration<float, std::ratio<1>> longDt = clock.now() - longTp;
+            std::chrono::duration<float, std::ratio<1>> longDt = std::chrono::steady_clock::now() - longTp;
             float temp = longDt.count();
             _dt = temp - _tp;
             _tp = temp;
@@ -108,6 +106,10 @@ namespace onart{
 
     bool Game2::init(){
         return true;
+    }
+
+    void Game::exit(){
+        window->close();
     }
 
     float Game::tp(){ return singleton->_tp; }

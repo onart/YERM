@@ -71,6 +71,8 @@ namespace onart{
             /// @brief 주어진 모니터에 대하여 전체 화면으로 바꿉니다. PC 플랫폼 이외에서는 동작하지 않습니다.
             /// @param monitor 모니터 번호
             void setFullScreen(int monitor = 0);
+            /// @brief 창 닫기를 요청합니다.
+            void close();
             /// @brief 객체가 정상적으로 생성되었는지 확인합니다.
             inline bool isNormal(){ return isOn; }
             /// @brief Vulkan instance에서 활성화해야 할 확장 이름들을 얻어옵니다.
@@ -80,6 +82,8 @@ namespace onart{
             /// @param surface 생성 성공 시 창 표면 핸들을 이 위치로 리턴합니다.
             /// @return 결과 코드입니다.
             VkResult createWindowSurface(VkInstance instance, VkSurfaceKHR* surface);
+            /// @brief 창이 최소화되거나 비활성화될 때 호출될 함수입니다.
+            std::function<void(int, int)> loseFocusCallback;
             /// @brief 창 크기가 변경될 때 호출될 함수입니다. 시그니처: void(int [가로 길이(픽셀)], int [세로 길이(픽셀)])
             std::function<void(int, int)> windowSizeCallback;
             /// @brief 키 입력, 모바일 (가상)버튼 등에 대한 콜백을 등록합니다. 시그니처: void(int [키코드], int [스캔코드], int [동작코드], int [shift 등 추가])
@@ -109,6 +113,7 @@ namespace onart{
             /// @brief 내부적으로 플랫폼별 중심 객체를 사용합니다. PC 플랫폼은 GLFWwindow*, 안드로이드는 android_app*입니다.
             void *window = nullptr;
             bool isOn = false;
+            bool shouldClose = false;
     };
 }
 

@@ -885,7 +885,7 @@ namespace onart{
     inline void add4<float32_t>(float32_t* vec, float32_t val){
         // ld1q에 _ex를 붙이면 align assert가 들어가는 것 같음
         // 더 intrinsic스러운 걸로 neon_faddq32가 있음. 심지어 이쪽은 매크로고 그쪽은 매크로가 아님
-        vst1q_f32(vec, vaddq_n_f32(vld1q_f32(vec), val));
+        vst1q_f32(vec, vaddq_f32(vld1q_f32(vec), vdupq_n_f32(val)));
     }
 
     /// @brief float 배열의 앞 4개에 주어진 값을 누적합니다.
@@ -897,8 +897,8 @@ namespace onart{
     /// @brief double 배열의 앞 4개에 주어진 값을 누적합니다.
     template<>
     inline void add4<float64_t>(float64_t* vec, float64_t val){
-        vst1q_f64(vec, vaddq_n_f64(vld1q_f64(vec), val));
-        vst1q_f64(vec+2, vaddq_n_f64(vld1q_f64(vec+2), val));
+        vst1q_f64(vec, vaddq_f64(vld1q_f64(vec), vdupq_n_f64(val)));
+        vst1q_f64(vec+2, vaddq_f64(vld1q_f64(vec+2), vdupq_n_f64(val)));
     }
 
     /// @brief double 배열의 앞 4개에 주어진 값을 누적합니다.
@@ -911,7 +911,7 @@ namespace onart{
     /// @brief int32_t 배열의 앞 4개에 주어진 값을 누적합니다.
     template<>
     inline void add4<int32_t>(int32_t* vec, int32_t val) {
-        vst1q_s32(vec, vaddq_n_s32(vld1q_s32(vec), val));
+        vst1q_s32(vec, vaddq_s32(vld1q_s32(vec), vdupq_n_s32(val)));
     }
 
     /// @brief int32_t 배열의 앞 4개에 주어진 값을 누적합니다.
@@ -923,7 +923,7 @@ namespace onart{
     /// @brief uint32_t 배열의 앞 4개에 주어진 값을 누적합니다.
     template<>
     inline void add4<uint32_t>(uint32_t* vec, uint32_t val) {
-        vst1q_u32(vec, vaddq_n_u32(vld1q_u32(vec), val));
+        vst1q_u32(vec, vaddq_u32(vld1q_u32(vec), vdupq_n_u32(val)));
     }
 
     /// @brief uint32_t 배열의 앞 4개에 주어진 값을 누적합니다.
@@ -935,7 +935,7 @@ namespace onart{
     /// @brief float 배열의 앞 4개에 주어진 값을 누적합니다.
     template<>
     inline void sub4<float32_t>(float32_t* vec, float32_t val){
-        vst1q_f32(vec, vsubq_n_f32(vld1q_f32(vec), val));
+        vst1q_f32(vec, vsubq_f32(vld1q_f32(vec), vdupq_n_f32(val)));
     }
 
     /// @brief float 배열의 앞 4개에 주어진 값을 누적합니다.
@@ -947,8 +947,8 @@ namespace onart{
     /// @brief double 배열의 앞 4개에서 주어진 값을 뺍니다.
     template<>
     inline void sub4<float64_t>(float64_t* vec, float64_t val){
-        vst1q_f64(vec, vsubq_n_f64(vld1q_f64(vec), val));
-        vst1q_f64(vec+2, vsubq_n_f64(vld1q_f64(vec+2), val));
+        vst1q_f64(vec, vsubq_f64(vld1q_f64(vec), vdupq_n_f64(val)));
+        vst1q_f64(vec+2, vsubq_f64(vld1q_f64(vec+2), vdupq_n_f64(val)));
     }
 
     /// @brief double 배열의 앞 4개에서 주어진 값을 뺍니다.
@@ -961,7 +961,7 @@ namespace onart{
     /// @brief int32_t 배열의 앞 4개에서 주어진 값을 뺍니다.
     template<>
     inline void sub4<int32_t>(int32_t* vec, int32_t val) {
-        vst1q_s32(vec, vsubq_n_s32(vld1q_s32(vec), val));
+        vst1q_s32(vec, vsubq_s32(vld1q_s32(vec), vdupq_n_s32(val)));
     }
 
     /// @brief int32_t 배열의 앞 4개에서 주어진 값을 뺍니다.
@@ -973,7 +973,7 @@ namespace onart{
     /// @brief uint32_t 배열의 앞 4개에 주어진 값을 누적합니다.
     template<>
     inline void sub4<uint32_t>(uint32_t* vec, uint32_t val) {
-        vst1q_u32(vec, vsubq_n_u32(vld1q_u32(vec), val));
+        vst1q_u32(vec, vsubq_u32(vld1q_u32(vec), vdupq_n_u32(val)));
     }
 
     /// @brief uint32_t 배열의 앞 4개에 주어진 값을 누적합니다.
@@ -985,7 +985,7 @@ namespace onart{
     /// @brief float 배열의 앞 4개에 주어진 값을 곱합니다.
     template<>
     inline void mul4<float32_t>(float32_t* vec, float32_t val){
-        vst1q_f32(vec, vmulq_n_f32(vld1q_f32(vec), val));
+        vst1q_f32(vec, vmulq_f32(vld1q_f32(vec), vdupq_n_f32(val)));
     }
 
     /// @brief float 배열의 앞 4개에 주어진 값을 곱합니다.
@@ -997,8 +997,8 @@ namespace onart{
     /// @brief double 배열의 앞 4개에 주어진 값을 곱합니다.
     template<>
     inline void mul4<float64_t>(float64_t* vec, float64_t val){
-        vst1q_f64(vec, vmulq_n_f64(vld1q_f64(vec), val));
-        vst1q_f64(vec+2, vmulq_n_f64(vld1q_f64(vec+2), val));
+        vst1q_f64(vec, vmulq_f64(vld1q_f64(vec), vdupq_n_f64(val)));
+        vst1q_f64(vec+2, vmulq_f64(vld1q_f64(vec+2), vdupq_n_f64(val)));
     }
 
     /// @brief double 배열의 앞 4개에 주어진 값을 곱합니다.
@@ -1011,7 +1011,7 @@ namespace onart{
         /// @brief int32_t 배열의 앞 4개에 주어진 값을 곱합니다.
     template<>
     inline void mul4<int32_t>(int32_t* vec, int32_t val) {
-        vst1q_s32(vec, vmulq_n_s32(vld1q_s32(vec), val));
+        vst1q_s32(vec, vmulq_s32(vld1q_s32(vec), vdupq_n_s32(val)));
     }
 
     /// @brief int32_t 배열의 앞 4개에 주어진 값을 곱합니다.
@@ -1023,7 +1023,7 @@ namespace onart{
     /// @brief uint32_t 배열의 앞 4개에 주어진 값을 곱합니다.
     template<>
     inline void mul4<uint32_t>(uint32_t* vec, uint32_t val) {
-        vst1q_u32(vec, vmulq_n_u32(vld1q_u32(vec), val));
+        vst1q_u32(vec, vmulq_u32(vld1q_u32(vec), vdupq_n_u32(val)));
     }
 
     /// @brief uint32_t 배열의 앞 4개에 주어진 값을 곱합니다.
@@ -1035,7 +1035,7 @@ namespace onart{
     /// @brief float 배열의 앞 4개를 주어진 값으로 나눕니다.
     template<>
     inline void div4<float32_t>(float32_t* vec, float32_t val){
-        vst1q_f32(vec, vdivq_n_f32(vld1q_f32(vec), val));
+        vst1q_f32(vec, vdivq_f32(vld1q_f32(vec), vdupq_n_f32(val)));
     }
 
     /// @brief float 배열의 앞 4개를 주어진 값으로 나눕니다.
@@ -1047,8 +1047,8 @@ namespace onart{
     /// @brief double 배열의 앞 4개를 주어진 값으로 나눕니다.
     template<>
     inline void div4<float64_t>(float64_t* vec, float64_t val){
-        vst1q_f64(vec, vdivq_n_f64(vld1q_f64(vec), val));
-        vst1q_f64(vec+2, vdivq_n_f64(vld1q_f64(vec+2), val));
+        vst1q_f64(vec, vdivq_f64(vld1q_f64(vec), vdupq_n_f64(val)));
+        vst1q_f64(vec+2, vdivq_f64(vld1q_f64(vec+2), vdupq_n_f64(val)));
     }
 
     /// @brief double 배열의 앞 4개를 주어진 값으로 나눕니다.
@@ -1191,6 +1191,22 @@ namespace onart{
             vec[i] = (int16_t)((float)vec[i] * val);
         }
     }
+
+    /// @brief 배열의 앞 4개 성분을 템플릿 인수로 주어진 대로 섞습니다.
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
+    inline void swizzle4(float* vec){ swizzle4<float, P0, P1, P2, P3>(vec); }
+
+    /// @brief 배열의 앞 4개 성분을 템플릿 인수로 주어진 대로 섞습니다.
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
+    inline void swizzle4(double* vec){ swizzle4<double, P0, P1, P2, P3>(vec); }
+
+    /// @brief 배열의 앞 4개 성분을 템플릿 인수로 주어진 대로 섞습니다.
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
+    inline void swizzle4(int32_t* vec){ swizzle4<int32_t, P0, P1, P2, P3>(vec); }
+
+    /// @brief 배열의 앞 4개 성분을 템플릿 인수로 주어진 대로 섞습니다.
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
+    inline void swizzle4(uint32_t* vec){ swizzle4<uint32_t, P0, P1, P2, P3>(vec); }
 
 #endif
 #endif

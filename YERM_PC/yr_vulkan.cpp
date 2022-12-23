@@ -108,7 +108,7 @@ namespace onart {
         int w,h;
         window->getSize(&w,&h);
         createSwapchain(w, h, gq, pq);
-
+        
         singleton = this;
     }
 
@@ -184,7 +184,7 @@ namespace onart {
         swapchain.imageView.resize(count);
         vkGetSwapchainImagesKHR(device, swapchain.handle, &count, images.data());
         for(size_t i = 0;i < count;i++){
-            swapchain.imageView[i] = createImageView(device,images[i],VK_IMAGE_VIEW_TYPE_2D,surface.format.format,1,0,VK_IMAGE_ASPECT_COLOR_BIT);
+            swapchain.imageView[i] = createImageView(device,images[i],VK_IMAGE_VIEW_TYPE_2D,surface.format.format,1,1,VK_IMAGE_ASPECT_COLOR_BIT);
             if(swapchain.imageView[i] == 0) {
                 return;
             }
@@ -281,7 +281,7 @@ namespace onart {
                 maxPq = pq;
             }
         }
-        *isCpu = !(maxScore & (0b11ULL << 62));
+        *isCpu = !(maxScore & (0b111ULL << 61));
         *graphicsQueue = maxGq;
         *presentQueue = maxPq;
         return goodCard;
@@ -394,6 +394,7 @@ namespace onart {
 
     VkImageView createImageView(VkDevice device, VkImage image, VkImageViewType type, VkFormat format, int levelCount, int layerCount, VkImageAspectFlagBits aspect){
         VkImageViewCreateInfo ivInfo{};
+        ivInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         ivInfo.format = format;
         ivInfo.image = image;
         ivInfo.viewType = type;
@@ -401,6 +402,7 @@ namespace onart {
         ivInfo.subresourceRange.baseArrayLayer = 0;
         ivInfo.subresourceRange.layerCount = layerCount;
         ivInfo.subresourceRange.levelCount = levelCount;
+
         VkImageView ret;
         VkResult result;
         if((result = vkCreateImageView(device, &ivInfo, nullptr, &ret)) != VK_SUCCESS){

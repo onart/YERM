@@ -52,9 +52,9 @@ namespace onart{
     }
 
     void Input::touch(int id, int action, float x, float y){
-        // TODO: 터치 ID가 항상 0부터 가능한 작은 값을 사용한다고 보장되어 있는가?를 확실히 알았으면 좋겠음
+        // TODO: 터치 ID가 항상 0부터 가능한 작은 값을 사용한다고 보장되어 있는가?를 확실히 알았으면 좋겠음. 일단 지금은 그럼
         static int64_t serial = 0;
-        if(id > sizeof(_touches)/sizeof(_touches[0])) return;
+        if(id >= sizeof(_touches)/sizeof(_touches[0])) return;
         if(action == KEY_DOWN) {
             LOGWITH("DOWN",id,x,y);
             _touches[id].frame = Game::frameNumber();
