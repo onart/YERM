@@ -71,6 +71,12 @@ namespace onart{
             /// @brief 주어진 모니터에 대하여 전체 화면으로 바꿉니다. PC 플랫폼 이외에서는 동작하지 않습니다.
             /// @param monitor 모니터 번호
             void setFullScreen(int monitor = 0);
+            /// @brief 가로로 화면을 고정합니다. (180도 회전은 허용합니다.) PC 플랫폼에선 아무 동작도 하지 않습니다.
+            void setHorizontal();
+            /// @brief 세로로 화면을 고정합니다. (180도 회전은 장치에서 가능하다면 허용합니다.) PC 플랫폼에선 아무 동작도 하지 않습니다.
+            void setVertical();
+            /// @brief 화면 고정을 해제합니다. PC 플랫폼에선 아무 동작도 하지 않습니다.
+            void setLiberal();
             /// @brief 창 닫기를 요청합니다.
             void close();
             /// @brief 객체가 정상적으로 생성되었는지 확인합니다.
@@ -113,7 +119,6 @@ namespace onart{
             /// @brief 내부적으로 플랫폼별 중심 객체를 사용합니다. PC 플랫폼은 GLFWwindow*, 안드로이드는 android_app*입니다.
             void *window = nullptr;
             bool isOn = false;
-            bool shouldClose = false;
     };
 }
 

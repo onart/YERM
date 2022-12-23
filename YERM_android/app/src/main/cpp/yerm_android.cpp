@@ -14,6 +14,5 @@ void android_main(struct android_app* state);
 #include "YERM_PC/yr_game.h"
 
 void android_main(struct android_app* app) {
-    onart::Game game;
-    game.start(app);
+    onart::Game::start(app);
 }

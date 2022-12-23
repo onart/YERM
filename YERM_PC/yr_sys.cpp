@@ -131,6 +131,15 @@ namespace onart{
         }
     }
 
+    static void setOrientation(android_app* app, int orientation){
+        JNIEnv* jni;
+        app->activity->vm->AttachCurrentThread(&jni, nullptr);
+        jclass clazz = jni->GetObjectClass(app->activity->javaGameActivity);
+        jmethodID methodID = jni->GetMethodID(clazz, "setRequestedOrientation", "(I)V");
+        jni->CallVoidMethod(app->activity->javaGameActivity, methodID, orientation);
+        app->activity->vm->DetachCurrentThread();
+    }
+
     /// @brief 들어온 입력이 있으면 처리합니다.
     static void onInput(android_app* app){
         android_input_buffer* inputs=android_app_swap_input_buffers(app);
@@ -228,11 +237,11 @@ namespace onart{
                 break;
             }
         }
-        onart::onInput(_HAPP);
+        if(!_HAPP->destroyRequested) onart::onInput(_HAPP);
     }
 
     bool Window::windowShouldClose(){
-        return shouldClose; // TODO: 화면 회전 시 액티비티가 파괴되고 재생성될 때, android_main 함수가 리턴하기 전까지 액티비티가 재생성되지 않음. 따라서 컨텍스트는 스택이 아닌 힙 또는 전역 범위에 생성되어 명시적 종료에 의해서만 해제되어야 함
+        return _HAPP->destroyRequested; // TODO: 화면 회전 시 액티비티가 파괴되고 재생성될 때, android_main 함수가 리턴하기 전까지 액티비티가 재생성되지 않음. 따라서 컨텍스트는 스택이 아닌 힙 또는 전역 범위에 생성되어 명시적 종료에 의해서만 해제되어야 함
     }
 
     void Window::getContentScale(float* x, float* y){
@@ -276,7 +285,22 @@ namespace onart{
     }
 
     void Window::close(){
-        shouldClose = true;
+        GameActivity_finish(_HAPP->activity); // TODO: W/GameActivity: Failed writing to work fd가 뜨는데 괜찮은가?
+    }
+
+    void Window::setHorizontal() {
+        constexpr int32_t USER_HORIZONTAL = 0xb;
+        setOrientation(_HAPP, USER_HORIZONTAL);
+    }
+
+    void Window::setVertical() {
+        constexpr int32_t USER_VERTICAL = 0xc;
+        setOrientation(_HAPP, USER_VERTICAL);
+    }
+
+    void Window::setLiberal() {
+        constexpr int32_t USER_ORIENTATION = 2;
+        setOrientation(_HAPP, USER_ORIENTATION);
     }
 
     void Window::setSize(unsigned, unsigned){ }
@@ -448,6 +472,10 @@ namespace onart{
     void Window::terminate(){
         glfwTerminate();
     }
+
+    void Window::setHorizontal(){ }
+    void Window::setVertical(){ }
+    void Window::setLiberal(){ }
 }
 
 #endif

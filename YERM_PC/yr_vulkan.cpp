@@ -60,7 +60,6 @@ namespace onart {
         }
 
         bool isCpu;
-        int gq, pq;
         if(!(card = findPhysicalDevice(instance, surface.handle, &isCpu, &gq, &pq))) {
             LOGWITH("Couldn\'t find any appropriate graphics device");
             vkDestroySurfaceKHR(instance, surface.handle, nullptr); surface.handle = 0;
@@ -112,6 +111,20 @@ namespace onart {
         singleton = this;
     }
 
+    void VkMachine::resetWindow(Window* window) {
+        destroySwapchain();
+        vkDestroySurfaceKHR(instance, surface.handle, nullptr);
+        VkResult result = window->createWindowSurface(instance, &surface.handle);
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create new window surface:", result);
+            return;
+        }
+        checkSurfaceHandle();
+        int x,y;
+        window->getSize(&x,&y);
+        createSwapchain(x, y, gq, pq);
+    }
+
     void VkMachine::allocateCommandBuffers(int count, bool isPrimary, VkCommandBuffer* buffers){
         VkCommandBufferAllocateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -141,6 +154,7 @@ namespace onart {
     }
 
     void VkMachine::createSwapchain(uint32_t width, uint32_t height, uint32_t gq, uint32_t pq){
+        destroySwapchain();
         VkSwapchainCreateInfoKHR scInfo{};
         scInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
         scInfo.surface = surface.handle;
@@ -155,7 +169,7 @@ namespace onart {
         scInfo.preTransform = VkSurfaceTransformFlagBitsKHR::VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
         scInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         scInfo.clipped = VK_TRUE;
-        scInfo.oldSwapchain = swapchain.handle;
+        scInfo.oldSwapchain = VK_NULL_HANDLE; // 같은 표면에 대한 핸들은 올드로 사용할 수 없음
         uint32_t qfi[2] = {gq, pq};
         if(gq == pq){
             scInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -165,18 +179,11 @@ namespace onart {
             scInfo.pQueueFamilyIndices = qfi;
         }
 
-        VkSwapchainKHR newSc;
         VkResult result;
-        if((result = vkCreateSwapchainKHR(device, &scInfo, nullptr, &newSc))!=VK_SUCCESS){
+        if((result = vkCreateSwapchainKHR(device, &scInfo, nullptr, &swapchain.handle))!=VK_SUCCESS){
             LOGWITH("Failed to create swapchain:",result);
             return;
         }
-        for(VkImageView v: swapchain.imageView){
-            vkDestroyImageView(device, v, nullptr);
-        }
-        swapchain.imageView.clear();
-        vkDestroySwapchainKHR(device, swapchain.handle, nullptr);
-        swapchain.handle = newSc;
         swapchain.extent = scInfo.imageExtent;
         uint32_t count;
         vkGetSwapchainImagesKHR(device, swapchain.handle, &count, nullptr);
@@ -192,9 +199,15 @@ namespace onart {
         
     }
 
-    VkMachine::~VkMachine(){
+    void VkMachine::destroySwapchain(){
         for(VkImageView v: swapchain.imageView){ vkDestroyImageView(device, v, nullptr); }
         vkDestroySwapchainKHR(device, swapchain.handle, nullptr);
+        swapchain.imageView.clear();
+        swapchain.handle = 0;
+    }
+
+    VkMachine::~VkMachine(){
+        destroySwapchain();
         vmaDestroyAllocator(allocator);
         vkDestroyDevice(device, nullptr);
         vkDestroySurfaceKHR(instance, surface.handle, nullptr);

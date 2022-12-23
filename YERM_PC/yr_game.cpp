@@ -19,14 +19,26 @@
 
 #include "yr_math.hpp"
 
+#include "../externals/boost/predef/platform.h"
+
 namespace onart{
 
-    static Game* singleton = nullptr;
-
-    Game::Game():longTp(std::chrono::steady_clock::now()), _dt(0), _idt(0), _tp(0), frame(1), vk(nullptr), window(nullptr){ }
+    const std::chrono::steady_clock::time_point Game::longTp = std::chrono::steady_clock::now();
+    float Game::_dt = 0.016f, Game::_idt = 60.0f, Game::_tp = 0.0f;
+    const float &Game::dt(Game::dt), &Game::idt(Game::_idt), &Game::tp(Game::_tp);
+    int32_t Game::_frame = 1;
+    const int32_t& Game::frame(Game::_frame);
+    VkMachine* Game::vk = nullptr;
+    Window* Game::window = nullptr;
+    Game::State Game::canRestart = Game::State::INITIAL;
 
     int Game::start(void* hd, Window::CreationOptions* opt){
-        if(singleton) return 2;
+        if(canRestart == State::ONGOING) {
+            LOGWITH("Can't restart");
+            return 2;
+        }
+       
+        delete window;        
         window = new Window(hd, opt);
         if(!window->isNormal()) {
             delete window;
@@ -34,69 +46,48 @@ namespace onart{
             Window::terminate();
             return 1;
         }
-        if(!init()){
-            delete window;
-            Window::terminate();
-            return 1;
+        if(canRestart == State::WINDOW_CLOSED){
+            vk->resetWindow(window);
         }
-        singleton = this;
-        
-        // set window callbacks here...
-
-        for(frame = 1; !window->windowShouldClose(); frame++) {
-            window->pollEvents();
-            std::chrono::duration<float, std::ratio<1>> longDt = std::chrono::steady_clock::now() - longTp;
-            float temp = longDt.count();
-            _dt = temp - _tp;
-            _tp = temp;
-            _idt = 1.0f / _dt;
-        }
-
-        finalize();
-        singleton = nullptr;
-        return 0;
-    }
-
-    int Game2::start(void* hd, Window::CreationOptions* opt){
-        if(singleton) return 2;
-        window = new Window(hd, opt);
-        if(!window->isNormal()) {
-            delete window;
-            Window::terminate();
-            return 1;
+        else{
+            vk = new VkMachine(window);
         }
         if(!init()){
             delete window;
             Window::terminate();
             return 1;
         }
+        canRestart = State::ONGOING;
 
-        singleton = this;
-        
-        // set window callbacks here...
-
-        for(frame = 1; !window->windowShouldClose(); frame++) {
+        for(;; _frame++) {
             window->pollEvents();
+            if(window->windowShouldClose()) break;
             std::chrono::duration<float, std::ratio<1>> longDt = std::chrono::steady_clock::now() - longTp;
             float temp = longDt.count();
             _dt = temp - _tp;
             _tp = temp;
             _idt = 1.0f / _dt;
+            window->close();
         }
 
+        canRestart = State::WINDOW_CLOSED;
+
+#if BOOST_PLAT_ANDROID
+        if(canRestart == State::REQUSTED_EXIT)
+#endif
         finalize();
-        singleton = nullptr;
         return 0;
     }
 
     void Game::finalize(){
         delete window;
         delete vk;
+        window = nullptr;
+        vk = nullptr;
         Window::terminate();
     }
 
     bool Game::init() {
-        vk = new VkMachine(window);
         window->clickCallback = Input::click;
         window->keyCallback = Input::keyboard;
         window->posCallback = Input::moveCursor;
@@ -104,17 +95,11 @@ namespace onart{
         return true;
     }
 
-    bool Game2::init(){
-        return true;
-    }
-
     void Game::exit(){
         window->close();
+        canRestart = State::REQUSTED_EXIT;
     }
 
-    float Game::tp(){ return singleton->_tp; }
-    float Game::dt(){ return singleton->_dt; }
-    float Game::idt(){ return singleton->_idt; }
-    int32_t Game::frameNumber(){ return singleton->frame; }
+    int32_t Game::frameNumber(){ return _frame; }
     //static int 
 }

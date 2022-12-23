@@ -14,11 +14,11 @@ namespace onart{
     }
 
     bool Input::isKeyDownNow(KeyCode key){
-        return pressedKey[(int)key] == Game::frameNumber();
+        return pressedKey[(int)key] == Game::frame;
     }
 
     bool Input::isKeyUpNow(KeyCode key){
-        return pressedKey[(int)key] == -Game::frameNumber();
+        return pressedKey[(int)key] == -Game::frame;
     }
 
     bool Input::isKeyDown(MouseKeyCode key){
@@ -26,23 +26,23 @@ namespace onart{
     }
 
     bool Input::isKeyDownNow(MouseKeyCode key){
-        return pressedMouseKey[(int)key] == Game::frameNumber();
+        return pressedMouseKey[(int)key] == Game::frame;
     }
 
     bool Input::isKeyUpNow(MouseKeyCode key){
-        return pressedMouseKey[(int)key] == -Game::frameNumber();
+        return pressedMouseKey[(int)key] == -Game::frame;
     }
 
     void Input::keyboard(int keycode, int scancode, int action, int mod){
-        if(action == KEY_DOWN) pressedKey[keycode] = Game::frameNumber();
-        else if(action == KEY_UP) pressedKey[keycode] = -Game::frameNumber();
+        if(action == KEY_DOWN) pressedKey[keycode] = Game::frame;
+        else if(action == KEY_UP) pressedKey[keycode] = -Game::frame;
         LOGWITH(keycode, action);
     }
 
     void Input::click(int key, int action, int mods){
         LOGWITH(key, action);
-        if(action == KEY_DOWN) pressedMouseKey[key] = Game::frameNumber();
-        else if(action == KEY_UP) pressedMouseKey[key] = -Game::frameNumber();
+        if(action == KEY_DOWN) pressedMouseKey[key] = Game::frame;
+        else if(action == KEY_UP) pressedMouseKey[key] = -Game::frame;
     }
 
     void Input::moveCursor(double x, double y){
@@ -57,14 +57,14 @@ namespace onart{
         if(id >= sizeof(_touches)/sizeof(_touches[0])) return;
         if(action == KEY_DOWN) {
             LOGWITH("DOWN",id,x,y);
-            _touches[id].frame = Game::frameNumber();
+            _touches[id].frame = Game::frame;
             _touches[id].id = serial++;
             _touches[id].pos.x = x;
             _touches[id].pos.y = y;
         }
         else if(action == KEY_UP){
             LOGWITH("UP",id,x,y);
-            _touches[id].frame = -Game::frameNumber();
+            _touches[id].frame = -Game::frame;
             _touches[id].pos.x = x;
             _touches[id].pos.y = y;
         }
@@ -76,7 +76,7 @@ namespace onart{
     }
 
     bool Input::TouchInfo::isPressedNow() const{
-        return frame == Game::frameNumber();
+        return frame == Game::frame;
     }
 
     bool Input::TouchInfo::isPressed() const{
@@ -84,6 +84,6 @@ namespace onart{
     }
 
     bool Input::TouchInfo::isUpNow() const{
-        return frame == -Game::frameNumber();
+        return frame == -Game::frame;
     }
 }
