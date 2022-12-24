@@ -34,7 +34,6 @@ namespace onart{
             /// @param opt 기본 옵션 외의 것을 주려면 @ref Window::CreationOptions 를 참고하세요.
             /// @return 종료 코드입니다. 0은 정상 종료, 1은 창 시스템 초기화 실패, 2는 이미 시작 중
             static int start(void* hd = nullptr, Window::CreationOptions* opt = nullptr);
-            static int32_t frameNumber();
             /// @brief 게임 프레임 번호입니다.
             static const int32_t& frame;
             /// @brief 게임을 시작하고 난 시간(초)입니다.

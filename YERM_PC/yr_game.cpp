@@ -34,7 +34,7 @@ namespace onart{
 
     int Game::start(void* hd, Window::CreationOptions* opt){
         if(canRestart == State::ONGOING) {
-            LOGWITH("Can't restart");
+            LOGWITH("Warning: already started");
             return 2;
         }
        
@@ -67,7 +67,6 @@ namespace onart{
             _dt = temp - _tp;
             _tp = temp;
             _idt = 1.0f / _dt;
-            window->close();
         }
 
         canRestart = State::WINDOW_CLOSED;
@@ -99,7 +98,4 @@ namespace onart{
         window->close();
         canRestart = State::REQUSTED_EXIT;
     }
-
-    int32_t Game::frameNumber(){ return _frame; }
-    //static int 
 }

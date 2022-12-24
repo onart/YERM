@@ -24,6 +24,7 @@ else()
         YERM_PC/yr_vulkan.cpp
         YERM_PC/yr_input.h
         YERM_PC/yr_input.cpp
+        YERM_PC/yr_string.hpp
     )
     set_target_properties(yerm PROPERTIES BUILD_RPATH ".")
     target_include_directories(yerm PUBLIC externals)
