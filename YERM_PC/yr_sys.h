@@ -15,6 +15,7 @@
 #define __YR_SYS_H__
 
 #include "../externals/vulkan/vulkan.h"
+#include "yr_string.hpp"
 
 #include <functional>
 #include <vector>
@@ -83,6 +84,9 @@ namespace onart{
             inline bool isNormal(){ return isOn; }
             /// @brief Vulkan instance에서 활성화해야 할 확장 이름들을 얻어옵니다.
             std::vector<const char*> requiredInstanceExentsions();
+            /// @brief PC 환경에서는 주어진 값을 그대로 리턴하고, 안드로이드에서는 internal data path에 상대적인 경로를 리턴합니다.
+            /// @param p 255자를 넘을 수 없습니다.
+            string255 rwPath(const string255& p);
             /// @brief 창 표면을 생성합니다.
             /// @param instance 인스턴스입니다.
             /// @param surface 생성 성공 시 창 표면 핸들을 이 위치로 리턴합니다.

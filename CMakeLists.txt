@@ -25,6 +25,7 @@ else()
         YERM_PC/yr_input.h
         YERM_PC/yr_input.cpp
         YERM_PC/yr_string.hpp
+        YERM_PC/yr_singleheader.cpp
     )
     set_target_properties(yerm PROPERTIES BUILD_RPATH ".")
     target_include_directories(yerm PUBLIC externals)
@@ -35,16 +36,8 @@ else()
         add_compile_options("/utf-8")
         set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT yerm) # 재생버튼 눌러서 바로 실행해볼 수 있게 됨
         target_link_libraries(yerm glfw3_mt vulkan-1 ktx shaderc_shared)
-        #add_custom_command(TARGET yerm POST_BUILD
-        #COMMAND ${CMAKE_COMMAND} -E copy
-                #${CMAKE_SOURCE_DIR}/externals/shaderc/libshaderc_shared.dll
-                #${CMAKE_BINARY_DIR}/bin/libshaderc_shared.dll)
     else()
-        target_link_libraries(yerm glfw3 vulkan shaderc_shared dl pthread X11) # TODO: X11 부분을 타겟에 잘 맞게 분류
-        add_custom_command(TARGET yerm POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-                ${CMAKE_SOURCE_DIR}/externals/shaderc/libshaderc_shared.so
-                ${CMAKE_BINARY_DIR}/bin/libshaderc_shared.so.1)
+        target_link_libraries(yerm glfw3 vulkan shaderc_shared dl m pthread X11) # TODO: X11 부분을 타겟에 잘 맞게 분류
     endif()
     
 endif()

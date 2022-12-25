@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#define VMA_IMPLEMENTATION
 #include "yr_vulkan.h"
 #include "logger.hpp"
 #include "yr_sys.h"
 
+#include <algorithm>
 #include <vector>
 
 namespace onart {
@@ -233,7 +233,7 @@ namespace onart {
 
         instInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         instInfo.pApplicationInfo = &appInfo;
-        instInfo.enabledExtensionCount = windowExt.size();
+        instInfo.enabledExtensionCount = (uint32_t)windowExt.size();
         instInfo.ppEnabledExtensionNames = windowExt.data();
 
         const char* VLAYER[] = {"VK_LAYER_KHRONOS_validation"};
@@ -257,7 +257,7 @@ namespace onart {
 
         uint64_t maxScore = 0;
         VkPhysicalDevice goodCard = nullptr;
-        uint32_t maxGq, maxPq;
+        uint32_t maxGq = 0, maxPq = 0;
         for(VkPhysicalDevice card: cards) {
 
             uint32_t qfcount;
@@ -290,8 +290,8 @@ namespace onart {
             if(score > maxScore) {
                 maxScore = score;
                 goodCard = card;
-                maxGq = gq;
-                maxPq = pq;
+                maxGq = (uint32_t)gq;
+                maxPq = (uint32_t)pq;
             }
         }
         *isCpu = !(maxScore & (0b111ULL << 61));
@@ -349,7 +349,6 @@ namespace onart {
         qInfo[1].queueCount = 1;
         qInfo[1].pQueuePriorities = &queuePriority;
 
-        uint32_t count;
         VkPhysicalDeviceFeatures wantedFeatures{};
         VkPhysicalDeviceFeatures availableFeatures;
         vkGetPhysicalDeviceFeatures(card, &availableFeatures);

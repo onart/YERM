@@ -303,6 +303,10 @@ namespace onart{
         setOrientation(_HAPP, USER_ORIENTATION);
     }
 
+    string255 Window::rwPath(const string255& p){ 
+        return string255(_HAPP->activity->internalDataPath) + p;
+    }
+
     void Window::setSize(unsigned, unsigned){ }
     void Window::setWindowed(int,int,int,int){ }
     void Window::setFullScreen(int){ }
@@ -472,6 +476,8 @@ namespace onart{
     void Window::terminate(){
         glfwTerminate();
     }
+
+    string255 Window::rwPath(const string255& p){ return p; }
 
     void Window::setHorizontal(){ }
     void Window::setVertical(){ }
