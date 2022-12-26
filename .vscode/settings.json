@@ -82,5 +82,6 @@
         "xtr1common": "cpp",
         "xutility": "cpp",
         "condition_variable": "cpp",
+        "stb_vorbis.c": "cpp"
     }
 }
