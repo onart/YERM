@@ -26,6 +26,9 @@ else()
         YERM_PC/yr_input.cpp
         YERM_PC/yr_string.hpp
         YERM_PC/yr_singleheader.cpp
+        YERM_PC/yr_pool.hpp
+        YERM_PC/yr_audio.h
+        YERM_PC/yr_audio.cpp
     )
     set_target_properties(yerm PROPERTIES BUILD_RPATH ".")
     target_include_directories(yerm PUBLIC externals)

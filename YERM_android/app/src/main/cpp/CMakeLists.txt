@@ -39,6 +39,11 @@ add_library( # Sets the name of the library.
              ../../../../../YERM_PC/yr_vulkan.cpp
              ../../../../../YERM_PC/yr_input.h
              ../../../../../YERM_PC/yr_input.cpp
+             ../../../../../YERM_PC/yr_audio.h
+             ../../../../../YERM_PC/yr_audio.cpp
+             ../../../../../YERM_PC/yr_string.hpp
+             ../../../../../YERM_PC/yr_singleheader.cpp
+             ../../../../../YERM_PC/yr_pool.hpp
         )
 
 # Searches for a specified prebuilt library and stores the path as a

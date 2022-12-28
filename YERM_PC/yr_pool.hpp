@@ -31,12 +31,12 @@ namespace onart{
     template <class T, size_t CAPACITY = 256>
     struct Pool{
         inline Pool(){
-            v = std::malloc(sizeof(T) * CAPACITY);
-            stack = std::malloc(sizeof(decltype(stack[0])) * CAPACITY);
+            v = (T*)std::malloc(sizeof(T) * CAPACITY);
+            stack = (size_t*)std::malloc(sizeof(decltype(stack[0])) * CAPACITY);
             for(int i = 0;i < CAPACITY;i++){
                 stack[i] = CAPACITY - 1 - i;
             }
-            tail = CAPACITY;
+            tail = CAPACITY - 1;
         }
         inline ~Pool(){
             if(!isFull()) {
@@ -49,7 +49,7 @@ namespace onart{
         }
 
         /// @brief 풀이 가득 찬 상태인지 확인합니다.
-        bool isFull() const { std::unique_lock<std::mutex> _(lock); return tail == (CAPACITY - 1);}
+        bool isFull() { std::unique_lock<std::mutex> _(lock); return tail == (CAPACITY - 1);}
 
         Pool(const Pool&) = delete;
         Pool(Pool&& src) = delete;
@@ -62,7 +62,7 @@ namespace onart{
         inline std::shared_ptr<T> get(Args&&... args){
             std::unique_lock<std::mutex> _(lock);
             if(tail == (size_t) - 1) return std::shared_ptr<T>();
-            new (&v[stack[tail]]) T(std::forward(args...));
+            new (&v[stack[tail]]) T(args...);
             return std::shared_ptr<T>(&v[stack[tail--]],[this](T* p){
                 ret(p);
             });
@@ -94,7 +94,7 @@ namespace onart{
             Node* head;
             std::mutex lock;
         public:
-        inline DynamicPool(){ head = new Node; }
+            inline DynamicPool() { head = new Node; }
 
         template<class... Args>
         inline std::shared_ptr<T> get(Args&&... args){
@@ -102,7 +102,7 @@ namespace onart{
             Node* node = head;
             while(true){
                 std::shared_ptr<T> p = node->pool.get(args...);
-                if(p) return args;
+                if(p) return p;
                 else {
                     if(node->next == nullptr) {
                         node->next = new Node;

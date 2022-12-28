@@ -50,7 +50,7 @@ namespace onart{
 
             /// @brief 다른 문자열을 이어붙입니다. 길이가 넘치면 잘립니다.
             template<uint8_t N> inline BasicStackString& operator+=(const BasicStackString<T, N>& other) {
-                uint8_t newSize = std::min((size_t)CAPACITY - 1, _size + other._size);
+                uint8_t newSize = std::min((size_t)CAPACITY - 1, (size_t)_size + other._size);
                 memcpy(data + _size, other.data, newSize - _size);
                 _size = newSize;
                 data[_size] = 0;
@@ -78,14 +78,14 @@ namespace onart{
                 return *this;
             }
             /// @brief 같은 타입 간의 사전순 비교 연산자입니다.
-            inline bool operator>(const BasicStackString& other){
+            inline bool operator>(const BasicStackString& other) const {
                 const uint8_t MIN = std::min(other._size, _size);
                 for(uint8_t i = 0;i < MIN;i++){ if(data[i] != other[i]) return data[i] > other[i]; }
                 return _size > other._size;
             }
 
             /// @brief 같은 타입 간의 사전순 비교 연산자입니다.
-            inline bool operator<(const BasicStackString& other){
+            inline bool operator<(const BasicStackString& other) const {
                 const uint8_t MIN = std::min(other._size, _size);
                 for(uint8_t i = 0;i < MIN;i++){ if(data[i] != other[i]) return data[i] < other[i]; }
                 return _size < other._size;
@@ -116,6 +116,8 @@ namespace onart{
             inline const T& operator[](uint8_t i) const { return data[i]; }
             /// @brief 다른 문자를 뒤에 붙인 것을 리턴합니다. 용량을 초과하면 그대로 리턴합니다.
             inline BasicStackString operator+(T ch) const { return BasicStackString(*this) += ch; }
+            /// @brief 문자열끼리 이어붙인 것을 리턴합니다. 원본의 용량을 초과하면 잘려서 리턴됩니다.
+            inline BasicStackString operator+(const BasicStackString& other) const { return BasicStackString(*this) += other; }
             /// @brief 0 종료 문자열을 리턴합니다.
             inline T* c_str() { return data; }
             /// @brief 0 종료 문자열을 리턴합니다.
@@ -124,7 +126,7 @@ namespace onart{
             inline operator std::basic_string<T>() const { return std::basic_string((T*)data, _size); }
         private:
             T data[CAPACITY];
-            uint8_t _size;
+            uint8_t _size = 0;
     };
 
     template <uint8_t C> using string = BasicStackString<char, C>;

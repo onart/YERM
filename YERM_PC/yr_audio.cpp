@@ -15,18 +15,31 @@
 #include "yr_audio.h"
 #define STB_VORBIS_HEADER_ONLY
 #include "../externals/single_header/stb_vorbis.c"
+#include "../externals/boost/predef/platform.h"
 #include "logger.hpp"
 #include "yr_simd.hpp"
+#include "yr_pool.hpp"
+#include "yr_game.h"
+
+#include <algorithm>
 
 #include <cstdlib>
-#include <algorithm>
 #include <cstring>
 
 namespace onart{
 
     void* Audio::engine = nullptr;
     std::thread* Audio::producer;
-    bool Audio::inLoop = false;
+    volatile bool Audio::inLoop = false;
+    float Audio::master = 1.0f;
+
+    bool Audio::Source::shouldReap = false;
+    std::vector<pAudioSource> Audio::Source::sources;
+    std::map<string128, size_t> Audio::Source::name2index;
+    std::mutex Audio::Source::g;
+
+    static DynamicPool<std::array<int16_t,16384>, 8> pool8192;
+
     unsigned Audio::Stream::_activeStreamCount = 0;
     const unsigned& Audio::Stream::activeStreamCount = Audio::Stream::_activeStreamCount;
 
@@ -46,6 +59,8 @@ namespace onart{
             /// @param out 출력 위치
             /// @param count 카운트
             void read(void* out, unsigned count);
+            /// @brief 링버퍼 사용을 종료합니다.
+            inline void finalize() { writeIndex = 0; limitIndex = 1; }
         private:
             alignas(16) int16_t body[Audio::RINGBUFFER_SIZE] = {0, };
             /// @brief 읽기 시작점
@@ -100,7 +115,7 @@ namespace onart{
         unsigned readEnd = readIndex + count;
         if(readEnd >= Audio::RINGBUFFER_SIZE) {
             unsigned nextReadIndex = readEnd - Audio::RINGBUFFER_SIZE;
-            std::copy(body + readIndex, body + Audio::RINGBUFFER_SIZE, output);
+            std::copy(body + readIndex, body + Audio::RINGBUFFER_SIZE, ((decltype(body + 0))output));
             std::copy(body, body + nextReadIndex, (int16_t*)output + Audio::RINGBUFFER_SIZE - readIndex);
             if(Audio::Stream::activeStreamCount == 0) {
                 std::fill(body + readIndex, body + Audio::RINGBUFFER_SIZE, 0);
@@ -109,7 +124,7 @@ namespace onart{
             readIndex = nextReadIndex;
         }
         else{
-            std::copy(body + readIndex, body + readEnd, output);
+            std::copy(body + readIndex, body + readEnd, ((decltype(body + 0))output));
             if(Audio::Stream::activeStreamCount == 0) {
                 std::fill(body + readIndex, body + readEnd, 0);
             }
@@ -146,10 +161,29 @@ namespace onart{
     }
 
     void Audio::audioThread(){
-
+        while(inLoop){
+            unsigned writable;
+            while ((writable = ringBuffer.writable()) == 0) {
+                if (!inLoop) return;
+            }
+            size_t sz = Source::sources.size();
+            for(size_t i = 0; i < sz; i++) {
+                pAudioSource& sourceI = Source::sources[i];
+                if(sourceI->close) { continue; }
+                size_t ps = sourceI->streams.size();
+                for(size_t j = 0; j < ps; j++){
+                    sourceI->present(*(sourceI->streams[j]), writable / 2);
+                }
+            }
+            ringBuffer.addComplete();
+            Source::reapAll();
+        }
     }
 
     void Audio::finalize(){
+        inLoop = false;
+        ringBuffer.finalize();
+        
         producer->join();
         delete producer;
         producer = nullptr;
@@ -157,6 +191,164 @@ namespace onart{
         std::free(engine);
         engine = nullptr;
     }
+
+#define _HSTBV reinterpret_cast<stb_vorbis*>(source)
+
+    pAudioSource Audio::Source::load(const string128& path, string128 name) {
+        if(name.size() == 0) name = path;
+        pAudioSource ret = get(name);
+        if(ret) return ret;
+        int stbErr;
+#if BOOST_PLAT_ANDROID
+        std::basic_string<uint8_t> buf;
+        Game::readFile(path.c_str(),&buf);
+        stb_vorbis* fp = stb_vorbis_open_memory(buf.data(), buf.size(), &stbErr, nullptr);
+#else
+        stb_vorbis* fp = stb_vorbis_open_filename(path.c_str(), &stbErr, nullptr);
+#endif
+        if(!fp){
+            LOGWITH(path, "Load failed:", stbErr); // enum STBVorbisError 확인
+            return pAudioSource();
+        }
+        stb_vorbis_info info = stb_vorbis_get_info(fp);
+        if(info.channels != 2 || info.sample_rate != SAMPLE_RATE){ // Vorbis의 프레임당 샘플 수는 64 ~ 8192(2의 거듭제곱만)
+            LOGWITH(name, "Load failed: set the source\'s channel to 2 and sample rate to",SAMPLE_RATE);
+            stb_vorbis_close(fp);
+            return pAudioSource();
+        }
+        struct audiosource:public Audio::Source{inline audiosource(void* _1):Source(_1){}};
+        pAudioSource nw = std::make_shared<audiosource>(fp);
+        std::unique_lock<std::mutex> _(g);
+        name2index.insert({name,sources.size()});
+        nw->it = name2index.find(name);
+        sources.push_back(nw);
+#if BOOST_PLAT_ANDROID
+        nw->dat = std::move(buf);
+#endif
+        return nw;
+    }
+
+    pAudioSource Audio::Source::load(const uint8_t* mem, unsigned size, const string128& name){
+        pAudioSource ret = get(name);
+        if(ret) return ret;
+        int stbErr;
+        stb_vorbis* fp = stb_vorbis_open_memory(mem, size, &stbErr, nullptr);
+        if(!fp) {
+            LOGWITH(name, "Load failed:", stbErr); // enum STBVorbisError 확인
+            return pAudioSource();
+        }
+        stb_vorbis_info info = stb_vorbis_get_info(fp);
+        if(info.channels != 2 || info.sample_rate != SAMPLE_RATE){ // Vorbis의 프레임당 샘플 수는 64 ~ 8192(2의 거듭제곱만)
+            LOGWITH(name, "Load failed: set the source\'s channel to 2 and sample rate to",SAMPLE_RATE);
+            stb_vorbis_close(fp);
+            return pAudioSource();
+        }
+        struct audiosource:public Audio::Source{inline audiosource(void* _1):Source(_1){}};
+        pAudioSource nw = std::make_shared<audiosource>(fp);
+        std::unique_lock<std::mutex> _(g);
+        name2index.insert({name,sources.size()});
+        nw->it = name2index.find(name);
+        sources.push_back(nw);
+        return nw;
+    }
+
+    Audio::Source::Source(void* p):source(p){ }
+
+    Audio::Source::~Source(){
+        stb_vorbis_close(_HSTBV);
+    }
+
+    pAudioSource Audio::Source::get(const string128& name) {
+        std::unique_lock<std::mutex> _(g);
+        auto it = name2index.find(name);
+        if(it != name2index.end()) {
+            return sources[it->second];
+        }
+        return pAudioSource();
+    }
+
+    void Audio::Source::collect(bool removeUsing){
+        std::unique_lock<std::mutex> _(g);
+        size_t sz = sources.size();
+        for(size_t i = 0; i < sz; i++){ sources[i]->close = removeUsing || (sources[i].use_count() == 1); }
+    }
+
+    void Audio::Source::drop(const string128& name) {
+        std::unique_lock<std::mutex> _(g);
+        auto it = name2index.find(name);
+        if(it != name2index.end()) {
+            sources[it->second]->close = true;
+            shouldReap = true;
+        }
+    }
+
+    void Audio::Source::reapAll() {
+        if(!shouldReap) return;
+        std::unique_lock<std::mutex> _(g);
+        for(size_t i = 0; i < sources.size();){
+            pAudioSource& sourceI = sources[i];
+            if(sourceI->close) {
+                name2index.erase(sourceI->it);
+                sourceI.swap(sources.back());
+                sourceI->it->second = i;
+                sources.pop_back();
+            }
+            else{
+                i++;
+            }
+        }
+        shouldReap = false;
+    }
+
+    pAudioStream Audio::Source::play(int loop) {
+        struct audiostream:public Audio::Stream{ inline audiostream(int _1):Audio::Stream(_1){} };
+        pAudioStream nw = std::make_shared<audiostream>(loop);
+        streams.push_back(nw);
+        return nw;
+    }
+
+    void Audio::Source::setVolume(float f){
+        volume = std::clamp(f, 0.0f, 1.0f);
+    }
+
+    void Audio::Source::present(Audio::Stream& stream, unsigned nSamples) {
+        if(stream.stopped || stream.seekOffset == -1ll) return;
+        if(stream.seekOffset != stb_vorbis_get_sample_offset(_HSTBV)) stb_vorbis_seek_frame(_HSTBV, stream.seekOffset);
+        unsigned produced = 0;
+        const float vol = Audio::master * volume * stream.volume;
+        while(nSamples){
+            int rest = stream.len - stream.offset;
+            if (rest == 0) {
+                stream.offset = 0;
+                rest = stream.len = stb_vorbis_get_frame_short_interleaved(_HSTBV, 2, stream.buffer->data(), stream.buffer->size());
+                if (stream.len == 0) {
+                    stream.loop--;
+                    if (stream.loop == 0) {
+                        stream.end();
+                        return;
+                    }
+                    stb_vorbis_seek_start(_HSTBV);
+                    continue;
+                }
+            }
+            int toPresent = nSamples > rest ? rest : nSamples;
+            if (vol != 1.0f) { mulAll(stream.buffer->data() + (stream.offset * 2), vol, toPresent * 2); }
+            ringBuffer.add(stream.buffer->data() + (stream.offset * 2), toPresent * 2, produced);
+            stream.offset += toPresent;
+            produced += toPresent * 2;
+            nSamples -= toPresent;
+        }
+        if(stream.seekOffset != -1) stream.seekOffset = stb_vorbis_get_sample_offset(_HSTBV);
+    }
+
+#undef _HSTBV
+
+    Audio::Stream::Stream(int loop) :loop(loop), buffer(pool8192.get()) {  }
+    void Audio::Stream::pause() { stopped = true; }
+    void Audio::Stream::restart() { if(seekOffset == -1) return; seekOffset = 0; stopped = false;  }
+    void Audio::Stream::end() { seekOffset = -1; }
+    void Audio::Stream::resume() { stopped = false; }
+    void Audio::Stream::setVolume(float f) { volume = std::clamp(f, 0.0f, 1.0f); }
 
 #undef _HDEVICE
 }
