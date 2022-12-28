@@ -15,21 +15,28 @@
 #include "yr_sys.h"
 #include "yr_vulkan.h"
 #include "yr_input.h"
-#include "logger.hpp"
+#include "yr_audio.h"
 
+#include "logger.hpp"
 #include "yr_math.hpp"
 
 #include "../externals/boost/predef/platform.h"
+#include "../externals/boost/predef/compiler.h"
+
+#if BOOST_PLAT_ANDROID
+#include <game-activity/native_app_glue/android_native_app_glue.h>
+#endif
 
 namespace onart{
 
     const std::chrono::steady_clock::time_point Game::longTp = std::chrono::steady_clock::now();
     float Game::_dt = 0.016f, Game::_idt = 60.0f, Game::_tp = 0.0f;
-    const float &Game::dt(Game::dt), &Game::idt(Game::_idt), &Game::tp(Game::_tp);
+    const float &Game::dt(Game::_dt), &Game::idt(Game::_idt), &Game::tp(Game::_tp);
     int32_t Game::_frame = 1;
     const int32_t& Game::frame(Game::_frame);
     VkMachine* Game::vk = nullptr;
     Window* Game::window = nullptr;
+    void* Game::hd = nullptr;
     Game::State Game::canRestart = Game::State::INITIAL;
 
     int Game::start(void* hd, Window::CreationOptions* opt){
@@ -37,7 +44,9 @@ namespace onart{
             LOGWITH("Warning: already started");
             return 2;
         }
-       
+
+        Game::hd = hd;
+
         delete window;        
         window = new Window(hd, opt);
         if(!window->isNormal()) {
@@ -79,6 +88,7 @@ namespace onart{
     }
 
     void Game::finalize(){
+        Audio::finalize();
         delete window;
         delete vk;
         window = nullptr;
@@ -87,6 +97,8 @@ namespace onart{
     }
 
     bool Game::init() {
+        Audio::init();
+        //Audio::Source::load("004.ogg")->play();
         window->clickCallback = Input::click;
         window->keyCallback = Input::keyboard;
         window->posCallback = Input::moveCursor;
@@ -97,5 +109,39 @@ namespace onart{
     void Game::exit(){
         window->close();
         canRestart = State::REQUSTED_EXIT;
+    }
+
+    void Game::readFile(const char* fileName, std::basic_string<uint8_t>* buffer){
+        buffer->clear();
+#if BOOST_PLAT_ANDROID
+        AAsset* asset = AAssetManager_open(reinterpret_cast<android_app*>(hd)->activity->assetManager, fileName, AASSET_MODE_BUFFER);
+        if(asset) {
+            int len = AAsset_getLength(asset);
+            buffer->resize(len);
+            AAsset_read(asset, buffer->data(), len);
+            AAsset_close(asset);
+        }
+#elif BOOST_COMP_MSVC
+        FILE* fp;
+        fopen_s(&fp, fileName, "rb");
+        if (fp) {
+            fseek(fp, 0, SEEK_END);
+            int len = ftell(fp);
+            buffer->resize(len);
+            fseek(fp, 0, SEEK_SET);
+            fread_s(buffer->data(), len, 1, len, fp);
+            fclose(fp);
+        }
+#else
+        FILE* fp = fopen(fileName, "rb");
+        if(fp) {
+            fseek(fp, 0, SEEK_END);
+            int len = ftell(fp);
+            buffer->resize(len);
+            fseek(fp, 0, SEEK_SET);
+            fread(buffer->data(), 1, len, fp);
+            fclose(fp);
+        }
+#endif
     }
 }

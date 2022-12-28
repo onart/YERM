@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <chrono>
+#include <string>
 
 namespace onart{
 
@@ -42,6 +43,10 @@ namespace onart{
             static const float& dt;
             /// @brief 이전 프레임과 현 프레임 간의 간격(초)의 역수입니다.
             static const float& idt;
+            /// @brief 파일의 내용을 모두 읽어 옵니다. 이 함수는 화면 회전 시 음원 파일 포인터를 유지하기 어려운 경우를 위해 임시로 만들어졌습니다. 읽기에 실패하면 주어진 버퍼는 빈 상태가 됩니다.
+            /// @param fileName 파일 이름
+            /// @param buffer 데이터가 들어갈 위치. 이전에 내용이 있었더라도 무시됩니다.
+            static void readFile(const char* fileName, std::basic_string<uint8_t>* buffer);
         private:
             enum State { INITIAL = 0, ONGOING = 1, WINDOW_CLOSED = 2, REQUSTED_EXIT = 3 };
             static Window* window;
@@ -50,6 +55,7 @@ namespace onart{
             static float _tp, _dt, _idt; // float인 이유: 이 엔진 내에서는 SIMD에서 double보다 효율적인 float 자료형이 주로 사용되는데 이게 타임과 연산될 일이 잦은 편이기 때문
             static const std::chrono::steady_clock::time_point longTp;
             static State canRestart;
+            static void* hd;
         private:
             static void finalize();
             static bool init();
