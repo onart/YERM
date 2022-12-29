@@ -98,7 +98,6 @@ namespace onart{
 
     bool Game::init() {
         Audio::init();
-        //Audio::Source::load("004.ogg")->play();
         window->clickCallback = Input::click;
         window->keyCallback = Input::keyboard;
         window->posCallback = Input::moveCursor;

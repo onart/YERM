@@ -294,6 +294,16 @@ namespace onart{
                 sources.pop_back();
             }
             else{
+                for(size_t j = 0; j < sourceI->streams.size();) {
+                    pAudioStream& streamJ = sourceI->streams[j];
+                    if(streamJ->seekOffset == -1) {
+                        streamJ.swap(sourceI->streams.back());
+                        sourceI->streams.pop_back();
+                    }
+                    else{
+                        j++;
+                    }
+                }
                 i++;
             }
         }
@@ -343,12 +353,39 @@ namespace onart{
 
 #undef _HSTBV
 
-    Audio::Stream::Stream(int loop) :loop(loop), buffer(pool8192.get()) {  }
-    void Audio::Stream::pause() { stopped = true; }
-    void Audio::Stream::restart() { if(seekOffset == -1) return; seekOffset = 0; stopped = false;  }
-    void Audio::Stream::end() { seekOffset = -1; }
-    void Audio::Stream::resume() { stopped = false; }
-    void Audio::Stream::setVolume(float f) { volume = std::clamp(f, 0.0f, 1.0f); }
+    Audio::Stream::Stream(int loop) :loop(loop), buffer(pool8192.get()) { 
+        _activeStreamCount++;
+    }
+    void Audio::Stream::pause() { 
+        if(!stopped){
+            stopped = true;
+            _activeStreamCount--;
+        }
+    }
+    void Audio::Stream::restart() { 
+        if(seekOffset == -1) return;
+        seekOffset = 0;
+        if(stopped){
+            stopped = false;
+            _activeStreamCount++;
+        }
+    }
+    void Audio::Stream::end() { 
+        seekOffset = -1;
+        if(!stopped){
+            _activeStreamCount--;
+        }
+    }
+    void Audio::Stream::resume() { 
+        if(stopped){
+            stopped = false;
+            _activeStreamCount++;
+        }
+    }
+
+    void Audio::Stream::setVolume(float f) { 
+        volume = std::clamp(f, 0.0f, 1.0f);
+    }
 
 #undef _HDEVICE
 }
