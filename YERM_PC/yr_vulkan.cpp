@@ -24,7 +24,7 @@ namespace onart {
     /// @brief Vulkan 인스턴스를 생성합니다. 자동으로 호출됩니다.
     static VkInstance createInstance(Window*);
     /// @brief 사용할 Vulkan 물리 장치를 선택합니다. CPU 기반인 경우 경고를 표시하지만 선택에 실패하지는 않습니다.
-    static VkPhysicalDevice findPhysicalDevice(VkInstance, VkSurfaceKHR, bool*, int*, int*);
+    static VkPhysicalDevice findPhysicalDevice(VkInstance, VkSurfaceKHR, bool*, int*, int*, uint64_t*);
     /// @brief 주어진 Vulkan 물리 장치에 대한 우선도를 매깁니다. 높을수록 좋게 취급합니다. 대부분의 경우 물리 장치는 하나일 것이므로 함수가 아주 중요하지는 않을 거라 생각됩니다.
     static uint64_t assessPhysicalDevice(VkPhysicalDevice);
     /// @brief 주어진 장치에 대한 가상 장치를 생성합니다.
@@ -34,7 +34,7 @@ namespace onart {
     /// @brief 명령 풀을 생성합니다.
     static VkCommandPool createCommandPool(VkDevice, int qIndex);
     /// @brief 이미지로부터 뷰를 생성합니다.
-    static VkImageView createImageView(VkDevice, VkImage, VkImageViewType, VkFormat, int, int, VkImageAspectFlagBits);
+    static VkImageView createImageView(VkDevice, VkImage, VkImageViewType, VkFormat, int, int, VkImageAspectFlags);
 
     /// @brief 활성화할 장치 확장
     constexpr const char* VK_DESIRED_DEVICE_EXT[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
@@ -47,7 +47,7 @@ namespace onart {
             LOGWITH("Tried to create multiple VkMachine objects");
             return;
         }
-
+        
         if(!(instance = createInstance(window))) {
             return;
         }
@@ -55,15 +55,14 @@ namespace onart {
         VkResult result;
         if((result = window->createWindowSurface(instance, &surface.handle)) != VK_SUCCESS){
             LOGWITH("Failed to create Window surface:", result);
-            vkDestroyInstance(instance, nullptr); instance = nullptr;
+            free();
             return;
         }
 
         bool isCpu;
-        if(!(card = findPhysicalDevice(instance, surface.handle, &isCpu, &gq, &pq))) {
+        if(!(physicalDevice.card = findPhysicalDevice(instance, surface.handle, &isCpu, &physicalDevice.gq, &physicalDevice.pq, &physicalDevice.minUBOffsetAlignment))) {
             LOGWITH("Couldn\'t find any appropriate graphics device");
-            vkDestroySurfaceKHR(instance, surface.handle, nullptr); surface.handle = 0;
-            vkDestroyInstance(instance, nullptr); instance = nullptr;
+            free();
             return;
         }
         if(isCpu) LOGWITH("Warning: this device is CPU");
@@ -71,42 +70,32 @@ namespace onart {
         
         checkSurfaceHandle();
 
-        if(!(device = createDevice(card, gq, pq))) {
-            vkDestroySurfaceKHR(instance, surface.handle, nullptr); surface.handle = 0;
-            vkDestroyInstance(instance, nullptr); instance = nullptr;
+        if(!(device = createDevice(physicalDevice.card, physicalDevice.gq, physicalDevice.pq))) {
+            free();
             return;
         }
 
-        vkGetDeviceQueue(device, gq, 0, &graphicsQueue);
-        vkGetDeviceQueue(device, pq, 0, &presentQueue);
+        vkGetDeviceQueue(device, physicalDevice.gq, 0, &graphicsQueue);
+        vkGetDeviceQueue(device, physicalDevice.pq, 0, &presentQueue);
 
 
-        if(!(allocator = createAllocator(instance, card, device))){
-            vkDestroyDevice(device, nullptr); device = nullptr;
-            vkDestroySurfaceKHR(instance, surface.handle, nullptr); surface.handle = 0;
-            vkDestroyInstance(instance, nullptr); instance = nullptr;
+        if(!(allocator = createAllocator(instance, physicalDevice.card, device))){
+            free();
             return;
         }
 
-        if(!(gCommandPool = createCommandPool(device, gq))){
-            vmaDestroyAllocator(allocator); allocator = nullptr;
-            vkDestroyDevice(device, nullptr); device = nullptr;
-            vkDestroySurfaceKHR(instance, surface.handle, nullptr); surface.handle = 0;
-            vkDestroyInstance(instance, nullptr); instance = nullptr;
+        if(!(gCommandPool = createCommandPool(device, physicalDevice.gq))){
+            free();
             return;
         }
 
         allocateCommandBuffers(sizeof(baseBuffer)/sizeof(baseBuffer[0]), true, baseBuffer);
         if(!baseBuffer[0]){
-            vkDestroyCommandPool(device, gCommandPool, nullptr); gCommandPool = 0;
-            vmaDestroyAllocator(allocator); allocator = nullptr;
-            vkDestroyDevice(device, nullptr); device = nullptr;
-            vkDestroySurfaceKHR(instance, surface.handle, nullptr); surface.handle = 0;
-            vkDestroyInstance(instance, nullptr); instance = nullptr;
+            free();
         }
         int w,h;
         window->getSize(&w,&h);
-        createSwapchain(w, h, gq, pq);
+        createSwapchain(w, h, physicalDevice.gq, physicalDevice.pq);
         
         singleton = this;
     }
@@ -122,7 +111,7 @@ namespace onart {
         checkSurfaceHandle();
         int x,y;
         window->getSize(&x,&y);
-        createSwapchain(x, y, gq, pq);
+        createSwapchain(x, y, physicalDevice.gq, physicalDevice.pq);
     }
 
     void VkMachine::allocateCommandBuffers(int count, bool isPrimary, VkCommandBuffer* buffers){
@@ -139,12 +128,12 @@ namespace onart {
     }
 
     void VkMachine::checkSurfaceHandle(){
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(card, surface.handle, &surface.caps);
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice.card, surface.handle, &surface.caps);
         uint32_t count;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(card, surface.handle, &count, nullptr);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice.card, surface.handle, &count, nullptr);
         if(count == 0) LOGWITH("Fatal: no available surface format?");
         std::vector<VkSurfaceFormatKHR> formats(count);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(card, surface.handle, &count, formats.data());
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice.card, surface.handle, &count, formats.data());
         surface.format = formats[0];
         for(VkSurfaceFormatKHR& form:formats){
             if(form.colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR && form.format == VK_FORMAT_B8G8R8A8_SRGB){
@@ -206,13 +195,301 @@ namespace onart {
         swapchain.handle = 0;
     }
 
-    VkMachine::~VkMachine(){
+    void VkMachine::free() {
         destroySwapchain();
         vmaDestroyAllocator(allocator);
+        vkDestroyCommandPool(device, gCommandPool, nullptr);
         vkDestroyDevice(device, nullptr);
         vkDestroySurfaceKHR(instance, surface.handle, nullptr);
         vkDestroyInstance(instance, nullptr);
+        allocator = nullptr;
+        gCommandPool = 0;
+        device = nullptr;
+        graphicsQueue = nullptr;
+        presentQueue = nullptr;
+        surface.handle = nullptr;
+        instance = nullptr;
     }
+
+    VkMachine::~VkMachine(){
+        free();
+    }
+
+    void VkMachine::ImageSet::free(VkDevice device, VmaAllocator allocator) {
+        vkDestroyImageView(device, view, nullptr);
+        vmaDestroyImage(allocator, img, alloc);
+    }
+
+    VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, const string16& name, RenderTargetType type, bool sampled, bool mmap){
+        if(!allocator) {
+            LOGWITH("Warning: Tried to create image before initialization");
+            return nullptr;
+        }
+        auto it = renderTargets.find(name);
+        if(it != renderTargets.end()) {return it->second;}
+        ImageSet *color1 = nullptr, *color2 = nullptr, *color3 = nullptr, *ds = nullptr;
+        VkImageCreateInfo imgInfo{};
+        imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imgInfo.imageType = VkImageType::VK_IMAGE_TYPE_2D;
+        imgInfo.extent.width = width;
+        imgInfo.extent.height = height;
+        imgInfo.extent.depth = 1;
+        imgInfo.mipLevels = 1;
+        imgInfo.arrayLayers = 1;
+        imgInfo.samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
+        imgInfo.sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE;
+        imgInfo.tiling = mmap ? VkImageTiling::VK_IMAGE_TILING_LINEAR : VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
+        imgInfo.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
+
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+        if(mmap) allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+        else allocInfo.preferredFlags = VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+        VkResult result;
+
+        if((int)type & 0b1){
+            color1 = new ImageSet;
+            imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
+            imgInfo.format = VkFormat::VK_FORMAT_B8G8R8A8_SRGB;
+            //imgInfo.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            result = vmaCreateImage(allocator, &imgInfo, &allocInfo, &color1->img, &color1->alloc, nullptr);
+            if(!result) {
+                LOGWITH("Failed to create image:", result);
+                delete color1;
+                return nullptr;
+            }
+            color1->view = createImageView(device, color1->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
+            if(!color1->view) {
+                color1->free(device, allocator);
+                delete color1;
+                return nullptr;
+            }
+            if((int)type & 0b10){
+                color2 = new ImageSet;
+                result = vmaCreateImage(allocator, &imgInfo, &allocInfo, &color2->img, &color2->alloc, nullptr);
+                if(!result) {
+                    LOGWITH("Failed to create image:", result);
+                    color1->free(device, allocator);
+                    delete color1;
+                    delete color2;
+                    return nullptr;
+                }
+                color2->view = createImageView(device, color2->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
+                if(!color2->view) {
+                    color1->free(device, allocator);
+                    color2->free(device, allocator);
+                    delete color1;
+                    delete color2;
+                    return nullptr;
+                }
+                if((int)type & 0b100){
+                    color3 = new ImageSet;
+                    result = vmaCreateImage(allocator, &imgInfo, &allocInfo, &color3->img, &color3->alloc, nullptr);
+                    if(!result) {
+                        LOGWITH("Failed to create image:", result);
+                        color1->free(device, allocator);
+                        color2->free(device, allocator);
+                        delete color1;
+                        delete color2;
+                        return nullptr;
+                    }
+                    color3->view = createImageView(device, color3->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
+                    if(!color3->view) {
+                        vmaDestroyImage(allocator, color1->img, color1->alloc);
+                        color1->free(device, allocator);
+                        color2->free(device, allocator);
+                        color3->free(device, allocator);
+                        delete color1;
+                        delete color2;
+                        delete color3;
+                        return nullptr;
+                    }                
+                }
+            }
+        }
+        if((int)type & 0b1000) {
+            ds = new ImageSet;
+            imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
+            imgInfo.format = VkFormat::VK_FORMAT_D24_UNORM_S8_UINT;
+            //imgInfo.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            result = vmaCreateImage(allocator, &imgInfo, &allocInfo, &ds->img, &ds->alloc, nullptr);
+            if(!result) {
+                LOGWITH("Failed to create image: ", result);
+                if(color1) {color1->free(device, allocator); delete color1;}
+                if(color2) {color2->free(device, allocator); delete color2;}
+                if(color3) {color3->free(device, allocator); delete color3;}
+                delete ds;
+                return nullptr;
+            }
+            ds->view = createImageView(device, color3->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT | VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT);
+            if(!ds->view){
+                if(color1) {color1->free(device, allocator); delete color1;}
+                if(color2) {color2->free(device, allocator); delete color2;}
+                if(color3) {color3->free(device, allocator); delete color3;}
+                ds->free(device, allocator); delete ds;
+                return nullptr;
+            }
+        }
+        if(color1) images.insert(color1);
+        if(color2) images.insert(color2);
+        if(color3) images.insert(color3);
+        if(ds) images.insert(ds);
+        return renderTargets.emplace(name, new RenderTarget(width, height, color1, color2, color3, ds)).first->second;
+    }
+
+    void VkMachine::removeImageSet(VkMachine::ImageSet* set) {
+        auto it = images.find(set);
+        if(it != images.end()) {
+            (*it)->free(device, allocator);
+            delete *it;
+            images.erase(it);
+        }
+    }
+
+    VkShaderModule VkMachine::createShader(const uint32_t* spv, size_t size, const string16& name) {
+        auto it = shaders.find(name);
+        if(it != shaders.end()){
+            return it->second;
+        }
+        VkShaderModule ret;
+        VkShaderModuleCreateInfo smInfo{};
+        smInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        smInfo.codeSize = size;
+        smInfo.pCode = spv;
+        VkResult result = vkCreateShaderModule(device, &smInfo, nullptr, &ret);
+        if(result != VK_SUCCESS) {
+            LOGWITH("Failed to create shader moudle:", result);
+            return nullptr;
+        }
+        return shaders[name] = ret;
+    }    
+
+    VkMachine::RenderTarget::RenderTarget(unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil)
+    :width(width), height(height), color1(color1), color2(color2), color3(color3), depthstencil(depthstencil){
+    }
+
+    VkMachine::RenderTarget::~RenderTarget(){
+        if(color1) singleton->removeImageSet(color1);
+        if(color2) singleton->removeImageSet(color2);
+        if(color3) singleton->removeImageSet(color3);
+        if(depthstencil) singleton->removeImageSet(depthstencil);
+        for(RenderPass* p: passes) { p->dangle = true; }
+    }
+
+    VkMachine::RenderPass::RenderPass(RenderTarget* target, VkShaderModule vs, VkShaderModule fs){
+        VkAttachmentDescription attachments[4]{};
+        VkAttachmentReference attachmentRefs[4]{};
+        uint32_t colorAttachmentCount = 0;
+        if(target->color1){
+            attachments[0].format = VkFormat::VK_FORMAT_B8G8R8A8_SRGB;
+            attachments[0].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
+            attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            attachmentRefs[0].attachment = 0;
+            attachmentRefs[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            colorAttachmentCount = 1;
+            if(target->color2) {
+                std::memcpy(attachments+1,attachments,sizeof(attachments[0]));
+                attachmentRefs[1].attachment = 1;
+                attachmentRefs[1].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                colorAttachmentCount = 2;
+                if(target->color3){
+                    std::memcpy(attachments+2,attachments,sizeof(attachments[0]));
+                    attachmentRefs[2].attachment = 2;
+                    attachmentRefs[2].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                    colorAttachmentCount = 3;
+                }
+            }
+        }
+        if(target->depthstencil){
+            attachments[colorAttachmentCount].format = VkFormat::VK_FORMAT_B8G8R8A8_SRGB;
+            attachments[colorAttachmentCount].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
+            attachments[colorAttachmentCount].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            attachments[colorAttachmentCount].storeOp = VK_ATTACHMENT_STORE_OP_STORE; // 그림자맵에서야 필요하고 그 외에는 필요없음
+            attachments[colorAttachmentCount].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            attachments[colorAttachmentCount].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            attachments[colorAttachmentCount].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            attachments[colorAttachmentCount].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            attachmentRefs[3].attachment = colorAttachmentCount;
+            attachmentRefs[3].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        }
+        VkAttachmentReference colorAttachmentRef{};
+        colorAttachmentRef.attachment = 0;
+        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        VkSubpassDescription subpass{};
+        subpass.colorAttachmentCount = colorAttachmentCount;
+        subpass.pColorAttachments = attachmentRefs;
+        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        if(target->depthstencil) subpass.pDepthStencilAttachment = &attachmentRefs[3];
+        VkSubpassDependency dependencies[1] = {};
+        dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[0].dstSubpass = 0;
+        dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependencies[0].srcAccessMask = 0;
+        dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        VkRenderPassCreateInfo rpInfo{};
+        rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        rpInfo.attachmentCount = colorAttachmentCount + (uint32_t)target->depthstencil;
+        rpInfo.pAttachments = attachments;
+        rpInfo.dependencyCount = sizeof(dependencies) / sizeof(VkSubpassDependency);
+        rpInfo.pDependencies = dependencies;
+        rpInfo.subpassCount = 1;
+        rpInfo.pSubpasses = &subpass;
+        VkResult result;
+        if((result = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &rp)) != VK_SUCCESS){
+            LOGWITH("Failed to create renderpass:",result);
+            dangle = true;
+            return;
+        }
+        constructFB(target);
+    }
+
+    void VkMachine::RenderPass::constructFB(VkMachine::RenderTarget* target) {
+        vkDestroyFramebuffer(singleton->device, fb, nullptr);
+        fb = nullptr;
+        VkImageView attachments[4]{};
+        uint32_t count = 0;
+        if(target->color1){
+            attachments[0] = target->color1->view;
+            count = 1;
+            if(target->color2){
+                attachments[1] = target->color2->view;
+                count = 2;
+                if(target->color3){
+                    attachments[2] = target->color3->view;
+                    count = 3;
+                }
+            }
+        }
+        if(target->depthstencil){
+            attachments[count] = target->depthstencil->view;
+            count++;
+        }
+
+        VkFramebufferCreateInfo fbInfo{};
+        fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fbInfo.height = target->height;
+        fbInfo.width = target->width;
+        fbInfo.renderPass = rp;
+        fbInfo.layers = 1;
+        fbInfo.pAttachments = attachments;
+        fbInfo.attachmentCount = count;
+        VkResult result;
+        if((result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
+            LOGWITH("Failed to create framebuffer:",result);
+        }
+    }
+
+    void VkMachine::RenderPass::constructPipeline(VkShaderModule vs, VkShaderModule fs){ // 템플릿함수로 가야 함
+        
+    }
+
 
     // static함수들 구현
 
@@ -249,7 +526,7 @@ namespace onart {
         return instance;
     }
 
-    VkPhysicalDevice findPhysicalDevice(VkInstance instance, VkSurfaceKHR surface, bool* isCpu, int* graphicsQueue, int* presentQueue) {
+    VkPhysicalDevice findPhysicalDevice(VkInstance instance, VkSurfaceKHR surface, bool* isCpu, int* graphicsQueue, int* presentQueue, uint64_t* minUBAlignment) {
         uint32_t count;
         vkEnumeratePhysicalDevices(instance, &count, nullptr);
         std::vector<VkPhysicalDevice> cards(count);
@@ -297,6 +574,9 @@ namespace onart {
         *isCpu = !(maxScore & (0b111ULL << 61));
         *graphicsQueue = maxGq;
         *presentQueue = maxPq;
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(goodCard, &props);
+        *minUBAlignment = props.limits.minUniformBufferOffsetAlignment;
         return goodCard;
     }
 
@@ -404,7 +684,7 @@ namespace onart {
         return ret;
     }
 
-    VkImageView createImageView(VkDevice device, VkImage image, VkImageViewType type, VkFormat format, int levelCount, int layerCount, VkImageAspectFlagBits aspect){
+    VkImageView createImageView(VkDevice device, VkImage image, VkImageViewType type, VkFormat format, int levelCount, int layerCount, VkImageAspectFlags aspect){
         VkImageViewCreateInfo ivInfo{};
         ivInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         ivInfo.format = format;

@@ -14,10 +14,14 @@
 #ifndef __YR_VULKAN_H__
 #define __YR_VULKAN_H__
 
+#include "yr_string.hpp"
+
 #include "../externals/vulkan/vulkan.h"
 #define VMA_VULKAN_VERSION 1000000
 #include "../externals/vulkan/vk_mem_alloc.h"
 #include <vector>
+#include <set>
+#include <map>
 
 namespace onart {
 
@@ -29,6 +33,52 @@ namespace onart {
         public:
             /// @brief Vulkan 확인 계층을 사용하려면 이것을 활성화해 주세요. 사용하려면 Vulkan "SDK"가 컴퓨터에 깔려 있어야 합니다.
             constexpr static bool USE_VALIDATION_LAYER = false;
+            /// @brief 그리기 대상입니다. 텍스처로 사용하거나 메모리 맵으로 데이터에 접근할 수 있습니다. 
+            class RenderTarget;
+            /// @brief 
+            class RenderPass;
+            /// @brief 
+            class Texture;
+            /// @brief 정점 버퍼와 인덱스 버퍼를 합친 것입니다. 사양은 템플릿 생성자를 통해 정할 수 있습니다.
+            class Mesh;
+            /// @brief 렌더 타겟의 유형입니다.
+            enum class RenderTargetType { 
+                /// @brief 색 버퍼 1개를 보유합니다.
+                COLOR1 = 0b1,
+                /// @brief 색 버퍼 2개를 보유합니다.
+                COLOR2 = 0b11,
+                /// @brief 색 버퍼 3개를 보유합니다.
+                COLOR3 = 0b111,
+                /// @brief 깊이/스텐실 버퍼만을 보유합니다.
+                DEPTH = 0b1000,
+                /// @brief 색 버퍼 1개와 깊이/스텐실 버퍼를 보유합니다.
+                COLOR1DEPTH = 0b1001,
+                /// @brief 색 버퍼 2개와 깊이/스텐실 버퍼를 보유합니다.
+                COLOR2DEPTH = 0b1011,
+                /// @brief 색 버퍼 3개와 깊이/스텐실 버퍼를 보유합니다.
+                COLOR3DEPTH = 0b1111
+            };
+            /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다.
+            /// @param width 가로 길이(px).
+            /// @param height 세로 길이(px).
+            /// @param name 이후 별도로 접근할 수 있는 이름을 지정합니다. 단, 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다. "screen"이라는 이름은 예약되어 있어 사용이 불가능하며, 말 그대로 화면을 뜻합니다.
+            /// @param type @ref RenderTargetType 참고하세요.
+            /// @param sampled true면 샘플링 텍스처로 사용되고, false면 입력 첨부물로 사용됩니다. 일단은 화면을 최종 목적지로 간주하기 때문에 그 외의 용도는 없습니다.
+            /// @param mmap 이것이 true라면 픽셀 데이터에 순차로 접근할 수 있습니다. 단, 렌더링 성능이 낮아질 가능성이 매우 높습니다.
+            /// @return 이것을 통해 렌더 패스를 생성할 수 있습니다.
+            RenderTarget* createRenderTarget2D(int width, int height, const string16& name, RenderTargetType type = RenderTargetType::COLOR1DEPTH, bool sampled = true, bool mmap = false);
+            /// @brief SPIR-V 컴파일된 셰이더를 VkShaderModule 형태로 저장하고 가져옵니다.
+            /// @param spv SPIR-V 코드
+            /// @param size 주어진 SPIR-V 코드의 길이(바이트)
+            /// @param name 이후 별도로 접근할 수 있는 이름을 지정합니다. 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다.
+            VkShaderModule createShader(const uint32_t* spv, size_t size, const string16& name);
+            /// @brief 큐브맵 렌더 타겟을 생성하고 핸들을 리턴합니다. 한 번 부여된 핸들 번호는 같은 프로세스에서 다시는 사용되지 않습니다.
+            /// @param size 각 면의 가로/세로 길이(px)
+            /// @return 핸들입니다. 이것을 통해 렌더 패스를 생성할 수 있습니다.
+            int createRenderTargetCube(int size);
+            /// @brief 렌더 타겟을 제거합니다. 이것을 대상으로 하는 렌더패스 역시 모두 사용이 막힙니다.
+            /// @param handle 렌더 타겟 이름
+            void destroyRenderTarget(const string16& name);
         private:
             /// @brief 기본 Vulkan 컨텍스트를 생성합니다. 이 객체를 생성하면 기본적으로 인스턴스, 물리 장치, 가상 장치, 창 표면이 생성됩니다.
             VkMachine(Window*);
@@ -45,9 +95,11 @@ namespace onart {
             void createSwapchain(uint32_t width, uint32_t height, uint32_t gq, uint32_t pq);
             /// @brief 기존 스왑체인과 관련된 모든 것을 해제합니다.
             void destroySwapchain();
+            /// @brief vulkan 객체를 없앱니다.
+            void free();
             ~VkMachine();
-            /// @brief 이 클래스 객체는 Game, Game2 밖에서는 생성, 소멸 호출이 불가능합니다.
-            void operator delete(void*){}
+            /// @brief 이 클래스 객체는 Game 밖에서는 생성, 소멸 호출이 불가능합니다.
+            inline void operator delete(void*){}
         private:
             static VkMachine* singleton;
             VkInstance instance = nullptr;
@@ -56,20 +108,85 @@ namespace onart {
                 VkSurfaceCapabilitiesKHR caps;
                 VkSurfaceFormatKHR format;
             } surface;
-            VkPhysicalDevice card = nullptr;
+            struct{
+                VkPhysicalDevice card = nullptr;
+                int gq, pq;
+                uint64_t minUBOffsetAlignment;
+            } physicalDevice;
             VkDevice device = nullptr;
             VkQueue graphicsQueue = nullptr;
             VkQueue presentQueue = nullptr;
             VkCommandPool gCommandPool = 0;
             VkCommandBuffer baseBuffer[1]={};
-            int gq, pq;
             struct{
                 VkSwapchainKHR handle = 0;
                 VkExtent2D extent;
                 std::vector<VkImageView> imageView;
             }swapchain;
-            
+            std::map<string16, RenderTarget*> renderTargets;
+            std::map<string16, VkShaderModule> shaders;
+            struct ImageSet{
+                VkImage img = nullptr;
+                VkImageView view = nullptr;
+                VmaAllocation alloc = nullptr;
+                void free(VkDevice, VmaAllocator);
+            };
+            std::set<ImageSet*> images;
+            std::vector<std::shared_ptr<RenderPass>> passes;
             VmaAllocator allocator = nullptr;
+        private:
+            /// @brief 렌더 타겟에 부여된 이미지 셋을 제거합니다.
+            void removeImageSet(ImageSet*);
+    };
+
+    class VkMachine::RenderTarget{
+        friend class VkMachine;
+        public:
+            RenderTarget& operator=(const RenderTarget&) = delete;
+        private:
+            std::vector<RenderPass*> passes; // 렌더타겟이 없어지면 그것을 타겟으로 하는 렌더패스도 모두 없애야 함. 크기가 바뀌거나 하면 렌더패스도 모두 그에 맞게 바꿔야 함(크기를 바꿀 일의 예: 유저 설정에 의해 성능을 올리기 위해 크기를 줄임)
+            VkMachine::ImageSet* color1, *color2, *color3, *depthstencil;
+            unsigned width, height;
+            RenderTarget(unsigned width, unsigned height, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*);
+            ~RenderTarget();
+    };
+
+    class VkMachine::RenderPass{
+        friend class VkMachine;
+        public:
+            RenderPass& operator=(const RenderPass&) = delete;
+            /// @brief 푸시 상수를 세팅합니다.
+            void push(void*, int start, int end);
+            /// @brief 메시를 그립니다. (TODO: 인스턴싱을 위한 인터페이스 따로 추가)
+            void invoke(Mesh*);
+            /// @brief 명령 기록을 시작합니다.
+            void start();
+            /// @brief 기록된 그리기 관련 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
+            void draw();
+            /// @brief draw 수행 이후에 호출되면 그리기가 끝나고 나서 리턴합니다. 그 외의 경우는 그냥 리턴합니다.
+            void wait();
+            /// @brief 렌더타겟이 없어져 더 이상 사용할 수 없는 경우 true를 리턴합니다.
+            bool isDangling();
+        private:
+            RenderPass(RenderTarget*, VkShaderModule vs, VkShaderModule fs); // 이후 다수의 서브패스를 쓸 수 있도록 변경
+            void constructFB(RenderTarget*);
+            void constructPipeline(VkShaderModule vs, VkShaderModule fs);
+            void reconstruct(RenderTarget*);
+            VkFramebuffer fb = nullptr;
+            VkRenderPass rp = nullptr;
+            VkPipeline pipeline = nullptr;
+            VkFence fence = nullptr;
+            bool dangle = false;
+    };
+
+    class VkMachine::Texture{
+        public:
+        private:
+    };
+
+    class VkMachine::Mesh{
+        public:
+        private:
     };
 }
 
