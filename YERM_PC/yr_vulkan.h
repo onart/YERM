@@ -41,6 +41,8 @@ namespace onart {
             class Texture;
             /// @brief 정점 버퍼와 인덱스 버퍼를 합친 것입니다. 사양은 템플릿 생성자를 통해 정할 수 있습니다.
             class Mesh;
+            /// @brief 푸시 상수를 제외한 셰이더 자원을 나타냅니다. 동시에 사용되지만 않는다면 여러 렌더패스 간에 공유될 수 있습니다.
+            class UniformBuffer;
             /// @brief 렌더 타겟의 유형입니다.
             enum class RenderTargetType { 
                 /// @brief 색 버퍼 1개를 보유합니다.
@@ -110,7 +112,7 @@ namespace onart {
             } surface;
             struct{
                 VkPhysicalDevice card = nullptr;
-                int gq, pq;
+                uint32_t gq, pq;
                 uint64_t minUBOffsetAlignment;
             } physicalDevice;
             VkDevice device = nullptr;
@@ -118,6 +120,7 @@ namespace onart {
             VkQueue presentQueue = nullptr;
             VkCommandPool gCommandPool = 0;
             VkCommandBuffer baseBuffer[1]={};
+            VkDescriptorPool descriptorPool = nullptr;
             struct{
                 VkSwapchainKHR handle = 0;
                 VkExtent2D extent;
@@ -155,14 +158,16 @@ namespace onart {
         friend class VkMachine;
         public:
             RenderPass& operator=(const RenderPass&) = delete;
+            void setViewport();
+            void setScissor();
             /// @brief 푸시 상수를 세팅합니다.
             void push(void*, int start, int end);
             /// @brief 메시를 그립니다. (TODO: 인스턴싱을 위한 인터페이스 따로 추가)
             void invoke(Mesh*);
             /// @brief 명령 기록을 시작합니다.
             void start();
-            /// @brief 기록된 그리기 관련 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
-            void draw();
+            /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
+            void execute();
             /// @brief draw 수행 이후에 호출되면 그리기가 끝나고 나서 리턴합니다. 그 외의 경우는 그냥 리턴합니다.
             void wait();
             /// @brief 렌더타겟이 없어져 더 이상 사용할 수 없는 경우 true를 리턴합니다.
@@ -175,6 +180,7 @@ namespace onart {
             VkFramebuffer fb = nullptr;
             VkRenderPass rp = nullptr;
             VkPipeline pipeline = nullptr;
+            VkPipelineLayout layout = nullptr;
             VkFence fence = nullptr;
             bool dangle = false;
     };
@@ -187,6 +193,30 @@ namespace onart {
     class VkMachine::Mesh{
         public:
         private:
+    };
+
+    class VkMachine::UniformBuffer{
+        public:
+            inline uint32_t offset(uint32_t index) { return individual * index; }
+            /// @brief 동적 공유 버퍼에 한하여 버퍼 원소 수를 주어진 만큼으로 조정합니다. 기존 데이터는 유지됩니다.
+            void resize(uint32_t size);
+            /// @brief 유니폼 버퍼의 내용을 갱신합니다.
+            /// @param input 입력 데이터
+            /// @param index 몇 번째 내용을 수정할 것인지입니다. 동적 버퍼가 아닌 경우 값은 무시됩니다.
+            /// @param offset 데이터 내에서 몇 바이트째부터 수정할지
+            /// @param size 덮어쓸 양
+            void update(void* input, uint32_t index, uint32_t offset, uint32_t size);
+        private:
+            UniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, uint32_t binding = 0);
+            ~UniformBuffer();
+            VkDescriptorSetLayout layout = nullptr;
+            VkDescriptorSet dset = nullptr;
+            VkBuffer buffer = nullptr;
+            VmaAllocation alloc = nullptr;
+            const bool isDynamic;
+            uint32_t binding;
+            uint32_t individual = 0; // 동적 공유 버퍼인 경우 (버퍼 업데이트를 위한) 개별 성분의 크기
+            uint32_t length;
     };
 }
 

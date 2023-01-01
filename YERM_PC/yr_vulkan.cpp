@@ -24,7 +24,7 @@ namespace onart {
     /// @brief Vulkan 인스턴스를 생성합니다. 자동으로 호출됩니다.
     static VkInstance createInstance(Window*);
     /// @brief 사용할 Vulkan 물리 장치를 선택합니다. CPU 기반인 경우 경고를 표시하지만 선택에 실패하지는 않습니다.
-    static VkPhysicalDevice findPhysicalDevice(VkInstance, VkSurfaceKHR, bool*, int*, int*, uint64_t*);
+    static VkPhysicalDevice findPhysicalDevice(VkInstance, VkSurfaceKHR, bool*, uint32_t*, uint32_t*, uint64_t*);
     /// @brief 주어진 Vulkan 물리 장치에 대한 우선도를 매깁니다. 높을수록 좋게 취급합니다. 대부분의 경우 물리 장치는 하나일 것이므로 함수가 아주 중요하지는 않을 거라 생각됩니다.
     static uint64_t assessPhysicalDevice(VkPhysicalDevice);
     /// @brief 주어진 장치에 대한 가상 장치를 생성합니다.
@@ -35,6 +35,8 @@ namespace onart {
     static VkCommandPool createCommandPool(VkDevice, int qIndex);
     /// @brief 이미지로부터 뷰를 생성합니다.
     static VkImageView createImageView(VkDevice, VkImage, VkImageViewType, VkFormat, int, int, VkImageAspectFlags);
+    /// @brief 주어진 만큼의 기술자 집합을 할당할 수 있는 기술자 풀을 생성합니다.
+    static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t samplerLimit = 256, uint32_t dynUniLimit = 8, uint32_t uniLimit = 16, uint32_t intputAttachmentLimit = 16);
 
     /// @brief 활성화할 장치 확장
     constexpr const char* VK_DESIRED_DEVICE_EXT[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
@@ -96,6 +98,11 @@ namespace onart {
         int w,h;
         window->getSize(&w,&h);
         createSwapchain(w, h, physicalDevice.gq, physicalDevice.pq);
+
+        if(!(descriptorPool = createDescriptorPool(device))){
+            free();
+            return;
+        }
         
         singleton = this;
     }
@@ -196,14 +203,20 @@ namespace onart {
     }
 
     void VkMachine::free() {
+        for(auto& rt: renderTargets){
+            delete rt.second;
+        }
+        renderTargets.clear();
         destroySwapchain();
         vmaDestroyAllocator(allocator);
         vkDestroyCommandPool(device, gCommandPool, nullptr);
+        vkDestroyDescriptorPool(device, descriptorPool, nullptr);
         vkDestroyDevice(device, nullptr);
         vkDestroySurfaceKHR(instance, surface.handle, nullptr);
         vkDestroyInstance(instance, nullptr);
         allocator = nullptr;
         gCommandPool = 0;
+        descriptorPool = nullptr;
         device = nullptr;
         graphicsQueue = nullptr;
         presentQueue = nullptr;
@@ -487,7 +500,300 @@ namespace onart {
     }
 
     void VkMachine::RenderPass::constructPipeline(VkShaderModule vs, VkShaderModule fs){ // 템플릿함수로 가야 함
+        VkVertexInputBindingDescription vbind{};
+        VkVertexInputAttributeDescription vattrs[1]{};
+
+        VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo{};
+        inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
+
+        VkViewport viewport{};
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+
+        VkRect2D scissor{};
+
+        VkPipelineViewportStateCreateInfo viewportStateInfo{};
+        viewportStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewportStateInfo.viewportCount = 1;
+        viewportStateInfo.scissorCount = 1;
+        viewportStateInfo.pViewports = &viewport;
+        viewportStateInfo.pScissors = &scissor;
+
+        VkPipelineRasterizationStateCreateInfo rtrInfo{};
+        rtrInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rtrInfo.cullMode= VK_CULL_MODE_BACK_BIT;
+        rtrInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rtrInfo.lineWidth = 1.0f;
+        rtrInfo.polygonMode = VK_POLYGON_MODE_FILL;
         
+        VkPipelineDepthStencilStateCreateInfo dsInfo{};
+        dsInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        dsInfo.depthCompareOp = VK_COMPARE_OP_LESS;
+        dsInfo.depthTestEnable = VK_TRUE;
+        dsInfo.depthWriteEnable = VK_TRUE;
+        //dsInfo.stencilTestEnable
+
+        VkPipelineColorBlendAttachmentState blendInfo{};
+        blendInfo.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        blendInfo.colorBlendOp = VK_BLEND_OP_ADD;
+        blendInfo.alphaBlendOp = VK_BLEND_OP_ADD;
+        blendInfo.blendEnable = VK_TRUE;
+        blendInfo.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        blendInfo.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        blendInfo.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        blendInfo.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+
+        VkPipelineColorBlendStateCreateInfo fbbInfo{};
+        fbbInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        //fbbInfo.attachmentCount = 1; // 색 첨부물 수 필요
+
+        VkDynamicState dynStates[2] = {VkDynamicState::VK_DYNAMIC_STATE_VIEWPORT, VkDynamicState::VK_DYNAMIC_STATE_SCISSOR};
+        
+        VkPipelineDynamicStateCreateInfo dynInfo{};
+        dynInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynInfo.pDynamicStates = dynStates;
+        dynInfo.dynamicStateCount = sizeof(dynStates)/sizeof(VkDynamicState);
+        
+        VkPushConstantRange pushRange{};
+        pushRange.offset = 0;
+        pushRange.size = 128;
+        pushRange.stageFlags = VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT | VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        VkPipelineLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layoutInfo.pPushConstantRanges = &pushRange;
+        layoutInfo.pushConstantRangeCount = 1;        
+
+        VkGraphicsPipelineCreateInfo plInfo{};
+        plInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        // plInfo.stageCount = sizeof(shaderStagesInfo) / sizeof(shaderStagesInfo[0]);
+        // plInfo.pStages = shaderStagesInfo;
+        // plInfo.pVertexInputState
+        plInfo.pInputAssemblyState = &inputAssemblyInfo;
+        plInfo.renderPass = rp;
+        plInfo.subpass = 0;
+        plInfo.pRasterizationState = &rtrInfo;
+        //plInfo.pDynamicState
+        //plInfo.pDepthStencilState = &dsInfo;
+    }
+
+    VkMachine::UniformBuffer::UniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, uint32_t binding):length(length), isDynamic(length > 1) {
+        VkDescriptorSetLayoutBinding uboBinding{};
+        uboBinding.binding = binding;
+        uboBinding.descriptorType = (length == 1) ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboBinding.descriptorCount = 1; // 이 카운트가 늘면 ubo 자체가 배열이 됨
+        uboBinding.stageFlags = stages;
+
+        if(length > 1){
+            individual = (size + singleton->physicalDevice.minUBOffsetAlignment - 1);
+            individual -= individual % singleton->physicalDevice.minUBOffsetAlignment;
+        }
+        else{
+            individual = size;
+        }
+
+        // ex: layout(set = 1, binding = 1) uniform sampler2D tex[2]; 여기서 descriptor set은 1번 하나, binding은 그냥 정해 두는 번호, descriptor는 2개
+        
+        VkDescriptorSetLayoutCreateInfo uboInfo{};
+        uboInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        uboInfo.bindingCount = 1;
+        uboInfo.pBindings = &uboBinding;
+
+        VkResult result;
+        
+        if((result = vkCreateDescriptorSetLayout(singleton->device, &uboInfo, nullptr, &layout)) != VK_SUCCESS){
+            LOGWITH("Failed to create descriptor set layout:",result);
+            return;
+        }
+
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = singleton->descriptorPool;
+        allocInfo.descriptorSetCount = 1;
+        allocInfo.pSetLayouts = &layout;
+
+        if((result = vkAllocateDescriptorSets(singleton->device, &allocInfo, &dset)) != VK_SUCCESS){
+            LOGWITH("Failed to allocate descriptor set:",result);
+            return;
+        }
+
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        bufferInfo.size = individual * length;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo bainfo{};
+        bainfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO;
+        //vmaCreateBufferWithAlignment()
+        if(length > 1){
+            result = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
+        }
+        else{
+            result = vmaCreateBuffer(singleton->allocator, &bufferInfo, &bainfo, &buffer, &alloc, nullptr);
+        }
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create buffer:", result);
+            return;
+        }
+
+        VkDescriptorBufferInfo dsNBuffer{};
+        dsNBuffer.buffer = buffer;
+        dsNBuffer.offset = 0;
+        dsNBuffer.range = individual * length;
+        VkWriteDescriptorSet wr{};
+        wr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        wr.descriptorType = uboBinding.descriptorType;
+        wr.descriptorCount = uboBinding.descriptorCount;
+        wr.dstArrayElement = 0;
+        wr.dstBinding = uboBinding.binding;
+        wr.pBufferInfo = &dsNBuffer;
+        vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
+    }
+
+    void VkMachine::UniformBuffer::update(void* input, uint32_t index, uint32_t offset, uint32_t size){
+        VkCommandBuffer cbuf;
+        VkCommandBufferAllocateInfo binfo{};
+        binfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        binfo.level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        binfo.commandBufferCount = 1;
+        binfo.commandPool = singleton->gCommandPool;
+        VkResult result;
+        if((result = vkAllocateCommandBuffers(singleton->device, &binfo, &cbuf)) != VK_SUCCESS){
+            LOGWITH("Failed to allocate command buffer:", result);
+            return;
+        }
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        if((result = vkBeginCommandBuffer(cbuf, &beginInfo)) != VK_SUCCESS){
+            LOGWITH("Failed to begin command buffer:",result);
+            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
+            return;
+        }
+        vkCmdUpdateBuffer(cbuf, buffer, individual * index + offset, size, input);
+        if((result = vkEndCommandBuffer(cbuf)) != VK_SUCCESS){
+            LOGWITH("Failed to end command buffer:",result);
+            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
+            return;
+        }
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cbuf;
+        if((result = vkQueueSubmit(singleton->graphicsQueue, 1, &submitInfo, nullptr)) != VK_SUCCESS){
+            LOGWITH("Failed to submit buffer update command");
+            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
+            return;
+        }
+        // 이 부분은 더 유연한 동기화 방식을 강구할 것
+        vkQueueWaitIdle(singleton->graphicsQueue);
+        vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
+    }
+
+    void VkMachine::UniformBuffer::resize(uint32_t size) {
+        if(!isDynamic) return;
+        VkBuffer oldBuffer = buffer;
+        VmaAllocation oldAlloc = alloc;
+
+        VkResult result;
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        bufferInfo.size = individual * size;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo bainfo{};
+        bainfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO;
+        //vmaCreateBufferWithAlignment()
+        if(length > 1){
+            result = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
+        }
+        else{
+            result = vmaCreateBuffer(singleton->allocator, &bufferInfo, &bainfo, &buffer, &alloc, nullptr);
+        }
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create VkBuffer:", result);
+            return;
+        }
+
+        VkCommandBuffer cbuf;
+        VkCommandBufferAllocateInfo binfo{};
+        binfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        binfo.level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        binfo.commandBufferCount = 1;
+        binfo.commandPool = singleton->gCommandPool;
+        VkResult result;
+        if((result = vkAllocateCommandBuffers(singleton->device, &binfo, &cbuf)) != VK_SUCCESS){
+            LOGWITH("Failed to allocate command buffer:", result);
+            vmaDestroyBuffer(singleton->allocator, buffer, alloc);
+            buffer = oldBuffer;
+            alloc = oldAlloc;
+            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
+            return;
+        }
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        if((result = vkBeginCommandBuffer(cbuf, &beginInfo)) != VK_SUCCESS){
+            LOGWITH("Failed to begin command buffer:",result);
+            vmaDestroyBuffer(singleton->allocator, buffer, alloc);
+            buffer = oldBuffer;
+            alloc = oldAlloc;
+            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
+            return;
+        }
+        VkBufferCopy copyRegion{};
+        copyRegion.srcOffset = 0;
+        copyRegion.dstOffset = 0;
+        copyRegion.size = std::min(length, size) * individual;
+        vkCmdCopyBuffer(cbuf, oldBuffer, buffer, 1, &copyRegion);
+        if((result = vkEndCommandBuffer(cbuf)) != VK_SUCCESS){
+            LOGWITH("Failed to end command buffer:",result);
+            vmaDestroyBuffer(singleton->allocator, buffer, alloc);
+            buffer = oldBuffer;
+            alloc = oldAlloc;
+            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
+            return;
+        }
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cbuf;
+        if((result = vkQueueSubmit(singleton->graphicsQueue, 1, &submitInfo, nullptr)) != VK_SUCCESS){
+            LOGWITH("Failed to submit buffer update command");
+            vmaDestroyBuffer(singleton->allocator, buffer, alloc);
+            buffer = oldBuffer;
+            alloc = oldAlloc;
+            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
+            return;
+        }
+
+        VkDescriptorBufferInfo dsNBuffer{};
+        dsNBuffer.buffer = buffer;
+        dsNBuffer.offset = 0;
+        dsNBuffer.range = individual * length;
+        VkWriteDescriptorSet wr{};
+        wr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        wr.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        wr.descriptorCount = 1;
+        wr.dstArrayElement = 0;
+        wr.dstBinding = binding;
+        wr.pBufferInfo = &dsNBuffer;
+        vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
+        
+        // 이 부분은 더 유연한 동기화 방식을 강구할 것
+        vkQueueWaitIdle(singleton->graphicsQueue);
+        vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
+
+        vmaDestroyBuffer(singleton->allocator, oldBuffer, oldAlloc);
+    }
+
+    VkMachine::UniformBuffer::~UniformBuffer(){
+        vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
+        vkDestroyDescriptorSetLayout(singleton->device, layout, nullptr);
     }
 
 
@@ -526,7 +832,7 @@ namespace onart {
         return instance;
     }
 
-    VkPhysicalDevice findPhysicalDevice(VkInstance instance, VkSurfaceKHR surface, bool* isCpu, int* graphicsQueue, int* presentQueue, uint64_t* minUBAlignment) {
+    VkPhysicalDevice findPhysicalDevice(VkInstance instance, VkSurfaceKHR surface, bool* isCpu, uint32_t* graphicsQueue, uint32_t* presentQueue, uint64_t* minUBAlignment) {
         uint32_t count;
         vkEnumeratePhysicalDevices(instance, &count, nullptr);
         std::vector<VkPhysicalDevice> cards(count);
@@ -702,5 +1008,30 @@ namespace onart {
             return 0;
         }
         return ret;
+    }
+
+    VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t samplerLimit, uint32_t dynUniLimit, uint32_t uniLimit, uint32_t intputAttachmentLimit){
+        VkDescriptorPoolSize sizeInfo[4]{};
+        sizeInfo[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        sizeInfo[0].descriptorCount = samplerLimit;
+        sizeInfo[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC; // 환경 무관하게 최소 보장되는 값이 8
+        sizeInfo[1].descriptorCount = dynUniLimit;
+        sizeInfo[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; // 사용할 일이 별로 없을 것 같음
+        sizeInfo[2].descriptorCount = uniLimit;
+        sizeInfo[3].type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT; // 프로그램 내에서 굳이 그렇게 많은 디스크립터를 사용할 것 같진 않음
+        sizeInfo[3].descriptorCount = intputAttachmentLimit;
+
+        VkDescriptorPoolCreateInfo dPoolInfo{};
+        dPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        dPoolInfo.maxSets = samplerLimit + dynUniLimit + uniLimit + intputAttachmentLimit;
+        dPoolInfo.pPoolSizes = sizeInfo;
+        dPoolInfo.poolSizeCount = sizeof(sizeInfo) / sizeof(VkDescriptorPoolSize);
+        VkDescriptorPool ret;
+        VkResult result;
+        if((result = vkCreateDescriptorPool(device, &dPoolInfo, nullptr, &ret)) != VK_SUCCESS){
+            LOGWITH("Failed to create descriptor pool:",result);
+            return nullptr;
+        }
+        return ret;        
     }
 }
