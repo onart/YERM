@@ -21,6 +21,7 @@
 #include "../externals/vulkan/vk_mem_alloc.h"
 #include <vector>
 #include <set>
+#include <memory>
 #include <map>
 
 namespace onart {
@@ -205,8 +206,13 @@ namespace onart {
             /// @param index 몇 번째 내용을 수정할 것인지입니다. 동적 버퍼가 아닌 경우 값은 무시됩니다.
             /// @param offset 데이터 내에서 몇 바이트째부터 수정할지
             /// @param size 덮어쓸 양
-            void update(void* input, uint32_t index, uint32_t offset, uint32_t size);
+            void update(const void* input, uint32_t index, uint32_t offset, uint32_t size);
+            /// @brief TODO: 사용 가능한 위치를 받습니다.
+            /// @return 
+            uint32_t getPos();
         private:
+            /// @brief 임시로 저장되어 있던 내용을 모두 GPU로 올립니다.
+            void sync();
             UniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, uint32_t binding = 0);
             ~UniformBuffer();
             VkDescriptorSetLayout layout = nullptr;
@@ -217,6 +223,8 @@ namespace onart {
             uint32_t binding;
             uint32_t individual = 0; // 동적 공유 버퍼인 경우 (버퍼 업데이트를 위한) 개별 성분의 크기
             uint32_t length;
+            std::vector<uint8_t> staged;
+            void* mmap;
     };
 }
 

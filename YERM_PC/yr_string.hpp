@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <cstring>
 
 namespace onart{
     /// @brief 길이가 한정되었지만 모든 내용이 스택 상에 배치되며 C++ basic_string과 호환됩니다.

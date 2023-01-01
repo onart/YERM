@@ -448,7 +448,7 @@ namespace onart {
         dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         VkRenderPassCreateInfo rpInfo{};
         rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        rpInfo.attachmentCount = colorAttachmentCount + (uint32_t)target->depthstencil;
+        rpInfo.attachmentCount = colorAttachmentCount + (target->depthstencil ? 1 : 0);
         rpInfo.pAttachments = attachments;
         rpInfo.dependencyCount = sizeof(dependencies) / sizeof(VkSubpassDependency);
         rpInfo.pDependencies = dependencies;
@@ -627,7 +627,8 @@ namespace onart {
 
         VmaAllocationCreateInfo bainfo{};
         bainfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO;
-        //vmaCreateBufferWithAlignment()
+        bainfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+        
         if(length > 1){
             result = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
         }
@@ -636,6 +637,11 @@ namespace onart {
         }
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create buffer:", result);
+            return;
+        }
+
+        if((result = vmaMapMemory(singleton->allocator, alloc, &mmap)) != VK_SUCCESS){
+            LOGWITH("Failed to map memory:", result);
             return;
         }
 
@@ -651,52 +657,28 @@ namespace onart {
         wr.dstBinding = uboBinding.binding;
         wr.pBufferInfo = &dsNBuffer;
         vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
+        staged.resize(individual * length);
     }
 
-    void VkMachine::UniformBuffer::update(void* input, uint32_t index, uint32_t offset, uint32_t size){
-        VkCommandBuffer cbuf;
-        VkCommandBufferAllocateInfo binfo{};
-        binfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        binfo.level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        binfo.commandBufferCount = 1;
-        binfo.commandPool = singleton->gCommandPool;
-        VkResult result;
-        if((result = vkAllocateCommandBuffers(singleton->device, &binfo, &cbuf)) != VK_SUCCESS){
-            LOGWITH("Failed to allocate command buffer:", result);
-            return;
-        }
-        VkCommandBufferBeginInfo beginInfo{};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        if((result = vkBeginCommandBuffer(cbuf, &beginInfo)) != VK_SUCCESS){
-            LOGWITH("Failed to begin command buffer:",result);
-            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
-            return;
-        }
-        vkCmdUpdateBuffer(cbuf, buffer, individual * index + offset, size, input);
-        if((result = vkEndCommandBuffer(cbuf)) != VK_SUCCESS){
-            LOGWITH("Failed to end command buffer:",result);
-            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
-            return;
-        }
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &cbuf;
-        if((result = vkQueueSubmit(singleton->graphicsQueue, 1, &submitInfo, nullptr)) != VK_SUCCESS){
-            LOGWITH("Failed to submit buffer update command");
-            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
-            return;
-        }
-        // 이 부분은 더 유연한 동기화 방식을 강구할 것
-        vkQueueWaitIdle(singleton->graphicsQueue);
-        vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
+    void VkMachine::UniformBuffer::update(const void* input, uint32_t index, uint32_t offset, uint32_t size){
+        std::memcpy(&staged[index * individual + offset], input, size);
+    }
+
+    void VkMachine::UniformBuffer::sync(){
+        std::memcpy(mmap, staged.data(), staged.size());
+        vmaInvalidateAllocation(singleton->allocator, alloc, 0, VK_WHOLE_SIZE);
+        vmaFlushAllocation(singleton->allocator, alloc, 0, VK_WHOLE_SIZE);
     }
 
     void VkMachine::UniformBuffer::resize(uint32_t size) {
-        if(!isDynamic) return;
-        VkBuffer oldBuffer = buffer;
-        VmaAllocation oldAlloc = alloc;
+        if(!isDynamic || size == length) return;
+        staged.resize(individual * size);
+        length = size;
+        vmaUnmapMemory(singleton->allocator, alloc);
+        vmaDestroyBuffer(singleton->allocator, buffer, alloc); // 이것 때문에 렌더링과 동시에 진행 불가능
+        buffer = nullptr;
+        mmap = nullptr;
+        alloc = nullptr;
 
         VkResult result;
         VkBufferCreateInfo bufferInfo{};
@@ -707,67 +689,11 @@ namespace onart {
 
         VmaAllocationCreateInfo bainfo{};
         bainfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO;
-        //vmaCreateBufferWithAlignment()
-        if(length > 1){
-            result = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
-        }
-        else{
-            result = vmaCreateBuffer(singleton->allocator, &bufferInfo, &bainfo, &buffer, &alloc, nullptr);
-        }
+        bainfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+        
+        result = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create VkBuffer:", result);
-            return;
-        }
-
-        VkCommandBuffer cbuf;
-        VkCommandBufferAllocateInfo binfo{};
-        binfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        binfo.level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        binfo.commandBufferCount = 1;
-        binfo.commandPool = singleton->gCommandPool;
-        VkResult result;
-        if((result = vkAllocateCommandBuffers(singleton->device, &binfo, &cbuf)) != VK_SUCCESS){
-            LOGWITH("Failed to allocate command buffer:", result);
-            vmaDestroyBuffer(singleton->allocator, buffer, alloc);
-            buffer = oldBuffer;
-            alloc = oldAlloc;
-            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
-            return;
-        }
-        VkCommandBufferBeginInfo beginInfo{};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        if((result = vkBeginCommandBuffer(cbuf, &beginInfo)) != VK_SUCCESS){
-            LOGWITH("Failed to begin command buffer:",result);
-            vmaDestroyBuffer(singleton->allocator, buffer, alloc);
-            buffer = oldBuffer;
-            alloc = oldAlloc;
-            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
-            return;
-        }
-        VkBufferCopy copyRegion{};
-        copyRegion.srcOffset = 0;
-        copyRegion.dstOffset = 0;
-        copyRegion.size = std::min(length, size) * individual;
-        vkCmdCopyBuffer(cbuf, oldBuffer, buffer, 1, &copyRegion);
-        if((result = vkEndCommandBuffer(cbuf)) != VK_SUCCESS){
-            LOGWITH("Failed to end command buffer:",result);
-            vmaDestroyBuffer(singleton->allocator, buffer, alloc);
-            buffer = oldBuffer;
-            alloc = oldAlloc;
-            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
-            return;
-        }
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &cbuf;
-        if((result = vkQueueSubmit(singleton->graphicsQueue, 1, &submitInfo, nullptr)) != VK_SUCCESS){
-            LOGWITH("Failed to submit buffer update command");
-            vmaDestroyBuffer(singleton->allocator, buffer, alloc);
-            buffer = oldBuffer;
-            alloc = oldAlloc;
-            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
             return;
         }
 
@@ -783,12 +709,11 @@ namespace onart {
         wr.dstBinding = binding;
         wr.pBufferInfo = &dsNBuffer;
         vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
-        
-        // 이 부분은 더 유연한 동기화 방식을 강구할 것
-        vkQueueWaitIdle(singleton->graphicsQueue);
-        vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cbuf);
 
-        vmaDestroyBuffer(singleton->allocator, oldBuffer, oldAlloc);
+        if((result = vmaMapMemory(singleton->allocator, alloc, &mmap)) != VK_SUCCESS){
+            LOGWITH("Failed to map memory:", result);
+            return;
+        }
     }
 
     VkMachine::UniformBuffer::~UniformBuffer(){
