@@ -382,48 +382,46 @@ namespace onart {
         return shaders[name] = ret;
     }
 
-    VkMachine::pTexture VkMachine::createTexture(const string128& fileName, string128 name, bool ubtcs1){
-        const string128& _name = name.size() == 0 ? fileName : name;
-        auto it = textures.find(_name);
-        if (it != textures.end()) return it->second;
-        ktxTexture2* texture;
-        ktx_error_code_e k2result;
-        if((k2result= ktxTexture2_CreateFromNamedFile(fileName.c_str(), KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS){
-            LOGWITH("Failed to load ktx texture:",k2result);
-            return pTexture();
-        }
-
-        ktx_transcode_fmt_e tf;
+    VkMachine::pTexture VkMachine::createTexture(void* ktxObj, const string128& name){
+        ktxTexture2* texture = reinterpret_cast<ktxTexture2*>(ktxObj);
         VkFormat availableFormat;
-
-        switch (availableFormat = textureFormatFallback(physicalDevice.card, texture->baseWidth, texture->baseHeight, (VkFormat)texture->vkFormat, texture->isCubemap ? VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : (VkImageCreateFlagBits)0))
-        {
-        case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
-            tf = KTX_TTF_ASTC_4x4_RGBA;
-            break;
-        case VK_FORMAT_BC7_SRGB_BLOCK:
-            tf = KTX_TTF_BC7_RGBA;
-            break;
-        case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
-            tf = KTX_TTF_ETC2_RGBA;
-            break;
-        case VK_FORMAT_BC3_SRGB_BLOCK:
-            tf = KTX_TTF_BC3_RGBA;
-            break;
-        default:
-            tf = KTX_TTF_RGBA32;
-            break;
+        ktx_error_code_e k2result;
+        if(ktxTexture2_NeedsTranscoding(texture)){
+            ktx_transcode_fmt_e tf;
+            switch (availableFormat = textureFormatFallback(physicalDevice.card, texture->baseWidth, texture->baseHeight, (VkFormat)texture->vkFormat, texture->isCubemap ? VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : (VkImageCreateFlagBits)0))
+            {
+            case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+                tf = KTX_TTF_ASTC_4x4_RGBA;
+                break;
+            case VK_FORMAT_BC7_SRGB_BLOCK:
+                tf = KTX_TTF_BC7_RGBA;
+                break;
+            case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+                tf = KTX_TTF_ETC2_RGBA;
+                break;
+            case VK_FORMAT_BC3_SRGB_BLOCK:
+                tf = KTX_TTF_BC3_RGBA;
+                break;
+            default:
+                tf = KTX_TTF_RGBA32;
+                break;
+            }
+            if((k2result = ktxTexture2_TranscodeBasis(texture,tf, 0)) != KTX_SUCCESS){
+                LOGWITH("Failed to transcode ktx texture:",k2result);
+                ktxTexture_Destroy(ktxTexture(texture));
+                return pTexture();
+            }
         }
-        if((k2result = ktxTexture2_TranscodeBasis(texture,tf, 0)) != KTX_SUCCESS){
-            LOGWITH("Failed to transcode ktx texture:",k2result);
-            ktxTexture_Destroy(ktxTexture(texture));
-            return pTexture();
+        else{
+            // LOGWITH("Warning: this texture may fail to be created due to hardware condition");
+            availableFormat = (VkFormat)texture->vkFormat;
         }
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         bufferInfo.size = ktxTexture_GetDataSize(ktxTexture(texture));
+        
         VkBuffer newBuffer;
         VmaAllocation newAlloc;
         VmaAllocationCreateInfo allocInfo{};
@@ -449,33 +447,37 @@ namespace onart {
         vmaFlushAllocation(singleton->allocator, newAlloc, 0, VK_WHOLE_SIZE);
         vmaUnmapMemory(allocator, newAlloc);
 
-        // TODO: 아직 큐브맵 고려가 안 되어 있음
-        std::vector<VkBufferImageCopy> bufferCopyRegions(texture->numLevels);
-        for(uint32_t i = 0; i < texture->numLevels; i++){
-            ktx_size_t offset;
-            ktxTexture_GetImageOffset(ktxTexture(texture), i, 0, 0, &offset);
-            bufferCopyRegions[i].imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            bufferCopyRegions[i].imageSubresource.mipLevel = i;
-            bufferCopyRegions[i].imageSubresource.baseArrayLayer = 0;
-            bufferCopyRegions[i].imageSubresource.layerCount = 1;
-            bufferCopyRegions[i].imageExtent.width = texture->baseWidth;
-            bufferCopyRegions[i].imageExtent.height = texture->baseHeight;
-            bufferCopyRegions[i].imageExtent.depth = 1;
-            bufferCopyRegions[i].bufferOffset = offset;
-            bufferCopyRegions[i].bufferImageHeight = 0;
+        std::vector<VkBufferImageCopy> bufferCopyRegions(texture->numLevels * texture->numFaces);
+        uint32_t regionIndex = 0;
+        for(uint32_t f = 0; f < texture->numFaces; f++){
+            for(uint32_t i = 0; i < texture->numLevels; i++, regionIndex++){
+                ktx_size_t offset;
+                ktxTexture_GetImageOffset(ktxTexture(texture), i, 0, f, &offset);
+                VkBufferImageCopy& region = bufferCopyRegions[regionIndex];
+                region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                region.imageSubresource.mipLevel = i;
+                region.imageSubresource.baseArrayLayer = f;
+                region.imageSubresource.layerCount = 1;
+                region.imageExtent.width = texture->baseWidth >> i;
+                region.imageExtent.height = texture->baseHeight >> i;
+                region.imageExtent.depth = 1;
+                region.bufferOffset = offset;
+                region.bufferImageHeight = 0;
+            }
         }
         VkImageCreateInfo imgInfo{};
         imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imgInfo.imageType = VK_IMAGE_TYPE_2D;
         imgInfo.format = availableFormat;
         imgInfo.mipLevels = texture->numLevels;
-        imgInfo.arrayLayers = 1;
+        imgInfo.arrayLayers = texture->numFaces;
         imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
         imgInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         imgInfo.extent = {texture->baseWidth, texture->baseHeight, 1};
         imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        imgInfo.flags = texture->isCubemap ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
 
         VkImage newImg;
         VmaAllocation newAlloc2;
@@ -490,7 +492,7 @@ namespace onart {
         imgBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         imgBarrier.subresourceRange.baseMipLevel = 0;
         imgBarrier.subresourceRange.levelCount = texture->numLevels;
-        imgBarrier.subresourceRange.layerCount = 1;
+        imgBarrier.subresourceRange.layerCount = texture->numFaces;
         imgBarrier.srcAccessMask = 0;
         imgBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         imgBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -561,14 +563,32 @@ namespace onart {
             return pTexture();
         }
         struct txtr:public Texture{ inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3):Texture(_1,_2,_3){} };
-        return textures[_name] = std::make_shared<txtr>(newImg, newView, newAlloc2);
+        return textures[name] = std::make_shared<txtr>(newImg, newView, newAlloc2);
     }
 
-    VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, string128 name){
-        // TODO: 함수 단계를 분리해서 위의 거랑 통일
+    VkMachine::pTexture VkMachine::createTexture(const string128& fileName, const string128& name, bool ubtcs1){
+        const string128& _name = name.size() == 0 ? fileName : name;
+        auto it = textures.find(_name);
+        if (it != textures.end()) return it->second;
+        ktxTexture2* texture;
+        ktx_error_code_e k2result;
+        if((k2result= ktxTexture2_CreateFromNamedFile(fileName.c_str(), KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS){
+            LOGWITH("Failed to load ktx texture:",k2result);
+            return pTexture();
+        }
+        return createTexture(texture, _name);
+    }
+
+    VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, const string128& name){
         auto it = textures.find(name);
         if (it != textures.end()) return it->second;
-        return pTexture();
+        ktxTexture2* texture;
+        ktx_error_code_e k2result;
+        if((k2result = ktxTexture2_CreateFromMemory(mem, size, KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS){
+            LOGWITH("Failed to load ktx texture:",k2result);
+            return pTexture();
+        }
+        return createTexture(texture, name);
     }
 
     VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc):img(img), view(view), alloc(alloc){ }
