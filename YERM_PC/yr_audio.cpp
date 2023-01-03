@@ -194,9 +194,9 @@ namespace onart{
 
 #define _HSTBV reinterpret_cast<stb_vorbis*>(source)
 
-    pAudioSource Audio::Source::load(const string128& path, string128 name) {
-        if(name.size() == 0) name = path;
-        pAudioSource ret = get(name);
+    pAudioSource Audio::Source::load(const string128& path, const string128& name) {
+        const string128& _name = name.size() == 0 ? path : name;
+        pAudioSource ret = get(_name);
         if(ret) return ret;
         int stbErr;
 #if BOOST_PLAT_ANDROID
@@ -212,15 +212,15 @@ namespace onart{
         }
         stb_vorbis_info info = stb_vorbis_get_info(fp);
         if(info.channels != 2 || info.sample_rate != SAMPLE_RATE){ // Vorbis의 프레임당 샘플 수는 64 ~ 8192(2의 거듭제곱만)
-            LOGWITH(name, "Load failed: set the source\'s channel to 2 and sample rate to",SAMPLE_RATE);
+            LOGWITH(_name, "Load failed: set the source\'s channel to 2 and sample rate to",SAMPLE_RATE);
             stb_vorbis_close(fp);
             return pAudioSource();
         }
         struct audiosource:public Audio::Source{inline audiosource(void* _1):Source(_1){}};
         pAudioSource nw = std::make_shared<audiosource>(fp);
         std::unique_lock<std::mutex> _(g);
-        name2index.insert({name,sources.size()});
-        nw->it = name2index.find(name);
+        name2index.insert({_name,sources.size()});
+        nw->it = name2index.find(_name);
         sources.push_back(nw);
 #if BOOST_PLAT_ANDROID
         nw->dat = std::move(buf);

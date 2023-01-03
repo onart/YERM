@@ -15,6 +15,8 @@
 #include "yr_vulkan.h"
 #include "logger.hpp"
 #include "yr_sys.h"
+#define KHRONOS_STATIC
+#include "../externals/ktx/ktx.h"
 
 #include <algorithm>
 #include <vector>
@@ -37,6 +39,8 @@ namespace onart {
     static VkImageView createImageView(VkDevice, VkImage, VkImageViewType, VkFormat, int, int, VkImageAspectFlags);
     /// @brief 주어진 만큼의 기술자 집합을 할당할 수 있는 기술자 풀을 생성합니다.
     static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t samplerLimit = 256, uint32_t dynUniLimit = 8, uint32_t uniLimit = 16, uint32_t intputAttachmentLimit = 16);
+    /// @brief 주어진 기반 형식과 아귀가 맞는, 현재 장치에서 사용 가능한 압축 형식을 리턴합니다.
+    static VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, VkFormat base, bool hq = true, VkImageCreateFlagBits flags = VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT);
 
     /// @brief 활성화할 장치 확장
     constexpr const char* VK_DESIRED_DEVICE_EXT[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
@@ -376,7 +380,202 @@ namespace onart {
             return nullptr;
         }
         return shaders[name] = ret;
-    }    
+    }
+
+    VkMachine::pTexture VkMachine::createTexture(const string128& fileName, string128 name, bool ubtcs1){
+        const string128& _name = name.size() == 0 ? fileName : name;
+        auto it = textures.find(_name);
+        if (it != textures.end()) return it->second;
+        ktxTexture2* texture;
+        ktx_error_code_e k2result;
+        if((k2result= ktxTexture2_CreateFromNamedFile(fileName.c_str(), KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS){
+            LOGWITH("Failed to load ktx texture:",k2result);
+            return pTexture();
+        }
+
+        ktx_transcode_fmt_e tf;
+        VkFormat availableFormat;
+
+        switch (availableFormat = textureFormatFallback(physicalDevice.card, texture->baseWidth, texture->baseHeight, (VkFormat)texture->vkFormat, texture->isCubemap ? VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : (VkImageCreateFlagBits)0))
+        {
+        case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+            tf = KTX_TTF_ASTC_4x4_RGBA;
+            break;
+        case VK_FORMAT_BC7_SRGB_BLOCK:
+            tf = KTX_TTF_BC7_RGBA;
+            break;
+        case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+            tf = KTX_TTF_ETC2_RGBA;
+            break;
+        case VK_FORMAT_BC3_SRGB_BLOCK:
+            tf = KTX_TTF_BC3_RGBA;
+            break;
+        default:
+            tf = KTX_TTF_RGBA32;
+            break;
+        }
+        if((k2result = ktxTexture2_TranscodeBasis(texture,tf, 0)) != KTX_SUCCESS){
+            LOGWITH("Failed to transcode ktx texture:",k2result);
+            ktxTexture_Destroy(ktxTexture(texture));
+            return pTexture();
+        }
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        bufferInfo.size = ktxTexture_GetDataSize(ktxTexture(texture));
+        VkBuffer newBuffer;
+        VmaAllocation newAlloc;
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO;
+        allocInfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+        VkResult result;
+        result = vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &newBuffer, &newAlloc, nullptr);
+        if(result != VK_SUCCESS) {
+            LOGWITH("Failed to create buffer:",result);
+            ktxTexture_Destroy(ktxTexture(texture));
+            return pTexture();
+        }
+        void* mmap;
+        result = vmaMapMemory(allocator, newAlloc, &mmap);
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to map memory to buffer:",result);
+            vmaDestroyBuffer(allocator, newBuffer, newAlloc);
+            ktxTexture_Destroy(ktxTexture(texture));
+            return pTexture();
+        }
+        std::memcpy(mmap, ktxTexture_GetData(ktxTexture(texture)), bufferInfo.size);
+        vmaInvalidateAllocation(singleton->allocator, newAlloc, 0, VK_WHOLE_SIZE);
+        vmaFlushAllocation(singleton->allocator, newAlloc, 0, VK_WHOLE_SIZE);
+        vmaUnmapMemory(allocator, newAlloc);
+
+        // TODO: 아직 큐브맵 고려가 안 되어 있음
+        std::vector<VkBufferImageCopy> bufferCopyRegions(texture->numLevels);
+        for(uint32_t i = 0; i < texture->numLevels; i++){
+            ktx_size_t offset;
+            ktxTexture_GetImageOffset(ktxTexture(texture), i, 0, 0, &offset);
+            bufferCopyRegions[i].imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            bufferCopyRegions[i].imageSubresource.mipLevel = i;
+            bufferCopyRegions[i].imageSubresource.baseArrayLayer = 0;
+            bufferCopyRegions[i].imageSubresource.layerCount = 1;
+            bufferCopyRegions[i].imageExtent.width = texture->baseWidth;
+            bufferCopyRegions[i].imageExtent.height = texture->baseHeight;
+            bufferCopyRegions[i].imageExtent.depth = 1;
+            bufferCopyRegions[i].bufferOffset = offset;
+            bufferCopyRegions[i].bufferImageHeight = 0;
+        }
+        VkImageCreateInfo imgInfo{};
+        imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imgInfo.imageType = VK_IMAGE_TYPE_2D;
+        imgInfo.format = availableFormat;
+        imgInfo.mipLevels = texture->numLevels;
+        imgInfo.arrayLayers = 1;
+        imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imgInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imgInfo.extent = {texture->baseWidth, texture->baseHeight, 1};
+        imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+        VkImage newImg;
+        VmaAllocation newAlloc2;
+        allocInfo.flags = 0;
+        vmaCreateImage(allocator, &imgInfo, &allocInfo, &newImg, &newAlloc2, nullptr);
+        VkCommandBuffer copyCmd;
+        allocateCommandBuffers(1, true, &copyCmd);
+        
+        VkImageMemoryBarrier imgBarrier{};
+        imgBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        imgBarrier.image = newImg;
+        imgBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imgBarrier.subresourceRange.baseMipLevel = 0;
+        imgBarrier.subresourceRange.levelCount = texture->numLevels;
+        imgBarrier.subresourceRange.layerCount = 1;
+        imgBarrier.srcAccessMask = 0;
+        imgBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        imgBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imgBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        
+        if((result = vkBeginCommandBuffer(copyCmd, &beginInfo)) != VK_SUCCESS){
+            LOGWITH("Failed to begin command buffer:",result);
+            ktxTexture_Destroy(ktxTexture(texture));
+            vkFreeCommandBuffers(device, gCommandPool, 1, &copyCmd);
+            vmaDestroyImage(allocator, newImg, newAlloc2);
+            vmaDestroyBuffer(allocator, newBuffer, newAlloc);
+            return pTexture();
+        }
+        vkCmdPipelineBarrier(copyCmd, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imgBarrier);
+        vkCmdCopyBufferToImage(copyCmd, newBuffer, newImg, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, (uint32_t)bufferCopyRegions.size(), bufferCopyRegions.data());
+        imgBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        imgBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        imgBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        imgBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        vkCmdPipelineBarrier(copyCmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imgBarrier);
+
+        if((result = vkEndCommandBuffer(copyCmd)) != VK_SUCCESS){
+            LOGWITH("Failed to end command buffer:",result);
+            ktxTexture_Destroy(ktxTexture(texture));
+            vkFreeCommandBuffers(device, gCommandPool, 1, &copyCmd);
+            vmaDestroyImage(allocator, newImg, newAlloc2);
+            vmaDestroyBuffer(allocator, newBuffer, newAlloc);
+            return pTexture();
+        }
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &copyCmd;
+        if((result = vkQueueSubmit(graphicsQueue, 1, &submitInfo, nullptr)) != VK_SUCCESS){
+            LOGWITH("Failed to submit copy command:",result);
+            ktxTexture_Destroy(ktxTexture(texture));
+            vkFreeCommandBuffers(device, gCommandPool, 1, &copyCmd);
+            vmaDestroyImage(allocator, newImg, newAlloc2);
+            vmaDestroyBuffer(allocator, newBuffer, newAlloc);
+            return pTexture();
+        }
+
+        VkImageView newView;
+
+        VkImageViewCreateInfo viewInfo{};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image = newImg;
+        viewInfo.viewType = texture->isCubemap ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format = availableFormat;
+        viewInfo.subresourceRange = imgBarrier.subresourceRange;
+        ktxTexture_Destroy(ktxTexture(texture));
+
+        result = vkCreateImageView(device, &viewInfo, nullptr, &newView);
+        if((result = vkCreateImageView(device, &viewInfo, nullptr, &newView)) != VK_SUCCESS){
+            LOGWITH("Failed to create image view:",result);
+            return pTexture();
+        }
+
+        vkQueueWaitIdle(graphicsQueue);
+        vkFreeCommandBuffers(device, gCommandPool, 1, &copyCmd);
+        vmaDestroyBuffer(allocator, newBuffer, newAlloc);
+        
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create image view:",result);
+            vmaDestroyImage(allocator, newImg, newAlloc2);
+            return pTexture();
+        }
+        struct txtr:public Texture{ inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3):Texture(_1,_2,_3){} };
+        return textures[_name] = std::make_shared<txtr>(newImg, newView, newAlloc2);
+    }
+
+    VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, string128 name){
+        // TODO: 함수 단계를 분리해서 위의 거랑 통일
+        auto it = textures.find(name);
+        if (it != textures.end()) return it->second;
+        return pTexture();
+    }
+
+    VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc):img(img), view(view), alloc(alloc){ }
+    VkMachine::Texture::~Texture(){
+        vkDestroyImageView(singleton->device, view, nullptr);
+        vmaDestroyImage(singleton->allocator, img, alloc);
+    }
 
     VkMachine::RenderTarget::RenderTarget(unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil)
     :width(width), height(height), color1(color1), color2(color2), color3(color3), depthstencil(depthstencil){
@@ -658,6 +857,24 @@ namespace onart {
         wr.pBufferInfo = &dsNBuffer;
         vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
         staged.resize(individual * length);
+        std::vector<uint16_t> inds;
+        inds.reserve(length);
+        indices = std::move(std::priority_queue<uint16_t, std::vector<uint16_t>, std::greater<uint16_t>>(std::greater<uint16_t>(), std::move(inds)));
+        for(uint32_t i = 1; i <= length ; i++){ indices.push(i); }
+    }
+
+    uint16_t VkMachine::UniformBuffer::getIndex() {
+        if(!isDynamic) return 0;
+        if(indices.empty()){ resize(length * 3 / 2); }
+        
+        uint16_t ret = indices.top();
+        if(ret >= length) {
+            indices.swap(decltype(indices)());
+            resize(length * 3 / 2);
+            ret = indices.top();
+        }
+        indices.pop();
+        return ret;
     }
 
     void VkMachine::UniformBuffer::update(const void* input, uint32_t index, uint32_t offset, uint32_t size){
@@ -673,6 +890,11 @@ namespace onart {
     void VkMachine::UniformBuffer::resize(uint32_t size) {
         if(!isDynamic || size == length) return;
         staged.resize(individual * size);
+        if(size > length) {
+            for(uint32_t i = length; i < size; i++){
+                indices.push(i);
+            }
+        }
         length = size;
         vmaUnmapMemory(singleton->allocator, alloc);
         vmaDestroyBuffer(singleton->allocator, buffer, alloc); // 이것 때문에 렌더링과 동시에 진행 불가능
@@ -958,5 +1180,79 @@ namespace onart {
             return nullptr;
         }
         return ret;        
+    }
+
+    bool isThisFormatAvailable(VkPhysicalDevice physicalDevice, VkFormat format, uint32_t x, uint32_t y, VkImageCreateFlagBits flags = (VkImageCreateFlagBits)0) {
+    VkImageFormatProperties props;
+    VkResult result = vkGetPhysicalDeviceImageFormatProperties(
+        physicalDevice,
+        format,
+        VK_IMAGE_TYPE_2D,
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        flags, // 경우에 따라 VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
+        &props
+    );
+        return (result != VK_ERROR_FORMAT_NOT_SUPPORTED) &&
+            (props.maxExtent.width >= x) &&
+            (props.maxExtent.height >= y);
+    }
+
+    VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, VkFormat base, bool hq, VkImageCreateFlagBits flags) {
+    #define CHECK_N_RETURN(f) if(isThisFormatAvailable(physicalDevice,f,x,y,flags)) return f
+        switch (base)
+        {
+        case VK_FORMAT_R8G8B8A8_UNORM:
+            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
+            if(hq) return base;
+            CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC3_UNORM_BLOCK);
+            break;
+        case VK_FORMAT_R8G8B8A8_SRGB:
+            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
+            if(hq) return base;
+            CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC3_SRGB_BLOCK);
+        case VK_FORMAT_R8G8B8_UNORM:
+            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
+            if(hq) return base;
+            CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC1_RGB_UNORM_BLOCK);
+        case VK_FORMAT_R8G8B8_SRGB:
+            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
+            if(hq) return base;
+            CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC1_RGB_SRGB_BLOCK);
+            break;
+        case VK_FORMAT_R8G8_UNORM:
+            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
+            if(hq) return base;
+            CHECK_N_RETURN(VK_FORMAT_EAC_R11G11_UNORM_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC5_UNORM_BLOCK);
+            break;
+        case VK_FORMAT_R8G8_SRGB:
+            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
+            break;
+        case VK_FORMAT_R8_UNORM:
+            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
+            if(hq) return base;
+            CHECK_N_RETURN(VK_FORMAT_EAC_R11_UNORM_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC4_UNORM_BLOCK);
+            break;
+        case VK_FORMAT_R8_SRGB:
+            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
+        default:
+            break;
+        }
+        return base;
+    #undef CHECK_N_RETURN    
     }
 }

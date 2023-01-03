@@ -71,7 +71,7 @@ namespace onart{
             /// @param path 파일 경로. 안드로이드의 경우 자동으로 Asset 폴더로부터 불러옵니다.
             /// @param name 프로그램 내부적으로 사용할 이름입니다. 입력하지 않는 경우 파일 이름 그대로 들어가며, 이 값이 중복되는 경우 파일 이름과 무관하게 기존의 것을 리턴합니다.
             /// @return 불러온 객체의 포인터, 불러오기에 실패하면 빈 포인터가 리턴됩니다.
-            static pAudioSource load(const string128& path, string128 name = "");
+            static pAudioSource load(const string128& path, const string128& name = "");
             /// @brief 메모리에서 음성 파일을 불러옵니다.
             /// @param mem 메모리 변수
             /// @param name 프로그램 내에서 사용할 별명입니다. 이것이 기존의 것과 중복되는 경우 메모리 주소와 무관하게 기존의 것을 리턴합니다.

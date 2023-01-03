@@ -21,6 +21,7 @@
 #include "../externals/vulkan/vk_mem_alloc.h"
 #include <vector>
 #include <set>
+#include <queue>
 #include <memory>
 #include <map>
 
@@ -40,6 +41,7 @@ namespace onart {
             class RenderPass;
             /// @brief 
             class Texture;
+            using pTexture = std::shared_ptr<Texture>;
             /// @brief 정점 버퍼와 인덱스 버퍼를 합친 것입니다. 사양은 템플릿 생성자를 통해 정할 수 있습니다.
             class Mesh;
             /// @brief 푸시 상수를 제외한 셰이더 자원을 나타냅니다. 동시에 사용되지만 않는다면 여러 렌더패스 간에 공유될 수 있습니다.
@@ -61,6 +63,16 @@ namespace onart {
                 /// @brief 색 버퍼 3개와 깊이/스텐실 버퍼를 보유합니다.
                 COLOR3DEPTH = 0b1111
             };
+            /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패합니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
+            /// @param fileName 파일 이름
+            /// @param name 프로그램 내부에서 사용할 이름으로, 비워 두면 파일 이름을 그대로 사용합니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
+            /// @param ubtcs1 품질이 낮아져도 관계 없는데 메모리를 아끼고 싶을 때 true를 줍니다. 원본 파일이 이미 KTX2 - BasisU 형식인 경우 무시됩니다.
+            pTexture createTexture(const string128& fileName, string128 name = "", bool ubtcs1 = false);
+            /// @brief 메모리 상의 ktx2 파일을 통해 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패합니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
+            /// @param mem 이미지 시작 주소
+            /// @param size mem 배열의 길이(바이트)
+            /// @param name 프로그램 내부에서 사용할 이름입니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
+            pTexture createTexture(const uint8_t* mem, size_t size, string128 name);
             /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다.
             /// @param width 가로 길이(px).
             /// @param height 세로 길이(px).
@@ -129,6 +141,7 @@ namespace onart {
             }swapchain;
             std::map<string16, RenderTarget*> renderTargets;
             std::map<string16, VkShaderModule> shaders;
+            std::map<string128, pTexture> textures;
             struct ImageSet{
                 VkImage img = nullptr;
                 VkImageView view = nullptr;
@@ -188,7 +201,13 @@ namespace onart {
 
     class VkMachine::Texture{
         public:
+        protected:
+            Texture(VkImage img, VkImageView imgView, VmaAllocation alloc);
+            ~Texture();
         private:
+            VkImage img;
+            VkImageView view;
+            VmaAllocation alloc;
     };
 
     class VkMachine::Mesh{
@@ -199,7 +218,7 @@ namespace onart {
     class VkMachine::UniformBuffer{
         public:
             inline uint32_t offset(uint32_t index) { return individual * index; }
-            /// @brief 동적 공유 버퍼에 한하여 버퍼 원소 수를 주어진 만큼으로 조정합니다. 기존 데이터는 유지됩니다.
+            /// @brief 동적 공유 버퍼에 한하여 버퍼 원소 수를 주어진 만큼으로 조정합니다. 기존 데이터 중 주어진 크기 이내에 있는 것은 유지됩니다.
             void resize(uint32_t size);
             /// @brief 유니폼 버퍼의 내용을 갱신합니다.
             /// @param input 입력 데이터
@@ -207,9 +226,10 @@ namespace onart {
             /// @param offset 데이터 내에서 몇 바이트째부터 수정할지
             /// @param size 덮어쓸 양
             void update(const void* input, uint32_t index, uint32_t offset, uint32_t size);
-            /// @brief TODO: 사용 가능한 위치를 받습니다.
-            /// @return 
-            uint32_t getPos();
+            /// @brief 동적 유니폼 버퍼인 경우 사용할 수 있는 인덱스를 리턴합니다. 사용할 수 있는 공간이 없는 경우 공간을 늘립니다.
+            uint16_t getIndex();
+            /// @brief 파이프라인을 정의하기 위한 레이아웃을 가져옵니다.
+            inline VkDescriptorSetLayout getLayout() { return layout; }
         private:
             /// @brief 임시로 저장되어 있던 내용을 모두 GPU로 올립니다.
             void sync();
@@ -224,6 +244,7 @@ namespace onart {
             uint32_t individual = 0; // 동적 공유 버퍼인 경우 (버퍼 업데이트를 위한) 개별 성분의 크기
             uint32_t length;
             std::vector<uint8_t> staged;
+            std::priority_queue<uint16_t, std::vector<uint16_t>, std::greater<uint16_t>> indices;
             void* mmap;
     };
 }
