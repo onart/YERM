@@ -3,6 +3,7 @@
 
 #include "../externals/single_header/stb_image.h"
 #include "../externals/single_header/stb_image_resize.h"
+#include "../externals/vulkan/vulkan.h"
 #define KHRONOS_STATIC
 #include "../externals/ktx/ktx.h"
 
@@ -24,7 +25,7 @@ inline int gtePOT(int v){
     return v;
 }
 
-bool convert(const char* fileName, int mip, bool uastc = true) {
+bool convert(const char* fileName, int mip, bool uastc, bool loadSRGB) {
     if(mip <= 0) return false;
     uint8_t* mipPtrs[16]{};
     int x,y,ch;
@@ -40,15 +41,16 @@ bool convert(const char* fileName, int mip, bool uastc = true) {
         mipPtrs[0] = newpix;
     }
     for(int i=1;i < mip;i++){
-        if((x>>i) == 0 || (y>>i) == 0) break;
+        if ((x >> i) == 0 || (y >> i) == 0) { mip = i; break; }
         mipPtrs[i] = (uint8_t*)std::malloc(BASE_SIZE >> (i*2));
         stbir_resize_uint8(mipPtrs[0], x, y, 0, mipPtrs[i], x>>i, y>>i, 0, ch);
     }
 
     ktxTexture2* texture;
     ktxTextureCreateInfo info{};
-    constexpr uint32_t FORMAT[] = {~0, 9, 16, 23, 37}; // VK_FORMAT_R8_UNORM, VK_FORMAT_R8G8_UNORM, VK_FORMAT_R8G8B8_UNORM, VK_FORMAT_R8G8B8A8_UNORM
-    info.vkFormat = FORMAT[ch];
+    constexpr uint32_t FORMAT[] = {~0, VK_FORMAT_R8_UINT, VK_FORMAT_R8G8_UINT, VK_FORMAT_R8G8B8_UINT, VK_FORMAT_R8G8B8A8_UINT}; // 13, 20, 27, 41
+    constexpr uint32_t SRGB_FORMAT[] = {~0, VK_FORMAT_R8_SRGB, VK_FORMAT_R8G8_SRGB, VK_FORMAT_R8G8B8_SRGB, VK_FORMAT_R8G8B8A8_SRGB}; // 15, 22, 29, 43
+    info.vkFormat = loadSRGB ? SRGB_FORMAT[ch] : FORMAT[ch];
     info.baseWidth = x;
     info.baseHeight = y;
     info.baseDepth = 1;
@@ -60,12 +62,12 @@ bool convert(const char* fileName, int mip, bool uastc = true) {
     info.generateMipmaps = KTX_FALSE;
     ktx_error_code_e result = ktxTexture2_Create(&info, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture);
     if (result != KTX_SUCCESS) {
-        printf("KTX create failed: %d\n", result);
+        printf("KTX create failed: %d\n", mip);
         stbi_image_free(mipPtrs[0]);
         return false;
     }
     for(int i = 0; i < mip; i++){
-        result = ktxTexture_SetImageFromMemory(ktxTexture(texture), i, 0, 0, mipPtrs[i], sizeof(uint8_t) * ch * x * y);
+        result = ktxTexture_SetImageFromMemory(ktxTexture(texture), i, 0, 0, mipPtrs[i], BASE_SIZE >> (i*2));
         if(result != KTX_SUCCESS) {
             printf("KTX Image memory setting failed: %d\n", result);
             ktxTexture_Destroy(ktxTexture(texture));
@@ -85,7 +87,7 @@ bool convert(const char* fileName, int mip, bool uastc = true) {
     }
     std::filesystem::path path(fileName);
     path.replace_extension("");
-    path.append("_texture.ktx");
+    path += std::filesystem::path("_texture.ktx2");
     result = ktxTexture_WriteToNamedFile(ktxTexture(texture), path.string().c_str());
     if (result != KTX_SUCCESS) {
         printf("KTX write failed: %d\n", result);
@@ -102,8 +104,21 @@ bool convert(const char* fileName, int mip, bool uastc = true) {
 
 int main(int argc, char* argv[]){
     if(argc < 2) {
-        printf("Usage: %s file_name [mip_level] [uastc?]\n", argv[0]);
+        printf("Usage: %s file_name [mip_level] [etc1s?] [load as srgb?]\n", argv[0]);
+        printf("[etc1s?] and [load as srgb?] will be activated if the argument equals y or Y\n");
         return 0;
     }
-    convert(argv[1], argc >= 3 ? std::atoi(argv[2]) : 1, argc >= 4);
+    bool useETC1S = false;
+    bool loadSRGB = false;
+    if (argc >= 4) {
+        if ((argv[3][0] == 'y' || argv[3][0] == 'Y') && argv[3][1] == '\0') {
+            useETC1S = true;
+        }
+    }
+    if (argc >= 5) {
+        if ((argv[4][0] == 'y' || argv[4][0] == 'Y') && argv[4][1] == '\0') {
+            loadSRGB = true;
+        }
+    }
+    convert(argv[1], argc >= 3 ? std::atoi(argv[2]) : 1, !useETC1S, loadSRGB);
 }
