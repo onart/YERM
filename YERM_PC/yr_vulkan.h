@@ -73,7 +73,7 @@ namespace onart {
             /// @param size mem 배열의 길이(바이트)
             /// @param name 프로그램 내부에서 사용할 이름입니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             pTexture createTexture(const uint8_t* mem, size_t size, const string128& name);
-            /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다.
+            /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다. 이것을 해제하는 수단은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
             /// @param width 가로 길이(px).
             /// @param height 세로 길이(px).
             /// @param name 이후 별도로 접근할 수 있는 이름을 지정합니다. 단, 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다. "screen"이라는 이름은 예약되어 있어 사용이 불가능하며, 말 그대로 화면을 뜻합니다.
@@ -87,13 +87,25 @@ namespace onart {
             /// @param size 주어진 SPIR-V 코드의 길이(바이트)
             /// @param name 이후 별도로 접근할 수 있는 이름을 지정합니다. 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다.
             VkShaderModule createShader(const uint32_t* spv, size_t size, const string16& name);
+            /// @brief 셰이더에서 사용할 수 있는 uniform 버퍼를 생성하여 리턴합니다. 이것을 해제하는 방법은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
+            /// @param length 이 값이 1이면 버퍼 하나를 생성하며, 2 이상이면 동적 공유 버퍼를 생성합니다. 동적 공유 버퍼는 렌더 패스 진행 중 바인드할 영역을 바꿀 수 있습니다.
+            /// @param size 각 버퍼의 크기입니다.
+            /// @param stages 이 자원에 접근할 수 있는 셰이더 단계들입니다. (비트 플래그의 조합)
+            /// @param name 프로그램 내에서 사용할 이름입니다(최대 15바이트). 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
+            /// @param binding 바인딩 번호입니다.
+            UniformBuffer* createUniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, const string16& name, uint32_t binding = 0);
             /// @brief 큐브맵 렌더 타겟을 생성하고 핸들을 리턴합니다. 한 번 부여된 핸들 번호는 같은 프로세스에서 다시는 사용되지 않습니다.
             /// @param size 각 면의 가로/세로 길이(px)
             /// @return 핸들입니다. 이것을 통해 렌더 패스를 생성할 수 있습니다.
             int createRenderTargetCube(int size);
-            /// @brief 렌더 타겟을 제거합니다. 이것을 대상으로 하는 렌더패스 역시 모두 사용이 막힙니다.
-            /// @param handle 렌더 타겟 이름
-            void destroyRenderTarget(const string16& name);
+            /// @brief 만들어 둔 렌더 타겟을 리턴합니다. 없으면 nullptr를 리턴합니다.
+            RenderTarget* getRenderTarget(const string16& name);
+            /// @brief 만들어 둔 공유 버퍼를 리턴합니다. 없으면 nullptr를 리턴합니다.
+            UniformBuffer* getUniformBuffer(const string16& name);
+            /// @brief 만들어 둔 셰이더 모듈을 리턴합니다. 없으면 nullptr를 리턴합니다.
+            VkShaderModule getShader(const string16& name);
+            /// @brief 올려 둔 텍스처 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
+            pTexture getTexture(const string128& name);
         private:
             /// @brief 기본 Vulkan 컨텍스트를 생성합니다. 이 객체를 생성하면 기본적으로 인스턴스, 물리 장치, 가상 장치, 창 표면이 생성됩니다.
             VkMachine(Window*);
@@ -115,8 +127,10 @@ namespace onart {
             void createSwapchain(uint32_t width, uint32_t height, uint32_t gq, uint32_t pq);
             /// @brief 기존 스왑체인과 관련된 모든 것을 해제합니다.
             void destroySwapchain();
+            /// @brief 텍스처와 입력 첨부물에 대한 기술자 집합 레이아웃을 미리 만들어 둡니다.
+            bool createLayouts();
             /// @brief 샘플러들을 미리 만들어 둡니다.
-            void createSamplers();
+            bool createSamplers();
             /// @brief ktxTexture2 객체로 텍스처를 생성합니다.
             pTexture createTexture(void* ktxObj, const string128& name);
             /// @brief vulkan 객체를 없앱니다.
@@ -144,6 +158,8 @@ namespace onart {
             VkCommandBuffer baseBuffer[1]={};
             VkDescriptorPool descriptorPool = nullptr;
             VkDescriptorSetLayout textureLayout[4] = {}; // 바인딩 0~3 하나씩
+            VkDescriptorSetLayout inputAttachmentLayout[4] = {}; // 바인딩 0~3 하나씩
+            
             VkSampler textureSampler[16] = {}; // maxLod 1~17. TODO: 비등방성 샘플링 선택 제공
             struct{
                 VkSwapchainKHR handle = 0;
@@ -152,6 +168,7 @@ namespace onart {
             }swapchain;
             std::map<string16, RenderTarget*> renderTargets;
             std::map<string16, VkShaderModule> shaders;
+            std::map<string16, UniformBuffer*> uniformBuffers;
             std::map<string128, pTexture> textures;
             struct ImageSet{
                 VkImage img = nullptr;
@@ -174,6 +191,8 @@ namespace onart {
         private:
             std::vector<RenderPass*> passes; // 렌더타겟이 없어지면 그것을 타겟으로 하는 렌더패스도 모두 없애야 함. 크기가 바뀌거나 하면 렌더패스도 모두 그에 맞게 바꿔야 함(크기를 바꿀 일의 예: 유저 설정에 의해 성능을 올리기 위해 크기를 줄임)
             VkMachine::ImageSet* color1, *color2, *color3, *depthstencil;
+            VkDescriptorSetLayout layout1, layout2, layout3, layoutDS;
+            VkDescriptorSet dset1, dset2, dset3, dsetDS;
             unsigned width, height;
             RenderTarget(unsigned width, unsigned height, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*);
             ~RenderTarget();
@@ -186,7 +205,7 @@ namespace onart {
             void setViewport();
             void setScissor();
             /// @brief 푸시 상수를 세팅합니다.
-            void push(void*, int start, int end);
+            void push(void* input, int start, int end);
             /// @brief 메시를 그립니다. (TODO: 인스턴싱을 위한 인터페이스 따로 추가)
             void invoke(Mesh*);
             /// @brief 명령 기록을 시작합니다.
@@ -230,9 +249,10 @@ namespace onart {
     };
 
     class VkMachine::UniformBuffer{
+        friend class VkMachine;
         public:
             inline uint32_t offset(uint32_t index) { return individual * index; }
-            /// @brief 동적 공유 버퍼에 한하여 버퍼 원소 수를 주어진 만큼으로 조정합니다. 기존 데이터 중 주어진 크기 이내에 있는 것은 유지됩니다.
+            /// @brief 동적 공유 버퍼에 한하여 버퍼 원소 수를 주어진 만큼으로 조정합니다. 기존 데이터 중 주어진 크기 이내에 있는 것은 유지됩니다. 단, 어지간해서는 이 함수를 직/간접적으로 호출할 일이 없도록 첫 생성 시 크기(매개변수 length)를 적절히 마련합시다.
             void resize(uint32_t size);
             /// @brief 유니폼 버퍼의 내용을 갱신합니다.
             /// @param input 입력 데이터
@@ -247,7 +267,7 @@ namespace onart {
         private:
             /// @brief 임시로 저장되어 있던 내용을 모두 GPU로 올립니다.
             void sync();
-            UniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, uint32_t binding = 0);
+            UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc, void* mmap, uint32_t binding);
             ~UniformBuffer();
             VkDescriptorSetLayout layout = nullptr;
             VkDescriptorSet dset = nullptr;
@@ -255,9 +275,9 @@ namespace onart {
             VmaAllocation alloc = nullptr;
             const bool isDynamic;
             uint32_t binding;
-            uint32_t individual = 0; // 동적 공유 버퍼인 경우 (버퍼 업데이트를 위한) 개별 성분의 크기
+            const uint32_t individual; // 동적 공유 버퍼인 경우 (버퍼 업데이트를 위한) 개별 성분의 크기
             uint32_t length;
-            std::vector<uint8_t> staged;
+            std::vector<uint8_t> staged; // 순차접근을 효율적으로 활용하기 위해
             std::priority_queue<uint16_t, std::vector<uint16_t>, std::greater<uint16_t>> indices;
             void* mmap;
     };

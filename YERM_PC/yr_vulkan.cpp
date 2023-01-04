@@ -41,21 +41,19 @@ namespace onart {
     static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t samplerLimit = 256, uint32_t dynUniLimit = 8, uint32_t uniLimit = 16, uint32_t intputAttachmentLimit = 16);
     /// @brief 주어진 기반 형식과 아귀가 맞는, 현재 장치에서 사용 가능한 압축 형식을 리턴합니다.
     static VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, VkFormat base, bool hq = true, VkImageCreateFlagBits flags = VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT);
-    /// @brief 텍스처를 만들 때마다 공통으로 사용할 레이아웃을 리턴합니다.
-    static VkDescriptorSetLayout makeTextureLayout(VkDevice device, uint32_t binding);
 
     /// @brief 활성화할 장치 확장
     constexpr const char* VK_DESIRED_DEVICE_EXT[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 
 
     VkMachine* VkMachine::singleton = nullptr;
-    
+
     VkMachine::VkMachine(Window* window){
         if(singleton) {
             LOGWITH("Tried to create multiple VkMachine objects");
             return;
         }
-        
+
         if(!(instance = createInstance(window))) {
             return;
         }
@@ -75,7 +73,7 @@ namespace onart {
         }
         if(isCpu) LOGWITH("Warning: this device is CPU");
         // properties.limits.minMemorymapAlignment, minTexelBufferOffsetAlignment, minUniformBufferOffsetAlignment, minStorageBufferOffsetAlignment, optimalBufferCopyOffsetAlignment, optimalBufferCopyRowPitchAlignment를 저장
-        
+
         checkSurfaceHandle();
 
         if(!(device = createDevice(physicalDevice.card, physicalDevice.gq, physicalDevice.pq))) {
@@ -110,10 +108,36 @@ namespace onart {
             return;
         }
 
-        for(uint32_t i=0;i<4;i++){ textureLayout[i] = makeTextureLayout(device, i); }
-        createSamplers();
-        
+        if(!createLayouts() || !createSamplers()){
+            free();
+            return;
+        }
+
         singleton = this;
+    }
+
+    VkMachine::RenderTarget* VkMachine::getRenderTarget(const string16& name){
+        auto it = renderTargets.find(name);
+        if(it != renderTargets.end()) return it->second;
+        else return nullptr;
+    }
+
+    VkMachine::UniformBuffer* VkMachine::getUniformBuffer(const string16& name){
+        auto it = uniformBuffers.find(name);
+        if(it != uniformBuffers.end()) return it->second;
+        else return nullptr;
+    }
+            
+    VkShaderModule VkMachine::getShader(const string16& name){
+        auto it = shaders.find(name);
+        if(it != shaders.end()) return it->second;
+        else return nullptr;
+    }
+            
+    VkMachine::pTexture VkMachine::getTexture(const string128& name){
+        auto it = textures.find(name);
+        if(it != textures.end()) return it->second;
+        else return pTexture();
     }
 
     void VkMachine::resetWindow(Window* window) {
@@ -201,7 +225,7 @@ namespace onart {
                 return;
             }
         }
-        
+
     }
 
     void VkMachine::destroySwapchain(){
@@ -211,11 +235,47 @@ namespace onart {
         swapchain.handle = 0;
     }
 
-    void VkMachine::free() {
-        for(auto& rt: renderTargets){
-            delete rt.second;
+    bool VkMachine::createLayouts(){
+        VkDescriptorSetLayoutBinding txBinding{};
+        txBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        txBinding.descriptorCount = 1;
+        txBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = 1;
+        layoutInfo.pBindings = &txBinding;
+
+        for(txBinding.binding = 0; txBinding.binding < 4; txBinding.binding++){
+            VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &textureLayout[txBinding.binding]);
+            if(result != VK_SUCCESS){
+                LOGWITH("Failed to create texture descriptor set layout binding ",txBinding.binding,':', result);
+                return false;
+            }
         }
+
+        txBinding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+
+        for(txBinding.binding = 0; txBinding.binding < 4; txBinding.binding++){
+            VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &inputAttachmentLayout[txBinding.binding]);
+            if(result != VK_SUCCESS){
+                LOGWITH("Failed to create input attachment descriptor set layout binding ",txBinding.binding,':', result);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    void VkMachine::free() {
+        for(VkDescriptorSetLayout& layout: textureLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = nullptr; }
+        for(VkDescriptorSetLayout& layout: inputAttachmentLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = nullptr; }
+        for(VkSampler& sampler: textureSampler) { vkDestroySampler(device, sampler, nullptr); sampler = nullptr; }
+        for(auto& rt: renderTargets){ delete rt.second; }
+        for(auto& sh: shaders) { vkDestroyShaderModule(device, sh.second, nullptr); }
+
         renderTargets.clear();
+        shaders.clear();
         destroySwapchain();
         vmaDestroyAllocator(allocator);
         vkDestroyCommandPool(device, gCommandPool, nullptr);
@@ -239,15 +299,15 @@ namespace onart {
         dsAllocInfo.pSetLayouts = layouts;
         dsAllocInfo.descriptorSetCount = count;
         dsAllocInfo.descriptorPool = descriptorPool;
-        
+
         VkResult result = vkAllocateDescriptorSets(device, &dsAllocInfo, output);
         if(result != VK_SUCCESS){
-            LOGWITH("Failed to create descriptor sets:",result);
+            LOGWITH("Failed to allocate descriptor sets:",result);
             output[0]=nullptr;
         }
     }
 
-    void VkMachine::createSamplers(){
+    bool VkMachine::createSamplers(){
         VkSamplerCreateInfo samplerInfo{};
         samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
         samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
@@ -265,8 +325,10 @@ namespace onart {
             result = vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler[i]);
             if(result != VK_SUCCESS){
                 LOGWITH("Failed to create texture sampler:", result);
+                return false;
             }
         }
+        return true;
     }
 
     VkMachine::~VkMachine(){
@@ -362,7 +424,7 @@ namespace onart {
                         delete color2;
                         delete color3;
                         return nullptr;
-                    }                
+                    }
                 }
             }
         }
@@ -393,6 +455,7 @@ namespace onart {
         if(color2) images.insert(color2);
         if(color3) images.insert(color3);
         if(ds) images.insert(ds);
+
         return renderTargets.emplace(name, new RenderTarget(width, height, color1, color2, color3, ds)).first->second;
     }
 
@@ -406,10 +469,9 @@ namespace onart {
     }
 
     VkShaderModule VkMachine::createShader(const uint32_t* spv, size_t size, const string16& name) {
-        auto it = shaders.find(name);
-        if(it != shaders.end()){
-            return it->second;
-        }
+        VkShaderModule ret = getShader(name);
+        if(ret) return ret;
+        
         VkShaderModule ret;
         VkShaderModuleCreateInfo smInfo{};
         smInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -462,7 +524,7 @@ namespace onart {
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         bufferInfo.size = ktxTexture_GetDataSize(ktxTexture(texture));
-        
+
         VkBuffer newBuffer;
         VmaAllocation newAlloc;
         VmaAllocationCreateInfo allocInfo{};
@@ -526,7 +588,7 @@ namespace onart {
         vmaCreateImage(allocator, &imgInfo, &allocInfo, &newImg, &newAlloc2, nullptr);
         VkCommandBuffer copyCmd;
         allocateCommandBuffers(1, true, &copyCmd);
-        
+
         VkImageMemoryBarrier imgBarrier{};
         imgBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         imgBarrier.image = newImg;
@@ -540,7 +602,7 @@ namespace onart {
         imgBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        
+
         if((result = vkBeginCommandBuffer(copyCmd, &beginInfo)) != VK_SUCCESS){
             LOGWITH("Failed to begin command buffer:",result);
             ktxTexture_Destroy(ktxTexture(texture));
@@ -597,7 +659,7 @@ namespace onart {
         vkQueueWaitIdle(graphicsQueue);
         vkFreeCommandBuffers(device, gCommandPool, 1, &copyCmd);
         vmaDestroyBuffer(allocator, newBuffer, newAlloc);
-        
+
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create image view:",result);
             vmaDestroyImage(allocator, newImg, newAlloc2);
@@ -634,8 +696,9 @@ namespace onart {
 
     VkMachine::pTexture VkMachine::createTexture(const string128& fileName, const string128& name, bool ubtcs1){
         const string128& _name = name.size() == 0 ? fileName : name;
-        auto it = textures.find(_name);
-        if (it != textures.end()) return it->second;
+        pTexture ret(std::move(getTexture(_name)));
+        if(ret) return ret;
+        
         ktxTexture2* texture;
         ktx_error_code_e k2result;
         if((k2result= ktxTexture2_CreateFromNamedFile(fileName.c_str(), KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS){
@@ -646,8 +709,8 @@ namespace onart {
     }
 
     VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, const string128& name){
-        auto it = textures.find(name);
-        if (it != textures.end()) return it->second;
+        pTexture ret(std::move(getTexture(name)));
+        if(ret) return ret;
         ktxTexture2* texture;
         ktx_error_code_e k2result;
         if((k2result = ktxTexture2_CreateFromMemory(mem, size, KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS){
@@ -670,6 +733,96 @@ namespace onart {
 
     VkMachine::RenderTarget::RenderTarget(unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil)
     :width(width), height(height), color1(color1), color2(color2), color3(color3), depthstencil(depthstencil){
+    }
+
+    VkMachine::UniformBuffer* VkMachine::createUniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, const string16& name, uint32_t binding){
+        UniformBuffer* ret = getUniformBuffer(name);
+        if(ret) return ret;
+
+        VkDescriptorSetLayoutBinding uboBinding{};
+        uboBinding.binding = binding;
+        uboBinding.descriptorType = (length == 1) ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboBinding.descriptorCount = 1; // 이 카운트가 늘면 ubo 자체가 배열이 됨, 언젠가는 이를 선택으로 제공할 수도
+        uboBinding.stageFlags = stages;
+
+        uint32_t individual;
+        VkDescriptorSetLayout layout;
+        VkDescriptorSet dset;
+        VkBuffer buffer;
+        VmaAllocation alloc;
+        void* mmap;
+
+        if(length > 1){
+            individual = (size + physicalDevice.minUBOffsetAlignment - 1);
+            individual -= individual % physicalDevice.minUBOffsetAlignment;
+        }
+        else{
+            individual = size;
+        }
+
+        // ex: layout(set = 1, binding = 1) uniform sampler2D tex[2]; 여기서 descriptor set은 1번 하나, binding은 그냥 정해 두는 번호, descriptor는 2개
+
+        VkDescriptorSetLayoutCreateInfo uboInfo{};
+        uboInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        uboInfo.bindingCount = 1;
+        uboInfo.pBindings = &uboBinding;
+
+        VkResult result;
+        
+        if((result = vkCreateDescriptorSetLayout(device, &uboInfo, nullptr, &layout)) != VK_SUCCESS){
+            LOGWITH("Failed to create descriptor set layout:",result);
+            return;
+        }
+
+
+        allocateDescriptorSets(&layout, 1, &dset);
+        if(!dset){
+            LOGHERE;
+            vkDestroyDescriptorSetLayout(device, layout, nullptr);
+            return;
+        }
+
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        bufferInfo.size = individual * length;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VmaAllocationCreateInfo bainfo{};
+        bainfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO;
+        bainfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+
+        if(length > 1){
+            result = vmaCreateBufferWithAlignment(allocator, &bufferInfo, &bainfo, physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
+        }
+        else{
+            result = vmaCreateBuffer(allocator, &bufferInfo, &bainfo, &buffer, &alloc, nullptr);
+        }
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create buffer:", result);
+            return;
+        }
+
+        if((result = vmaMapMemory(allocator, alloc, &mmap)) != VK_SUCCESS){
+            LOGWITH("Failed to map memory:", result);
+            return;
+        }
+
+        VkDescriptorBufferInfo dsNBuffer{};
+        dsNBuffer.buffer = buffer;
+        dsNBuffer.offset = 0;
+        dsNBuffer.range = individual * length;
+        VkWriteDescriptorSet wr{};
+        wr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        wr.descriptorType = uboBinding.descriptorType;
+        wr.descriptorCount = uboBinding.descriptorCount;
+        wr.dstArrayElement = 0;
+        wr.dstBinding = uboBinding.binding;
+        wr.pBufferInfo = &dsNBuffer;
+        wr.dstSet = dset;
+        vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
+
+        return uniformBuffers[name] = new UniformBuffer(length, individual, buffer, layout, dset, alloc, mmap, binding);
     }
 
     VkMachine::RenderTarget::~RenderTarget(){
@@ -817,7 +970,7 @@ namespace onart {
         rtrInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rtrInfo.lineWidth = 1.0f;
         rtrInfo.polygonMode = VK_POLYGON_MODE_FILL;
-        
+
         VkPipelineDepthStencilStateCreateInfo dsInfo{};
         dsInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
         dsInfo.depthCompareOp = VK_COMPARE_OP_LESS;
@@ -840,12 +993,12 @@ namespace onart {
         //fbbInfo.attachmentCount = 1; // 색 첨부물 수 필요
 
         VkDynamicState dynStates[2] = {VkDynamicState::VK_DYNAMIC_STATE_VIEWPORT, VkDynamicState::VK_DYNAMIC_STATE_SCISSOR};
-        
+
         VkPipelineDynamicStateCreateInfo dynInfo{};
         dynInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
         dynInfo.pDynamicStates = dynStates;
         dynInfo.dynamicStateCount = sizeof(dynStates)/sizeof(VkDynamicState);
-        
+
         VkPushConstantRange pushRange{};
         pushRange.offset = 0;
         pushRange.size = 128;
@@ -854,7 +1007,7 @@ namespace onart {
         VkPipelineLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         layoutInfo.pPushConstantRanges = &pushRange;
-        layoutInfo.pushConstantRangeCount = 1;        
+        layoutInfo.pushConstantRangeCount = 1;
 
         VkGraphicsPipelineCreateInfo plInfo{};
         plInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -869,95 +1022,19 @@ namespace onart {
         //plInfo.pDepthStencilState = &dsInfo;
     }
 
-    VkMachine::UniformBuffer::UniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, uint32_t binding):length(length), isDynamic(length > 1) {
-        VkDescriptorSetLayoutBinding uboBinding{};
-        uboBinding.binding = binding;
-        uboBinding.descriptorType = (length == 1) ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        uboBinding.descriptorCount = 1; // 이 카운트가 늘면 ubo 자체가 배열이 됨
-        uboBinding.stageFlags = stages;
-
-        if(length > 1){
-            individual = (size + singleton->physicalDevice.minUBOffsetAlignment - 1);
-            individual -= individual % singleton->physicalDevice.minUBOffsetAlignment;
-        }
-        else{
-            individual = size;
-        }
-
-        // ex: layout(set = 1, binding = 1) uniform sampler2D tex[2]; 여기서 descriptor set은 1번 하나, binding은 그냥 정해 두는 번호, descriptor는 2개
-        
-        VkDescriptorSetLayoutCreateInfo uboInfo{};
-        uboInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        uboInfo.bindingCount = 1;
-        uboInfo.pBindings = &uboBinding;
-
-        VkResult result;
-        
-        if((result = vkCreateDescriptorSetLayout(singleton->device, &uboInfo, nullptr, &layout)) != VK_SUCCESS){
-            LOGWITH("Failed to create descriptor set layout:",result);
-            return;
-        }
-
-        VkDescriptorSetAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = singleton->descriptorPool;
-        allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = &layout;
-
-        if((result = vkAllocateDescriptorSets(singleton->device, &allocInfo, &dset)) != VK_SUCCESS){
-            LOGWITH("Failed to allocate descriptor set:",result);
-            return;
-        }
-
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        bufferInfo.size = individual * length;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VmaAllocationCreateInfo bainfo{};
-        bainfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO;
-        bainfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-        
-        if(length > 1){
-            result = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
-        }
-        else{
-            result = vmaCreateBuffer(singleton->allocator, &bufferInfo, &bainfo, &buffer, &alloc, nullptr);
-        }
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create buffer:", result);
-            return;
-        }
-
-        if((result = vmaMapMemory(singleton->allocator, alloc, &mmap)) != VK_SUCCESS){
-            LOGWITH("Failed to map memory:", result);
-            return;
-        }
-
-        VkDescriptorBufferInfo dsNBuffer{};
-        dsNBuffer.buffer = buffer;
-        dsNBuffer.offset = 0;
-        dsNBuffer.range = individual * length;
-        VkWriteDescriptorSet wr{};
-        wr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        wr.descriptorType = uboBinding.descriptorType;
-        wr.descriptorCount = uboBinding.descriptorCount;
-        wr.dstArrayElement = 0;
-        wr.dstBinding = uboBinding.binding;
-        wr.pBufferInfo = &dsNBuffer;
-        vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
+    VkMachine::UniformBuffer::UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc, void* mmap, uint32_t binding)
+    :length(length), individual(individual), buffer(buffer), layout(layout), dset(dset), alloc(alloc), isDynamic(length > 1), mmap(mmap), binding(binding) {
         staged.resize(individual * length);
         std::vector<uint16_t> inds;
         inds.reserve(length);
-        indices = std::move(std::priority_queue<uint16_t, std::vector<uint16_t>, std::greater<uint16_t>>(std::greater<uint16_t>(), std::move(inds)));
+        indices = std::move(decltype(indices)(std::greater<uint16_t>(), std::move(inds)));
         for(uint32_t i = 1; i <= length ; i++){ indices.push(i); }
     }
 
     uint16_t VkMachine::UniformBuffer::getIndex() {
         if(!isDynamic) return 0;
         if(indices.empty()){ resize(length * 3 / 2); }
-        
+
         uint16_t ret = indices.top();
         if(ret >= length) {
             indices.swap(decltype(indices)());
@@ -1003,7 +1080,7 @@ namespace onart {
         VmaAllocationCreateInfo bainfo{};
         bainfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO;
         bainfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-        
+
         result = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create VkBuffer:", result);
@@ -1032,6 +1109,7 @@ namespace onart {
     VkMachine::UniformBuffer::~UniformBuffer(){
         vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
         vkDestroyDescriptorSetLayout(singleton->device, layout, nullptr);
+        vmaDestroyBuffer(singleton->allocator, buffer, alloc);
     }
 
 
@@ -1086,10 +1164,10 @@ namespace onart {
             vkGetPhysicalDeviceQueueFamilyProperties(card, &qfcount, nullptr);
             std::vector<VkQueueFamilyProperties> qfs(qfcount);
             vkGetPhysicalDeviceQueueFamilyProperties(card, &qfcount, qfs.data());
-            
+
             // 큐 계열: GRAPHICS, PRESENT 사용이 안 되면 0점
             for(uint32_t i = 0; i < qfcount ; i++){
-                if(qfs[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) { 
+                if(qfs[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
                     if(gq == ~0ULL) {
                         gq = i;
                     }
@@ -1104,7 +1182,7 @@ namespace onart {
                 }
                 if((gq == ~0ULL) && (pq == ~0ULL)) break;
             }
-            
+
             if (gq < 0 || pq < 0) continue;
 
             uint64_t score = assessPhysicalDevice(card);
@@ -1167,7 +1245,7 @@ namespace onart {
         qInfo[0].queueFamilyIndex = gq;
         qInfo[0].queueCount = 1;
         qInfo[0].pQueuePriorities = &queuePriority;
-        
+
         qInfo[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
         qInfo[1].queueFamilyIndex = gq;
         qInfo[1].queueCount = 1;
@@ -1188,7 +1266,7 @@ namespace onart {
         deviceInfo.pEnabledFeatures = &wantedFeatures;
         deviceInfo.ppEnabledExtensionNames = VK_DESIRED_DEVICE_EXT;
         deviceInfo.enabledExtensionCount = sizeof(VK_DESIRED_DEVICE_EXT) / sizeof(VK_DESIRED_DEVICE_EXT[0]);
-        
+
         VkDevice ret;
         VkResult result;
         if((result = vkCreateDevice(card, &deviceInfo, nullptr, &ret)) != VK_SUCCESS){
@@ -1270,7 +1348,7 @@ namespace onart {
             LOGWITH("Failed to create descriptor pool:",result);
             return nullptr;
         }
-        return ret;        
+        return ret;
     }
 
     bool isThisFormatAvailable(VkPhysicalDevice physicalDevice, VkFormat format, uint32_t x, uint32_t y, VkImageCreateFlagBits flags = (VkImageCreateFlagBits)0) {
@@ -1348,26 +1426,7 @@ namespace onart {
             break;
         }
         return base;
-    #undef CHECK_N_RETURN    
+    #undef CHECK_N_RETURN
     }
 
-    VkDescriptorSetLayout makeTextureLayout(VkDevice device, uint32_t binding){
-        VkDescriptorSetLayoutBinding txBinding{};
-        txBinding.binding = binding;
-        txBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        txBinding.descriptorCount = 1;
-        txBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = 1;
-        layoutInfo.pBindings = &txBinding;
-        VkDescriptorSetLayout ret;
-        VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &ret);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create descriptor set layout:", result);
-            return nullptr;
-        }
-        return ret;
-    }
 }
