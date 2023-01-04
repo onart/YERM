@@ -41,6 +41,8 @@ namespace onart {
     static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t samplerLimit = 256, uint32_t dynUniLimit = 8, uint32_t uniLimit = 16, uint32_t intputAttachmentLimit = 16);
     /// @brief 주어진 기반 형식과 아귀가 맞는, 현재 장치에서 사용 가능한 압축 형식을 리턴합니다.
     static VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, VkFormat base, bool hq = true, VkImageCreateFlagBits flags = VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT);
+    /// @brief 텍스처를 만들 때마다 공통으로 사용할 레이아웃을 리턴합니다.
+    static VkDescriptorSetLayout makeTextureLayout(VkDevice device, uint32_t binding);
 
     /// @brief 활성화할 장치 확장
     constexpr const char* VK_DESIRED_DEVICE_EXT[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
@@ -107,6 +109,9 @@ namespace onart {
             free();
             return;
         }
+
+        for(uint32_t i=0;i<4;i++){ textureLayout[i] = makeTextureLayout(device, i); }
+        createSamplers();
         
         singleton = this;
     }
@@ -226,6 +231,42 @@ namespace onart {
         presentQueue = nullptr;
         surface.handle = nullptr;
         instance = nullptr;
+    }
+
+    void VkMachine::allocateDescriptorSets(VkDescriptorSetLayout* layouts, uint32_t count, VkDescriptorSet* output){
+        VkDescriptorSetAllocateInfo dsAllocInfo{};
+        dsAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        dsAllocInfo.pSetLayouts = layouts;
+        dsAllocInfo.descriptorSetCount = count;
+        dsAllocInfo.descriptorPool = descriptorPool;
+        
+        VkResult result = vkAllocateDescriptorSets(device, &dsAllocInfo, output);
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create descriptor sets:",result);
+            output[0]=nullptr;
+        }
+    }
+
+    void VkMachine::createSamplers(){
+        VkSamplerCreateInfo samplerInfo{};
+        samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        samplerInfo.magFilter = VK_FILTER_LINEAR;
+        samplerInfo.minFilter = VK_FILTER_LINEAR;
+        samplerInfo.mipLodBias = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        samplerInfo.minLod = 0.0f;
+        samplerInfo.maxLod = 1.0f;
+        samplerInfo.maxAnisotropy = 1.0f;
+        samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+        VkResult result;
+        for(int i = 0; i < sizeof(textureSampler)/sizeof(textureSampler[0]);i++, samplerInfo.maxLod++){
+            result = vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler[i]);
+            if(result != VK_SUCCESS){
+                LOGWITH("Failed to create texture sampler:", result);
+            }
+        }
     }
 
     VkMachine::~VkMachine(){
@@ -562,8 +603,33 @@ namespace onart {
             vmaDestroyImage(allocator, newImg, newAlloc2);
             return pTexture();
         }
-        struct txtr:public Texture{ inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3):Texture(_1,_2,_3){} };
-        return textures[name] = std::make_shared<txtr>(newImg, newView, newAlloc2);
+
+        VkDescriptorSet newSet;
+        singleton->allocateDescriptorSets(&textureLayout[0], 1, &newSet); // TODO: 여기 바인딩 번호 선택권
+        if(!newSet){
+            LOGHERE;
+            vkDestroyImageView(device, newView, nullptr);
+            vmaDestroyImage(allocator, newImg, newAlloc2);
+            return pTexture();
+        }
+
+        VkDescriptorImageInfo dsImageInfo{};
+        dsImageInfo.imageView = newView;
+        dsImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        dsImageInfo.sampler = textureSampler[imgInfo.mipLevels - 1];
+
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = newSet;
+        descriptorWrite.dstBinding = 0; // TODO: 위의 것과 함께 선택권
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.pImageInfo = &dsImageInfo;
+        vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+
+        struct txtr:public Texture{ inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint32_t _5):Texture(_1,_2,_3,_4,_5){} };
+        return textures[name] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0);
     }
 
     VkMachine::pTexture VkMachine::createTexture(const string128& fileName, const string128& name, bool ubtcs1){
@@ -591,10 +657,15 @@ namespace onart {
         return createTexture(texture, name);
     }
 
-    VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc):img(img), view(view), alloc(alloc){ }
+    VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding):img(img), view(view), alloc(alloc), dset(dset), binding(binding){ }
     VkMachine::Texture::~Texture(){
+        vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
         vkDestroyImageView(singleton->device, view, nullptr);
         vmaDestroyImage(singleton->allocator, img, alloc);
+    }
+
+    VkDescriptorSetLayout VkMachine::Texture::getLayout(){
+        return singleton->textureLayout[binding];
     }
 
     VkMachine::RenderTarget::RenderTarget(unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil)
@@ -1222,6 +1293,7 @@ namespace onart {
     #define CHECK_N_RETURN(f) if(isThisFormatAvailable(physicalDevice,f,x,y,flags)) return f
         switch (base)
         {
+        case VK_FORMAT_R8G8B8A8_UINT:
         case VK_FORMAT_R8G8B8A8_UNORM:
             CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
@@ -1235,6 +1307,7 @@ namespace onart {
             if(hq) return base;
             CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC3_SRGB_BLOCK);
+        case VK_FORMAT_R8G8B8_UINT:
         case VK_FORMAT_R8G8B8_UNORM:
             CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
@@ -1248,6 +1321,7 @@ namespace onart {
             CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC1_RGB_SRGB_BLOCK);
             break;
+        case VK_FORMAT_R8G8_UINT:
         case VK_FORMAT_R8G8_UNORM:
             CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
@@ -1259,6 +1333,7 @@ namespace onart {
             CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
             break;
+        case VK_FORMAT_R8_UINT:
         case VK_FORMAT_R8_UNORM:
             CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
@@ -1274,5 +1349,25 @@ namespace onart {
         }
         return base;
     #undef CHECK_N_RETURN    
+    }
+
+    VkDescriptorSetLayout makeTextureLayout(VkDevice device, uint32_t binding){
+        VkDescriptorSetLayoutBinding txBinding{};
+        txBinding.binding = binding;
+        txBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        txBinding.descriptorCount = 1;
+        txBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = 1;
+        layoutInfo.pBindings = &txBinding;
+        VkDescriptorSetLayout ret;
+        VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &ret);
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create descriptor set layout:", result);
+            return nullptr;
+        }
+        return ret;
     }
 }

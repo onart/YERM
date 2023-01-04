@@ -102,6 +102,11 @@ namespace onart {
             /// @param isPrimary true면 주 버퍼, false면 보조 버퍼입니다.
             /// @param buffers 버퍼가 들어갑니다. count 길이 이상의 배열이어야 하며, 할당 실패 시 첫 번째에 nullptr가 들어갑니다.
             void allocateCommandBuffers(int count, bool isPrimary, VkCommandBuffer* buffers);
+            /// @brief 기술자 집합을 할당합니다.
+            /// @param layouts 할당할 집합 레이아웃
+            /// @param count 할당할 수
+            /// @param output 리턴받을 곳. 실패하면 첫 번째 원소가 nullptr로 들어감이 보장됩니다.
+            void allocateDescriptorSets(VkDescriptorSetLayout* layouts, uint32_t count, VkDescriptorSet* output);
             /// @brief 창 표면을 재설정합니다. 이에 따라 스왑체인, 생성한 모든 말단 렌더패스들도 모두 재생성됩니다.
             void resetWindow(Window* window);
             /// @brief 창 표면 초기화 이후 호출되어 특성을 파악합니다.
@@ -110,6 +115,8 @@ namespace onart {
             void createSwapchain(uint32_t width, uint32_t height, uint32_t gq, uint32_t pq);
             /// @brief 기존 스왑체인과 관련된 모든 것을 해제합니다.
             void destroySwapchain();
+            /// @brief 샘플러들을 미리 만들어 둡니다.
+            void createSamplers();
             /// @brief ktxTexture2 객체로 텍스처를 생성합니다.
             pTexture createTexture(void* ktxObj, const string128& name);
             /// @brief vulkan 객체를 없앱니다.
@@ -136,6 +143,8 @@ namespace onart {
             VkCommandPool gCommandPool = 0;
             VkCommandBuffer baseBuffer[1]={};
             VkDescriptorPool descriptorPool = nullptr;
+            VkDescriptorSetLayout textureLayout[4] = {}; // 바인딩 0~3 하나씩
+            VkSampler textureSampler[16] = {}; // maxLod 1~17. TODO: 비등방성 샘플링 선택 제공
             struct{
                 VkSwapchainKHR handle = 0;
                 VkExtent2D extent;
@@ -204,12 +213,15 @@ namespace onart {
     class VkMachine::Texture{
         public:
         protected:
-            Texture(VkImage img, VkImageView imgView, VmaAllocation alloc);
+            Texture(VkImage img, VkImageView imgView, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding);
+            VkDescriptorSetLayout getLayout();
             ~Texture();
         private:
             VkImage img;
             VkImageView view;
             VmaAllocation alloc;
+            VkDescriptorSet dset;
+            uint32_t binding;
     };
 
     class VkMachine::Mesh{
