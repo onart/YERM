@@ -31,6 +31,10 @@ add_library( # Sets the name of the library.
              ../../../../../YERM_PC/logger.hpp
              ../../../../../YERM_PC/yr_simd.hpp
              ../../../../../YERM_PC/yr_math.hpp
+             ../../../../../YERM_PC/yr_string.hpp
+             ../../../../../YERM_PC/yr_pool.hpp
+             ../../../../../YERM_PC/yr_tuple.hpp
+
              ../../../../../YERM_PC/yr_sys.h
              ../../../../../YERM_PC/yr_sys.cpp
              ../../../../../YERM_PC/yr_game.h
@@ -41,9 +45,7 @@ add_library( # Sets the name of the library.
              ../../../../../YERM_PC/yr_input.cpp
              ../../../../../YERM_PC/yr_audio.h
              ../../../../../YERM_PC/yr_audio.cpp
-             ../../../../../YERM_PC/yr_string.hpp
              ../../../../../YERM_PC/yr_singleheader.cpp
-             ../../../../../YERM_PC/yr_pool.hpp
         )
 
 # Searches for a specified prebuilt library and stores the path as a

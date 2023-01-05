@@ -472,7 +472,6 @@ namespace onart {
         VkShaderModule ret = getShader(name);
         if(ret) return ret;
         
-        VkShaderModule ret;
         VkShaderModuleCreateInfo smInfo{};
         smInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         smInfo.codeSize = size;
@@ -487,6 +486,7 @@ namespace onart {
 
     VkMachine::pTexture VkMachine::createTexture(void* ktxObj, const string128& name){
         ktxTexture2* texture = reinterpret_cast<ktxTexture2*>(ktxObj);
+        if (texture->numLevels == 0) return pTexture();
         VkFormat availableFormat;
         ktx_error_code_e k2result;
         if(ktxTexture2_NeedsTranscoding(texture)){
@@ -771,7 +771,7 @@ namespace onart {
         
         if((result = vkCreateDescriptorSetLayout(device, &uboInfo, nullptr, &layout)) != VK_SUCCESS){
             LOGWITH("Failed to create descriptor set layout:",result);
-            return;
+            return nullptr;
         }
 
 
@@ -779,7 +779,7 @@ namespace onart {
         if(!dset){
             LOGHERE;
             vkDestroyDescriptorSetLayout(device, layout, nullptr);
-            return;
+            return nullptr;
         }
 
         VkBufferCreateInfo bufferInfo{};
@@ -800,12 +800,12 @@ namespace onart {
         }
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create buffer:", result);
-            return;
+            return nullptr;
         }
 
         if((result = vmaMapMemory(allocator, alloc, &mmap)) != VK_SUCCESS){
             LOGWITH("Failed to map memory:", result);
-            return;
+            return nullptr;
         }
 
         VkDescriptorBufferInfo dsNBuffer{};
@@ -1385,6 +1385,7 @@ namespace onart {
             if(hq) return base;
             CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC3_SRGB_BLOCK);
+            break;
         case VK_FORMAT_R8G8B8_UINT:
         case VK_FORMAT_R8G8B8_UNORM:
             CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
@@ -1392,6 +1393,7 @@ namespace onart {
             if(hq) return base;
             CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC1_RGB_UNORM_BLOCK);
+            break;
         case VK_FORMAT_R8G8B8_SRGB:
             CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
@@ -1422,6 +1424,7 @@ namespace onart {
         case VK_FORMAT_R8_SRGB:
             CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
+            break;
         default:
             break;
         }

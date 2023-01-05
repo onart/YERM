@@ -15,15 +15,37 @@
 #define __YR_VULKAN_H__
 
 #include "yr_string.hpp"
+#include "yr_tuple.hpp"
 
 #include "../externals/vulkan/vulkan.h"
 #define VMA_VULKAN_VERSION 1000000
 #include "../externals/vulkan/vk_mem_alloc.h"
+
+#include "yr_math.hpp"
+
 #include <vector>
 #include <set>
 #include <queue>
 #include <memory>
 #include <map>
+
+#define VERTEX_FLOAT_TYPES float, vec2, vec3, vec4, float[1], float[2], float[3], float[4]
+#define VERTEX_DOUBLE_TYPES double, dvec2, dvec3, dvec4, double[1], double[2], double[3], double[4]
+#define VERTEX_INT8_TYPES int8_t, int8_t[1], int8_t[2], int8_t[3], int8_t[4]
+#define VERTEX_UINT8_TYPES uint8_t, uint8_t[1], uint8_t[2], uint8_t[3], uint8_t[4]
+#define VERTEX_INT16_TYPES int16_t, int16_t[1], int16_t[2], int16_t[3], int16_t[4]
+#define VERTEX_UINT16_TYPES uint16_t, uint16_t[1], uint16_t[2], uint16_t[3], uint16_t[4]
+#define VERTEX_INT32_TYPES int32_t, ivec2, ivec3, ivec4, int32_t[1], int32_t[2], int32_t[3], int32_t[4]
+#define VERTEX_UINT32_TYPES uint32_t, uvec2, uvec3, uvec4, uint32_t[1], uint32_t[2], uint32_t[3], uint32_t[4]
+
+#define VERTEX_ATTR_TYPES VERTEX_FLOAT_TYPES, \
+				VERTEX_DOUBLE_TYPES, \
+				VERTEX_INT8_TYPES, \
+				VERTEX_UINT8_TYPES,\
+				VERTEX_INT16_TYPES,\
+				VERTEX_UINT16_TYPES,\
+				VERTEX_INT32_TYPES,\
+				VERTEX_UINT32_TYPES
 
 namespace onart {
 
@@ -41,6 +63,9 @@ namespace onart {
             class RenderPass;
             /// @brief 
             class Texture;
+            /// @brief 속성을 직접 정의하는 정점 객체입니다.
+            template<class, class...>
+            struct Vertex;
             using pTexture = std::shared_ptr<Texture>;
             /// @brief 정점 버퍼와 인덱스 버퍼를 합친 것입니다. 사양은 템플릿 생성자를 통해 정할 수 있습니다.
             class Mesh;
@@ -280,6 +305,84 @@ namespace onart {
             std::vector<uint8_t> staged; // 순차접근을 효율적으로 활용하기 위해
             std::priority_queue<uint16_t, std::vector<uint16_t>, std::greater<uint16_t>> indices;
             void* mmap;
+    };
+
+    template<class FATTR, class... ATTR>
+    struct VkMachine::Vertex{
+        friend class VkMachine;
+    private:
+        ftuple<FATTR, ATTR...> member;
+        inline static constexpr bool CHECK_TYPE() {
+            if constexpr(sizeof...(ATTR) == 0) return is_one_of<FATTR, VERTEX_ATTR_TYPES>;
+            return is_one_of<FATTR, VERTEX_ATTR_TYPES> || Vertex<ATTR...>::CHECK_TYPE();
+        }
+        template<unsigned LOCATION = 0>
+        inline static constexpr void info(VkVertexInputAttributeDescription* vattrs){
+            using A_TYPE = std::remove_reference_t<decltype(Vertex().get<LOCATION>())>;
+            vattrs->binding = 0;
+            vattrs->location = LOCATION;
+            vattrs->format = getFormat<A_TYPE<LOCATION>>();
+            vattrs->offset = ftuple<FATTR, ATTR...>::offset<LOCATION>();
+            if constexpr(LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(vattrs + 1);
+        }
+        template<class F>
+        inline static constexpr VkFormat getFormat(){
+            if constexpr(is_one_of<F, VERTEX_FLOAT_TYPES>) {
+                if constexpr(sizeof(F) / sizeof(float) == 1) return VK_FORMAT_R32_SFLOAT;
+                if constexpr(is_same_v<F, vec2> || sizeof(F) / sizeof(float) == 2) return VK_FORMAT_R32G32_SFLOAT;
+                if constexpr(is_same_v<F, vec3> || sizeof(F) / sizeof(float) == 3) return VK_FORMAT_R32G32B32_SFLOAT;
+                return VK_FORMAT_R32G32B32A32_SFLOAT;
+            }
+            else if constexpr(is_one_of<F, VERTEX_DOUBLE_TYPES>) {
+                if constexpr(sizeof(F) / sizeof(double) == 1) return VK_FORMAT_R64_SFLOAT;
+                if constexpr(is_same_v<F, dvec2> || sizeof(F) / sizeof(double) == 2) return VK_FORMAT_R64G64_SFLOAT;
+                if constexpr(is_same_v<F, dvec3> || sizeof(F) / sizeof(double) == 3) return VK_FORMAT_R64G64B64_SFLOAT;
+                return VK_FORMAT_R64G64B64A64_SFLOAT;
+            }
+            else if constexpr(is_one_of<F, VERTEX_INT8_TYPES>) {
+                if constexpr(sizeof(F) == 1) return VK_FORMAT_R8_SINT;
+                if constexpr(sizeof(F) == 2) return VK_FORMAT_R8G8_SINT;
+                if constexpr(sizeof(F) == 3) return VK_FORMAT_R8G8B8_SINT;
+                return VK_FORMAT_R8G8B8A8_SINT;
+            }
+            else if constexpr(is_one_of<F, VERTEX_UINT8_TYPES>){
+                if constexpr(sizeof(F) == 1) return VK_FORMAT_R8_UINT;
+                if constexpr(sizeof(F) == 2) return VK_FORMAT_R8G8_UINT;
+                if constexpr(sizeof(F) == 3) return VK_FORMAT_R8G8B8_UINT;
+                return VK_FORMAT_R8G8B8A8_UINT;
+            }
+            else if constexpr(is_one_of<F, VERTEX_INT16_TYPES>){
+                if constexpr(sizeof(F) == 2) return VK_FORMAT_R16_SINT;
+                if constexpr(sizeof(F) == 4) return VK_FORMAT_R16G16_SINT;
+                if constexpr(sizeof(F) == 6) return VK_FORMAT_R16G16B16_SINT;
+                return VK_FORMAT_R16G16B16A16_SINT;
+            }
+            else if constexpr(is_one_of<F, VERTEX_UINT16_TYPES>){
+                if constexpr(sizeof(F) == 2) return VK_FORMAT_R16_UINT;
+                if constexpr(sizeof(F) == 4) return VK_FORMAT_R16G16_UINT;
+                if constexpr(sizeof(F) == 6) return VK_FORMAT_R16G16B16_UINT;
+                return VK_FORMAT_R16G16B16A16_UINT;
+            }
+            else if constexpr(is_one_of<F, VERTEX_INT32_TYPES>) {
+                if constexpr(sizeof(F) / sizeof(int32_t) == 1) return VK_FORMAT_R32_SINT;
+                if constexpr(is_same_v<F, ivec2> || sizeof(F) / sizeof(int32_t) == 2) return VK_FORMAT_R32G32_SINT;
+                if constexpr(is_same_v<F, ivec3> || sizeof(F) / sizeof(int32_t) == 3) return VK_FORMAT_R32G32B32_SINT;
+                return VK_FORMAT_R32G32B32A32_SINT;
+            }
+            else if constexpr(is_one_of<F, VERTEX_UINT32_TYPES>) {
+                if constexpr(sizeof(F) / sizeof(uint32_t) == 1) return VK_FORMAT_R32_UINT;
+                if constexpr(is_same_v<F, uvec2> || sizeof(F) / sizeof(uint32_t) == 2) return VK_FORMAT_R32G32_UINT;
+                if constexpr(is_same_v<F, uvec3> || sizeof(F) / sizeof(uint32_t) == 3) return VK_FORMAT_R32G32B32_UINT;
+                return VK_FORMAT_R32G32B32A32_UINT;
+            }
+            return VK_FORMAT_UNDEFINED; // UNREACHABLE
+        }
+    public:
+        inline Vertex() {static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable");}
+        inline Vertex(const FATTR& first, const ATTR&... rest):member(first, rest...) { static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
+        /// @brief 주어진 번호의 참조를 리턴합니다. 인덱스 초과 시 컴파일되지 않습니다.
+        template<unsigned POS, std::enable_if_t<POS <= sizeof...(ATTR), bool> = false>
+        constexpr inline auto& get() { return member.get<POS>(); }
     };
 }
 
