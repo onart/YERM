@@ -88,6 +88,11 @@ namespace onart {
                 /// @brief 색 버퍼 3개와 깊이/스텐실 버퍼를 보유합니다.
                 COLOR3DEPTH = 0b1111
             };
+            /// @brief 파이프라인 생성 시 줄 수 있는 옵션입니다. 여기의 성분들을 비트 or하여 생성 함수에 전달합니다.
+            enum PipelineOptions: uint32_t {
+                USE_DEPTH = 0b1,
+                USE_STENCIL = 0b10,
+            };
             /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패합니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param fileName 파일 이름
             /// @param name 프로그램 내부에서 사용할 이름으로, 비워 두면 파일 이름을 그대로 사용합니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
@@ -124,10 +129,33 @@ namespace onart {
             /// @param subpassCount targets 배열의 크기입니다.
             /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
             RenderPass* createRenderPass(RenderTarget** targets, uint32_t subpassCount, const string16& name);
+            /// @brief 파이프라인 레이아웃을 만듭니다. 파이파라인 레이아웃은 셰이더에서 접근할 수 있는 uniform 버퍼, 입력 첨부물, 텍스처 등의 사양을 말합니다.
+            /// @param layouts 레이아웃 객체의 배열입니다. Texture, UniformBuffer, RenderTarget의 getLayout으로 얻을 수 있습니다.
+            /// @param count layouts의 길이
+            /// @param stages 푸시 상수에 접근할 수 있는 파이프라인 단계 플래그들입니다. 이 값에 0 외의 값이 들어가면 푸시 상수 공간은 항상 128바이트가 명시됩니다. 0이 들어가면 푸시 상수는 사용한다고 명시되지 않습니다.
+            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
+            VkPipelineLayout createPipelineLayout(VkDescriptorSetLayout* layouts, uint32_t count, VkShaderStageFlags stages, const string16& name);
+            /// @brief 파이프라인을 생성합니다.
+            /// @param vinfo 정점 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다.
+            /// @param vsize 개별 정점의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
+            /// @param vattr vinfo 배열의 길이, 즉 정점 속성의 수입니다.
+            /// @param pass 이 파이프라인을 사용할 렌더패스입니다. 이걸 명시했다고 꼭 여기에만 사용할 수 있는 것은 아닙니다. 입/출력 첨부물의 사양이 맞기만 하면 됩니다.
+            /// @param subpass 이 파이프라인을 사용할, 주어진 렌더패스의 서브패스 번호입니다. 이걸 명시했다고 꼭 여기에만 사용할 수 있는 것은 아닙니다. 입/출력 첨부물의 사양이 맞기만 하면 됩니다.
+            /// @param flags 파이프라인 고정 옵션의 플래그입니다. @ref PipelineOptions
+            /// @param vs 정점 셰이더 모듈입니다.
+            /// @param fs 조각 셰이더 모듈입니다.
+            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
+            /// @param front 앞면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
+            /// @param back 뒷면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
+            inline VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, RenderPass* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr);
             /// @brief 큐브맵 렌더 타겟을 생성하고 핸들을 리턴합니다. 한 번 부여된 핸들 번호는 같은 프로세스에서 다시는 사용되지 않습니다.
             /// @param size 각 면의 가로/세로 길이(px)
             /// @return 핸들입니다. 이것을 통해 렌더 패스를 생성할 수 있습니다.
             int createRenderTargetCube(int size);
+            /// @brief 만들어 둔 파이프라인을 리턴합니다. 없으면 nullptr를 리턴합니다.
+            VkPipeline getPipeline(const string16& name);
+            /// @brief 만들어 둔 파이프라인 레이아웃을 리턴합니다. 없으면 nullptr를 리턴합니다.
+            VkPipelineLayout getPipelineLayout(const string16& name);
             /// @brief 만들어 둔 렌더 타겟을 리턴합니다. 없으면 nullptr를 리턴합니다.
             RenderTarget* getRenderTarget(const string16& name);
             /// @brief 만들어 둔 공유 버퍼를 리턴합니다. 없으면 nullptr를 리턴합니다.
@@ -204,6 +232,8 @@ namespace onart {
             std::map<string16, RenderTarget*> renderTargets;
             std::map<string16, VkShaderModule> shaders;
             std::map<string16, UniformBuffer*> uniformBuffers;
+            std::map<string16, VkPipelineLayout> pipelineLayouts;
+            std::map<string16, VkPipeline> pipelines;
             std::map<string128, pTexture> textures;
             struct ImageSet{
                 VkImage img = nullptr;
@@ -232,7 +262,8 @@ namespace onart {
             VkDescriptorSet dset1, dset2, dset3, dsetDS;
             unsigned width, height;
             const bool mapped, sampled;
-            RenderTarget(unsigned width, unsigned height, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, bool, bool);
+            const RenderTargetType type;
+            RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, bool, bool);
             ~RenderTarget();
     };
 
@@ -246,7 +277,7 @@ namespace onart {
             void push(void* input, int start, int end);
             /// @brief 메시를 그립니다. (TODO: 인스턴싱을 위한 인터페이스 따로 추가)
             void invoke(Mesh*);
-            /// @brief 명령 기록을 시작합니다.
+            /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다.
             void start();
             /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
             void execute();
@@ -267,7 +298,7 @@ namespace onart {
             VkFramebuffer fb = nullptr;
             VkRenderPass rp = nullptr;
             std::vector<VkPipeline> pipelines;
-            std::vector<VkPipelineLayout> pipelineLayouts;
+            std::vector<RenderTargetType> targetTypes;
             VkPipeline pipeline = nullptr;
             VkPipelineLayout layout = nullptr;
             VkFence fence = nullptr;

@@ -141,6 +141,18 @@ namespace onart {
         return ret;
     }
 
+    VkPipeline VkMachine::getPipeline(const string16& name){
+        auto it = pipelines.find(name);
+        if(it != pipelines.end()) return it->second;
+        else return nullptr;
+    }
+
+    VkPipelineLayout VkMachine::getPipelineLayout(const string16& name){
+        auto it = pipelineLayouts.find(name);
+        if(it != pipelineLayouts.end()) return it->second;
+        else return nullptr;
+    }
+
     VkMachine::RenderTarget* VkMachine::getRenderTarget(const string16& name){
         auto it = renderTargets.find(name);
         if(it != renderTargets.end()) return it->second;
@@ -299,7 +311,11 @@ namespace onart {
         for(auto& rp: renderPasses) { delete rp.second; }
         for(auto& rt: renderTargets){ delete rt.second; }
         for(auto& sh: shaders) { vkDestroyShaderModule(device, sh.second, nullptr); }
+        for(auto& pp: pipelines) { vkDestroyPipeline(device, pp.second, nullptr); }
+        for(auto& pp: pipelineLayouts) { vkDestroyPipelineLayout(device, pp.second, nullptr); }
 
+        pipelines.clear();
+        pipelineLayouts.clear();
         renderPasses.clear();
         renderTargets.clear();
         shaders.clear();
@@ -483,7 +499,7 @@ namespace onart {
         if(color3) images.insert(color3);
         if(ds) images.insert(ds);
 
-        return renderTargets.emplace(name, new RenderTarget(width, height, color1, color2, color3, ds, sampled, mmap)).first->second;
+        return renderTargets.emplace(name, new RenderTarget(type, width, height, color1, color2, color3, ds, sampled, mmap)).first->second;
     }
 
     void VkMachine::removeImageSet(VkMachine::ImageSet* set) {
@@ -758,8 +774,8 @@ namespace onart {
         return singleton->textureLayout[binding];
     }
 
-    VkMachine::RenderTarget::RenderTarget(unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil, bool sampled, bool mmap)
-    :width(width), height(height), color1(color1), color2(color2), color3(color3), depthstencil(depthstencil), sampled(sampled), mapped(mmap){
+    VkMachine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil, bool sampled, bool mmap)
+    :type(type), width(width), height(height), color1(color1), color2(color2), color3(color3), depthstencil(depthstencil), sampled(sampled), mapped(mmap){
     }
 
     VkMachine::UniformBuffer* VkMachine::createUniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, const string16& name, uint32_t binding){
@@ -965,11 +981,140 @@ namespace onart {
             LOGWITH("Failed to create framebuffer:",result);
             return nullptr;
         }
-
-        return renderPasses[name] = new RenderPass(newPass, fb, subpassCount);
+        RenderPass* ret = renderPasses[name] = new RenderPass(newPass, fb, subpassCount);
+        for(uint32_t i = 0; i < subpassCount; i++){ ret->targetTypes[i] = targets[i]->type; }
+        return ret;
     }
 
-    VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount): rp(rp), fb(fb), stageCount(stageCount){
+    VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, RenderPass* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front, VkStencilOpState* back){
+        VkPipeline ret = getPipeline(name);
+        if(ret) return ret;
+
+        const uint32_t OPT_COLOR_COUNT = 
+            (uint32_t)pass->targetTypes[subpass] & 0b100 ? 3 :
+            (uint32_t)pass->targetTypes[subpass] & 0b10 ? 2 :
+            (uint32_t)pass->targetTypes[subpass] & 0b1 ? 1 :
+            0;
+        const bool OPT_USE_DEPTHSTENCIL = (int)pass->targetTypes[subpass] & 0b1000;
+
+        VkPipelineShaderStageCreateInfo shaderStagesInfo[2] = {};
+        shaderStagesInfo[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStagesInfo[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        shaderStagesInfo[0].module = vs;
+        shaderStagesInfo[0].pName = "main";
+        
+        shaderStagesInfo[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStagesInfo[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        shaderStagesInfo[1].module = fs;
+        shaderStagesInfo[1].pName = "main";
+
+        VkVertexInputBindingDescription vbind{};
+        vbind.binding = 0;
+        vbind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        vbind.stride = size;
+
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInputInfo.vertexBindingDescriptionCount = 1; // TODO: 인스턴싱을 위한 인터페이스
+        vertexInputInfo.pVertexBindingDescriptions = &vbind;
+        vertexInputInfo.vertexAttributeDescriptionCount = vattr;
+        vertexInputInfo.pVertexAttributeDescriptions = vinfo;
+
+        VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo{};
+        inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
+
+        VkPipelineRasterizationStateCreateInfo rtrInfo{};
+        rtrInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rtrInfo.cullMode= VK_CULL_MODE_BACK_BIT;
+        rtrInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rtrInfo.lineWidth = 1.0f;
+        rtrInfo.polygonMode = VK_POLYGON_MODE_FILL;
+
+        VkPipelineDepthStencilStateCreateInfo dsInfo{};
+        if(OPT_USE_DEPTHSTENCIL){
+            dsInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+            dsInfo.depthCompareOp = VK_COMPARE_OP_LESS;
+            dsInfo.depthTestEnable = (flags & PipelineOptions::USE_DEPTH) ? VK_TRUE : VK_FALSE;
+            dsInfo.depthWriteEnable = dsInfo.depthWriteEnable;
+            dsInfo.stencilTestEnable = (flags & PipelineOptions::USE_STENCIL) ? VK_TRUE : VK_FALSE;
+            if(front) dsInfo.front = *front;
+            if(back) dsInfo.back = *back;
+        }
+        
+        VkPipelineColorBlendAttachmentState blendStates[3]{};
+        for(VkPipelineColorBlendAttachmentState& blendInfo: blendStates){
+            blendInfo.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            blendInfo.colorBlendOp = VK_BLEND_OP_ADD;
+            blendInfo.alphaBlendOp = VK_BLEND_OP_ADD;
+            blendInfo.blendEnable = VK_TRUE;
+            blendInfo.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            blendInfo.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blendInfo.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            blendInfo.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        }
+
+        VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
+        colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        colorBlendStateCreateInfo.attachmentCount = OPT_COLOR_COUNT;
+        colorBlendStateCreateInfo.pAttachments = blendStates;
+
+        VkDynamicState dynStates[2] = {VkDynamicState::VK_DYNAMIC_STATE_VIEWPORT, VkDynamicState::VK_DYNAMIC_STATE_SCISSOR};
+        VkPipelineDynamicStateCreateInfo dynInfo{};
+        dynInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynInfo.pDynamicStates = dynStates;
+        dynInfo.dynamicStateCount = sizeof(dynStates) / sizeof(dynStates[0]);
+
+        VkGraphicsPipelineCreateInfo pInfo{};
+        pInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pInfo.stageCount = sizeof(shaderStagesInfo) / sizeof(shaderStagesInfo[0]);
+        pInfo.pStages = shaderStagesInfo;
+        pInfo.pVertexInputState = &vertexInputInfo;
+        pInfo.renderPass = pass->rp;
+        pInfo.subpass = subpass;
+        pInfo.pDynamicState = &dynInfo;
+        pInfo.layout = layout;
+        pInfo.pRasterizationState = &rtrInfo;
+        pInfo.pInputAssemblyState = &inputAssemblyInfo;
+        // pInfo.pMultisampleState, pInfo.pTessellationState // TODO: 선택권
+        if(OPT_COLOR_COUNT) { pInfo.pColorBlendState = &colorBlendStateCreateInfo; }
+        if(OPT_USE_DEPTHSTENCIL){ pInfo.pDepthStencilState = &dsInfo; }
+        VkResult result = vkCreateGraphicsPipelines(device, nullptr, 1, &pInfo, nullptr, &ret);
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create pipeline:",result);
+            return nullptr;
+        }
+        return pipelines[name] = ret;
+    }
+
+    VkPipelineLayout VkMachine::createPipelineLayout(VkDescriptorSetLayout* layouts, uint32_t count,  VkShaderStageFlags stages, const string16& name){
+        VkPipelineLayout ret = getPipelineLayout(name);
+        if(ret) return ret;
+        
+        VkPushConstantRange pushRange{};
+
+        VkPipelineLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layoutInfo.pSetLayouts = layouts;
+        layoutInfo.setLayoutCount = count;
+        if(stages){
+            pushRange.size = 128;
+            pushRange.offset = 0;
+            pushRange.stageFlags = stages;
+            layoutInfo.pushConstantRangeCount = 1;
+            layoutInfo.pPushConstantRanges = &pushRange;
+        }
+        
+        VkResult result = vkCreatePipelineLayout(device, &layoutInfo, nullptr, &ret);
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create pipeline layout:",result);
+            return nullptr;
+        }
+        return pipelineLayouts[name] = ret;
+    }
+
+    VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount): rp(rp), fb(fb), stageCount(stageCount), pipelines(stageCount), targetTypes(stageCount){
         fence = singleton->createFence(true);
     }
 
@@ -985,6 +1130,12 @@ namespace onart {
         if(stageCount != count) {
             LOGWITH("The given parameter is incompatible to this renderpass");
             return;
+        }
+        for(uint32_t i = 0; i < count; i++){
+            if(targetTypes[i] != targets[i]->type){
+                LOGWITH("The given parameter is incompatible to this renderpass");
+                return;
+            }
         }
         std::vector<VkImageView> ivs;
         ivs.reserve(count * 4);
@@ -1015,86 +1166,6 @@ namespace onart {
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create framebuffer:", result);
         }
-    }
-
-    void VkMachine::RenderPass::constructPipeline(uint16_t index, VkShaderModule vs, VkShaderModule fs){ // 템플릿함수로 가야 함
-        VkVertexInputBindingDescription vbind{};
-        VkVertexInputAttributeDescription vattrs[1]{};
-
-        VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo{};
-        inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-        inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-        inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
-
-        VkViewport viewport{};
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-
-        VkRect2D scissor{};
-
-        VkPipelineViewportStateCreateInfo viewportStateInfo{};
-        viewportStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-        viewportStateInfo.viewportCount = 1;
-        viewportStateInfo.scissorCount = 1;
-        viewportStateInfo.pViewports = &viewport;
-        viewportStateInfo.pScissors = &scissor;
-
-        VkPipelineRasterizationStateCreateInfo rtrInfo{};
-        rtrInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        rtrInfo.cullMode= VK_CULL_MODE_BACK_BIT;
-        rtrInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-        rtrInfo.lineWidth = 1.0f;
-        rtrInfo.polygonMode = VK_POLYGON_MODE_FILL;
-
-        VkPipelineDepthStencilStateCreateInfo dsInfo{};
-        dsInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-        dsInfo.depthCompareOp = VK_COMPARE_OP_LESS;
-        dsInfo.depthTestEnable = VK_TRUE;
-        dsInfo.depthWriteEnable = VK_TRUE;
-        //dsInfo.stencilTestEnable
-
-        VkPipelineColorBlendAttachmentState blendInfo{};
-        blendInfo.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-        blendInfo.colorBlendOp = VK_BLEND_OP_ADD;
-        blendInfo.alphaBlendOp = VK_BLEND_OP_ADD;
-        blendInfo.blendEnable = VK_TRUE;
-        blendInfo.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-        blendInfo.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        blendInfo.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-        blendInfo.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-
-        VkPipelineColorBlendStateCreateInfo fbbInfo{};
-        fbbInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        //fbbInfo.attachmentCount = 1; // 색 첨부물 수 필요
-
-        VkDynamicState dynStates[2] = {VkDynamicState::VK_DYNAMIC_STATE_VIEWPORT, VkDynamicState::VK_DYNAMIC_STATE_SCISSOR};
-
-        VkPipelineDynamicStateCreateInfo dynInfo{};
-        dynInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-        dynInfo.pDynamicStates = dynStates;
-        dynInfo.dynamicStateCount = sizeof(dynStates)/sizeof(VkDynamicState);
-
-        VkPushConstantRange pushRange{};
-        pushRange.offset = 0;
-        pushRange.size = 128;
-        pushRange.stageFlags = VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT | VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT;
-
-        VkPipelineLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        layoutInfo.pPushConstantRanges = &pushRange;
-        layoutInfo.pushConstantRangeCount = 1;
-
-        VkGraphicsPipelineCreateInfo plInfo{};
-        plInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-        // plInfo.stageCount = sizeof(shaderStagesInfo) / sizeof(shaderStagesInfo[0]);
-        // plInfo.pStages = shaderStagesInfo;
-        // plInfo.pVertexInputState
-        plInfo.pInputAssemblyState = &inputAssemblyInfo;
-        plInfo.renderPass = rp;
-        plInfo.subpass = 0;
-        plInfo.pRasterizationState = &rtrInfo;
-        //plInfo.pDynamicState
-        //plInfo.pDepthStencilState = &dsInfo;
     }
 
     bool VkMachine::RenderPass::wait(uint64_t timeout){
