@@ -119,6 +119,11 @@ namespace onart {
             /// @param name 프로그램 내에서 사용할 이름입니다(최대 15바이트). 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
             /// @param binding 바인딩 번호입니다.
             UniformBuffer* createUniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, const string16& name, uint32_t binding = 0);
+            /// @brief 주어진 렌더 타겟들을 대상으로 하는 렌더패스를 구성합니다.
+            /// @param targets 렌더 타겟 포인터의 배열입니다. 마지막 것을 제외한 모든 타겟은 input attachment로 생성되었어야 하며 그렇지 않은 경우 실패합니다.
+            /// @param subpassCount targets 배열의 크기입니다.
+            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
+            RenderPass* createRenderPass(RenderTarget** targets, uint32_t subpassCount, const string16& name);
             /// @brief 큐브맵 렌더 타겟을 생성하고 핸들을 리턴합니다. 한 번 부여된 핸들 번호는 같은 프로세스에서 다시는 사용되지 않습니다.
             /// @param size 각 면의 가로/세로 길이(px)
             /// @return 핸들입니다. 이것을 통해 렌더 패스를 생성할 수 있습니다.
@@ -156,6 +161,10 @@ namespace onart {
             bool createLayouts();
             /// @brief 샘플러들을 미리 만들어 둡니다.
             bool createSamplers();
+            /// @brief 펜스를 생성합니다. (해제는 알아서)
+            VkFence createFence(bool signaled = false);
+            /// @brief 세마포어를 생성합니다. (해제는 알아서)
+            VkSemaphore createSemaphore();
             /// @brief ktxTexture2 객체로 텍스처를 생성합니다.
             pTexture createTexture(void* ktxObj, const string128& name);
             /// @brief vulkan 객체를 없앱니다.
@@ -191,6 +200,7 @@ namespace onart {
                 VkExtent2D extent;
                 std::vector<VkImageView> imageView;
             }swapchain;
+            std::map<string16, RenderPass*> renderPasses;
             std::map<string16, RenderTarget*> renderTargets;
             std::map<string16, VkShaderModule> shaders;
             std::map<string16, UniformBuffer*> uniformBuffers;
@@ -214,12 +224,15 @@ namespace onart {
         public:
             RenderTarget& operator=(const RenderTarget&) = delete;
         private:
-            std::vector<RenderPass*> passes; // 렌더타겟이 없어지면 그것을 타겟으로 하는 렌더패스도 모두 없애야 함. 크기가 바뀌거나 하면 렌더패스도 모두 그에 맞게 바꿔야 함(크기를 바꿀 일의 예: 유저 설정에 의해 성능을 올리기 위해 크기를 줄임)
+            /// @brief 이 타겟을 위한 첨부물을 기술합니다.
+            /// @return 색 첨부물의 수(최대 3)
+            uint32_t attachmentRefs(VkAttachmentDescription* descr);
             VkMachine::ImageSet* color1, *color2, *color3, *depthstencil;
             VkDescriptorSetLayout layout1, layout2, layout3, layoutDS;
             VkDescriptorSet dset1, dset2, dset3, dsetDS;
             unsigned width, height;
-            RenderTarget(unsigned width, unsigned height, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*);
+            const bool mapped, sampled;
+            RenderTarget(unsigned width, unsigned height, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, bool, bool);
             ~RenderTarget();
     };
 
@@ -238,20 +251,26 @@ namespace onart {
             /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
             void execute();
             /// @brief draw 수행 이후에 호출되면 그리기가 끝나고 나서 리턴합니다. 그 외의 경우는 그냥 리턴합니다.
-            void wait();
-            /// @brief 렌더타겟이 없어져 더 이상 사용할 수 없는 경우 true를 리턴합니다.
-            bool isDangling();
+            /// @param timeout 기다릴 최대 시간(ns), UINT64_MAX (~0) 값이 입력되면 무한정 기다립니다.
+            /// @return 렌더패스 동작이 실제로 끝나서 리턴했으면 true입니다.
+            bool wait(uint64_t timeout = UINT64_MAX);
+            /// @brief 프레임버퍼를 주어진 2D 타겟에 대하여 재구성합니다. 주어지는 타겟들은 렌더패스를 만들 때의 사양과 일치해야 합니다.
+            /// @param targets RenderTarget 포인터 배열입니다.
+            /// @param count targets의 길이로 이 값이 2 이상이면 모든 타겟의 크기가 동일해야 합니다.
+            void reconstructFB(RenderTarget** targets, uint32_t count);
         private:
-            RenderPass(RenderTarget*, VkShaderModule vs, VkShaderModule fs); // 이후 다수의 서브패스를 쓸 수 있도록 변경
-            void constructFB(RenderTarget*);
-            void constructPipeline(VkShaderModule vs, VkShaderModule fs);
+            RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount); // 이후 다수의 서브패스를 쓸 수 있도록 변경
+            ~RenderPass();
+            void constructPipeline(uint16_t index, VkShaderModule vs, VkShaderModule fs);
             void reconstruct(RenderTarget*);
+            const uint16_t stageCount;
             VkFramebuffer fb = nullptr;
             VkRenderPass rp = nullptr;
+            std::vector<VkPipeline> pipelines;
+            std::vector<VkPipelineLayout> pipelineLayouts;
             VkPipeline pipeline = nullptr;
             VkPipelineLayout layout = nullptr;
             VkFence fence = nullptr;
-            bool dangle = false;
     };
 
     class VkMachine::Texture{

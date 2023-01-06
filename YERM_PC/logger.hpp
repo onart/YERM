@@ -55,14 +55,19 @@ inline std::string __getLogContent(const std::string& file, int line, const std:
     return strm.str();
 }
 
-#ifdef BOOST_PLAT_ANDROID_AVAILABLE
-#include <android/log.h>
-    
-    #define LOGHERE __android_log_print(ANDROID_LOG_DEBUG, "", "%s:%d %s\n", __FILE__, __LINE__, __func__)
-    #define LOGWITH(...) __android_log_print(ANDROID_LOG_DEBUG, "", "%s", __getLogContent(__FILE__, __LINE__, __func__, __VA_ARGS__).c_str())
+#ifdef YR_NO_LOG
+    #define LOGHERE
+    #define LOGWITH(...)
 #else
-    #define LOGHERE __logPosition(__FILE__, __LINE__, __func__)
-    #define LOGWITH(...) __logPosition(__FILE__, __LINE__, __func__, __VA_ARGS__)
-#endif // DEBUG
+    #ifdef BOOST_PLAT_ANDROID_AVAILABLE
+    #include <android/log.h>
+        
+        #define LOGHERE __android_log_print(ANDROID_LOG_DEBUG, "", "%s:%d %s\n", __FILE__, __LINE__, __func__)
+        #define LOGWITH(...) __android_log_print(ANDROID_LOG_DEBUG, "", "%s", __getLogContent(__FILE__, __LINE__, __func__, __VA_ARGS__).c_str())
+    #else
+        #define LOGHERE __logPosition(__FILE__, __LINE__, __func__)
+        #define LOGWITH(...) __logPosition(__FILE__, __LINE__, __func__, __VA_ARGS__)
+    #endif
+#endif
 
 #endif

@@ -116,6 +116,31 @@ namespace onart {
         singleton = this;
     }
 
+    VkFence VkMachine::createFence(bool signaled){
+        VkFenceCreateInfo fenceInfo{};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        if(signaled) fenceInfo.flags = VkFenceCreateFlagBits::VK_FENCE_CREATE_SIGNALED_BIT;
+        VkFence ret;
+        VkResult result = vkCreateFence(device, &fenceInfo, nullptr, &ret);
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create fence:",result);
+            return nullptr;
+        }
+        return ret;
+    }
+
+    VkSemaphore VkMachine::createSemaphore(){
+        VkSemaphoreCreateInfo smInfo{};
+        smInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        VkSemaphore ret;
+        VkResult result = vkCreateSemaphore(device, &smInfo, nullptr, &ret);
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create fence:",result);
+            return nullptr;
+        }
+        return ret;
+    }
+
     VkMachine::RenderTarget* VkMachine::getRenderTarget(const string16& name){
         auto it = renderTargets.find(name);
         if(it != renderTargets.end()) return it->second;
@@ -271,9 +296,11 @@ namespace onart {
         for(VkDescriptorSetLayout& layout: textureLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = nullptr; }
         for(VkDescriptorSetLayout& layout: inputAttachmentLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = nullptr; }
         for(VkSampler& sampler: textureSampler) { vkDestroySampler(device, sampler, nullptr); sampler = nullptr; }
+        for(auto& rp: renderPasses) { delete rp.second; }
         for(auto& rt: renderTargets){ delete rt.second; }
         for(auto& sh: shaders) { vkDestroyShaderModule(device, sh.second, nullptr); }
 
+        renderPasses.clear();
         renderTargets.clear();
         shaders.clear();
         destroySwapchain();
@@ -456,7 +483,7 @@ namespace onart {
         if(color3) images.insert(color3);
         if(ds) images.insert(ds);
 
-        return renderTargets.emplace(name, new RenderTarget(width, height, color1, color2, color3, ds)).first->second;
+        return renderTargets.emplace(name, new RenderTarget(width, height, color1, color2, color3, ds, sampled, mmap)).first->second;
     }
 
     void VkMachine::removeImageSet(VkMachine::ImageSet* set) {
@@ -731,8 +758,8 @@ namespace onart {
         return singleton->textureLayout[binding];
     }
 
-    VkMachine::RenderTarget::RenderTarget(unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil)
-    :width(width), height(height), color1(color1), color2(color2), color3(color3), depthstencil(depthstencil){
+    VkMachine::RenderTarget::RenderTarget(unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil, bool sampled, bool mmap)
+    :width(width), height(height), color1(color1), color2(color2), color3(color3), depthstencil(depthstencil), sampled(sampled), mapped(mmap){
     }
 
     VkMachine::UniformBuffer* VkMachine::createUniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, const string16& name, uint32_t binding){
@@ -825,124 +852,172 @@ namespace onart {
         return uniformBuffers[name] = new UniformBuffer(length, individual, buffer, layout, dset, alloc, mmap, binding);
     }
 
+    uint32_t VkMachine::RenderTarget::attachmentRefs(VkAttachmentDescription* arr){
+        uint32_t colorCount = 0;
+        if(color1) {
+            arr[0].format = VkFormat::VK_FORMAT_B8G8R8A8_SRGB;
+            arr[0].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
+            arr[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            arr[0].storeOp = sampled || mapped ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            arr[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            arr[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            arr[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            arr[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            colorCount = 1;
+            if(color2){
+                std::memcpy(arr + 1, arr, sizeof(arr[0]));
+                colorCount = 2;
+                if(color3) {
+                    std::memcpy(arr + 2, arr, sizeof(arr[0]));
+                    colorCount = 3;
+                }
+            }
+        }
+        if(depthstencil) {
+            arr[colorCount].format = VkFormat::VK_FORMAT_D24_UNORM_S8_UINT;
+            arr[colorCount].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
+            arr[colorCount].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            arr[colorCount].storeOp = sampled || mapped ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE; // 그림자맵에서야 필요하고 그 외에는 필요없음
+            arr[colorCount].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            arr[colorCount].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            arr[colorCount].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            arr[colorCount].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        }
+
+        return colorCount;
+    }
+
     VkMachine::RenderTarget::~RenderTarget(){
         if(color1) singleton->removeImageSet(color1);
         if(color2) singleton->removeImageSet(color2);
         if(color3) singleton->removeImageSet(color3);
         if(depthstencil) singleton->removeImageSet(depthstencil);
-        for(RenderPass* p: passes) { p->dangle = true; }
     }
 
-    VkMachine::RenderPass::RenderPass(RenderTarget* target, VkShaderModule vs, VkShaderModule fs){
-        VkAttachmentDescription attachments[4]{};
-        VkAttachmentReference attachmentRefs[4]{};
-        uint32_t colorAttachmentCount = 0;
-        if(target->color1){
-            attachments[0].format = VkFormat::VK_FORMAT_B8G8R8A8_SRGB;
-            attachments[0].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
-            attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-            attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-            attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-            attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            attachments[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            attachmentRefs[0].attachment = 0;
-            attachmentRefs[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            colorAttachmentCount = 1;
-            if(target->color2) {
-                std::memcpy(attachments+1,attachments,sizeof(attachments[0]));
-                attachmentRefs[1].attachment = 1;
-                attachmentRefs[1].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                colorAttachmentCount = 2;
-                if(target->color3){
-                    std::memcpy(attachments+2,attachments,sizeof(attachments[0]));
-                    attachmentRefs[2].attachment = 2;
-                    attachmentRefs[2].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                    colorAttachmentCount = 3;
-                }
+    VkMachine::RenderPass* VkMachine::createRenderPass(RenderTarget** targets, uint32_t subpassCount, const string16& name){
+        auto it = renderPasses.find(name);
+        if(it != renderPasses.end()) return it->second;
+        if(subpassCount == 0) return nullptr;
+        
+        std::vector<VkSubpassDescription> subpasses(subpassCount);
+        std::vector<VkAttachmentDescription> attachments(subpassCount * 4);
+        std::vector<VkAttachmentReference> refs(subpassCount * 4);
+        std::vector<VkSubpassDependency> dependencies(subpassCount);
+        std::vector<VkImageView> ivs(subpassCount * 4);
+
+        uint32_t totalAttachments = 0;
+        uint32_t inputAttachmentCount = 0;
+        for(uint32_t i = 0; i < subpassCount; i++){
+            uint32_t colorCount = targets[i]->attachmentRefs(&attachments[totalAttachments]);
+            subpasses[i].pipelineBindPoint= VK_PIPELINE_BIND_POINT_GRAPHICS;
+            subpasses[i].colorAttachmentCount = colorCount;
+            subpasses[i].pColorAttachments = &refs[totalAttachments];
+            subpasses[i].inputAttachmentCount = inputAttachmentCount;
+            subpasses[i].pInputAttachments = &refs[totalAttachments - inputAttachmentCount];
+            if(targets[i]->depthstencil) subpasses[i].pDepthStencilAttachment = &refs[totalAttachments + colorCount];
+            VkImageView views[4] = {targets[i]->color1->view, targets[i]->color2->view, targets[i]->color3->view, targets[i]->depthstencil->view};
+            for(uint32_t j = 0; j < colorCount; j++) { 
+                refs[totalAttachments].attachment = totalAttachments;
+                refs[totalAttachments].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                ivs[totalAttachments] = views[j];
+                totalAttachments++;
             }
+            if(targets[i]->depthstencil){
+                refs[totalAttachments].attachment = totalAttachments;
+                refs[totalAttachments].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                ivs[totalAttachments] = views[3];
+                totalAttachments++;
+            }
+            dependencies[i].srcSubpass = i - 1;
+            dependencies[i].dstSubpass = i;
+            dependencies[i].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dependencies[i].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            dependencies[i].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            dependencies[i].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+            dependencies[i].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+            inputAttachmentCount = colorCount; if(targets[i]->depthstencil) inputAttachmentCount++;
         }
-        if(target->depthstencil){
-            attachments[colorAttachmentCount].format = VkFormat::VK_FORMAT_B8G8R8A8_SRGB;
-            attachments[colorAttachmentCount].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
-            attachments[colorAttachmentCount].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            attachments[colorAttachmentCount].storeOp = VK_ATTACHMENT_STORE_OP_STORE; // 그림자맵에서야 필요하고 그 외에는 필요없음
-            attachments[colorAttachmentCount].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-            attachments[colorAttachmentCount].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            attachments[colorAttachmentCount].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            attachments[colorAttachmentCount].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            attachmentRefs[3].attachment = colorAttachmentCount;
-            attachmentRefs[3].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        }
-        VkAttachmentReference colorAttachmentRef{};
-        colorAttachmentRef.attachment = 0;
-        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        VkSubpassDescription subpass{};
-        subpass.colorAttachmentCount = colorAttachmentCount;
-        subpass.pColorAttachments = attachmentRefs;
-        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        if(target->depthstencil) subpass.pDepthStencilAttachment = &attachmentRefs[3];
-        VkSubpassDependency dependencies[1] = {};
-        dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-        dependencies[0].dstSubpass = 0;
-        dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependencies[0].srcAccessMask = 0;
-        dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         VkRenderPassCreateInfo rpInfo{};
         rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        rpInfo.attachmentCount = colorAttachmentCount + (target->depthstencil ? 1 : 0);
-        rpInfo.pAttachments = attachments;
-        rpInfo.dependencyCount = sizeof(dependencies) / sizeof(VkSubpassDependency);
-        rpInfo.pDependencies = dependencies;
-        rpInfo.subpassCount = 1;
-        rpInfo.pSubpasses = &subpass;
+        rpInfo.subpassCount = subpassCount;
+        rpInfo.pSubpasses = subpasses.data();
+        rpInfo.attachmentCount = totalAttachments;
+        rpInfo.pAttachments = attachments.data();
+        rpInfo.dependencyCount = subpassCount - 1; // 스왑체인 의존성은 이 함수를 통해 만들지 않기 때문에 이대로 사용
+        rpInfo.pDependencies = &dependencies[1];
+        VkRenderPass newPass;
         VkResult result;
-        if((result = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &rp)) != VK_SUCCESS){
+        if((result = vkCreateRenderPass(device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
             LOGWITH("Failed to create renderpass:",result);
-            dangle = true;
-            return;
+            return nullptr;
         }
-        constructFB(target);
-    }
-
-    void VkMachine::RenderPass::constructFB(VkMachine::RenderTarget* target) {
-        vkDestroyFramebuffer(singleton->device, fb, nullptr);
-        fb = nullptr;
-        VkImageView attachments[4]{};
-        uint32_t count = 0;
-        if(target->color1){
-            attachments[0] = target->color1->view;
-            count = 1;
-            if(target->color2){
-                attachments[1] = target->color2->view;
-                count = 2;
-                if(target->color3){
-                    attachments[2] = target->color3->view;
-                    count = 3;
-                }
-            }
-        }
-        if(target->depthstencil){
-            attachments[count] = target->depthstencil->view;
-            count++;
-        }
-
+        
+        VkFramebuffer fb;
         VkFramebufferCreateInfo fbInfo{};
         fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        fbInfo.height = target->height;
-        fbInfo.width = target->width;
+        fbInfo.attachmentCount = totalAttachments;
+        fbInfo.pAttachments = ivs.data();
+        fbInfo.renderPass = newPass;
+        fbInfo.width = targets[0]->width;
+        fbInfo.height = targets[0]->height;
+        fbInfo.layers = 1; // 큐브맵이면 6인데 일단 그건 다른 함수로 한다고 침
+        if((result = vkCreateFramebuffer(device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
+            LOGWITH("Failed to create framebuffer:",result);
+            return nullptr;
+        }
+
+        return renderPasses[name] = new RenderPass(newPass, fb, subpassCount);
+    }
+
+    VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount): rp(rp), fb(fb), stageCount(stageCount){
+        fence = singleton->createFence(true);
+    }
+
+    VkMachine::RenderPass::~RenderPass(){
+        vkDestroyFence(singleton->device, fence, nullptr);
+        vkDestroyFramebuffer(singleton->device, fb, nullptr);
+        vkDestroyRenderPass(singleton->device, rp, nullptr);
+    }
+
+    void VkMachine::RenderPass::reconstructFB(VkMachine::RenderTarget** targets, uint32_t count){
+        vkDestroyFramebuffer(singleton->device, fb, nullptr);
+        fb = nullptr;
+        if(stageCount != count) {
+            LOGWITH("The given parameter is incompatible to this renderpass");
+            return;
+        }
+        std::vector<VkImageView> ivs;
+        ivs.reserve(count * 4);
+        for(uint32_t i = 0; i < count; i++){
+            RenderTarget* target = targets[i];
+            if(target->color1){
+                ivs.push_back(targets[0]->color1->view);
+                if(target->color2){
+                    ivs.push_back(target->color2->view);
+                    if(target->color3){
+                        ivs.push_back(target->color3->view);
+                    }
+                }
+            }
+            if(target->depthstencil){
+                ivs.push_back(target->depthstencil->view);
+            }
+        }
+        VkFramebufferCreateInfo fbInfo{};
+        fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fbInfo.height = targets[0]->height;
+        fbInfo.width = targets[0]->width;
         fbInfo.renderPass = rp;
         fbInfo.layers = 1;
-        fbInfo.pAttachments = attachments;
-        fbInfo.attachmentCount = count;
-        VkResult result;
-        if((result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
-            LOGWITH("Failed to create framebuffer:",result);
+        fbInfo.pAttachments = ivs.data();
+        fbInfo.attachmentCount = ivs.size();
+        VkResult result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb);
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create framebuffer:", result);
         }
     }
 
-    void VkMachine::RenderPass::constructPipeline(VkShaderModule vs, VkShaderModule fs){ // 템플릿함수로 가야 함
+    void VkMachine::RenderPass::constructPipeline(uint16_t index, VkShaderModule vs, VkShaderModule fs){ // 템플릿함수로 가야 함
         VkVertexInputBindingDescription vbind{};
         VkVertexInputAttributeDescription vattrs[1]{};
 
@@ -1020,6 +1095,10 @@ namespace onart {
         plInfo.pRasterizationState = &rtrInfo;
         //plInfo.pDynamicState
         //plInfo.pDepthStencilState = &dsInfo;
+    }
+
+    bool VkMachine::RenderPass::wait(uint64_t timeout){
+        return vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, timeout) == VK_SUCCESS; // VK_TIMEOUT이나 VK_ERROR_DEVICE_LOST
     }
 
     VkMachine::UniformBuffer::UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc, void* mmap, uint32_t binding)
