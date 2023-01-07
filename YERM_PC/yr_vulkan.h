@@ -93,12 +93,12 @@ namespace onart {
                 USE_DEPTH = 0b1,
                 USE_STENCIL = 0b10,
             };
-            /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패합니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
+            /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param fileName 파일 이름
             /// @param name 프로그램 내부에서 사용할 이름으로, 비워 두면 파일 이름을 그대로 사용합니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param ubtcs1 품질이 낮아져도 관계 없는데 메모리를 아끼고 싶을 때 true를 줍니다. 원본 파일이 이미 KTX2 - BasisU 형식인 경우 무시됩니다.
             pTexture createTexture(const string128& fileName, const string128& name = "", bool ubtcs1 = false);
-            /// @brief 메모리 상의 ktx2 파일을 통해 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패합니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
+            /// @brief 메모리 상의 ktx2 파일을 통해 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param mem 이미지 시작 주소
             /// @param size mem 배열의 길이(바이트)
             /// @param name 프로그램 내부에서 사용할 이름입니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
@@ -135,7 +135,7 @@ namespace onart {
             /// @param stages 푸시 상수에 접근할 수 있는 파이프라인 단계 플래그들입니다. 이 값에 0 외의 값이 들어가면 푸시 상수 공간은 항상 128바이트가 명시됩니다. 0이 들어가면 푸시 상수는 사용한다고 명시되지 않습니다.
             /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
             VkPipelineLayout createPipelineLayout(VkDescriptorSetLayout* layouts, uint32_t count, VkShaderStageFlags stages, const string16& name);
-            /// @brief 파이프라인을 생성합니다.
+            /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 사용할 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
             /// @param vinfo 정점 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다.
             /// @param vsize 개별 정점의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
             /// @param vattr vinfo 배열의 길이, 즉 정점 속성의 수입니다.
@@ -239,7 +239,7 @@ namespace onart {
                 VkImage img = nullptr;
                 VkImageView view = nullptr;
                 VmaAllocation alloc = nullptr;
-                void free(VkDevice, VmaAllocator);
+                void free();
             };
             std::set<ImageSet*> images;
             std::vector<std::shared_ptr<RenderPass>> passes;
@@ -258,12 +258,11 @@ namespace onart {
             /// @return 색 첨부물의 수(최대 3)
             uint32_t attachmentRefs(VkAttachmentDescription* descr);
             VkMachine::ImageSet* color1, *color2, *color3, *depthstencil;
-            VkDescriptorSetLayout layout1, layout2, layout3, layoutDS;
-            VkDescriptorSet dset1, dset2, dset3, dsetDS;
+            VkDescriptorSet dset1 = nullptr, dset2 = nullptr, dset3 = nullptr, dsetDS = nullptr;
             unsigned width, height;
             const bool mapped, sampled;
             const RenderTargetType type;
-            RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, bool, bool);
+            RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, bool, bool, VkDescriptorSet*);
             ~RenderTarget();
     };
 
@@ -273,12 +272,27 @@ namespace onart {
             RenderPass& operator=(const RenderPass&) = delete;
             void setViewport();
             void setScissor();
-            /// @brief 푸시 상수를 세팅합니다.
+            /// @brief 주어진 유니폼버퍼를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+            /// @param pos 바인드할 set 번호
+            /// @param ub 바인드할 버퍼
+            /// @param ubPos 버퍼가 동적 공유 버퍼인 경우, 그것의 몇 번째 성분을 바인드할지 정합니다. 아닌 경우 이 값은 무시됩니다.
+            void bind(uint32_t pos, UniformBuffer* ub, uint32_t ubPos = 0);
+            /// @brief 주어진 유니폼버퍼를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.ㄴ
+            /// @param pos 바인드할 set 번호
+            /// @param tx 바인드할 텍스처
+            void bind(uint32_t pos, Texture* tx);
+            /// @brief 주어진 파이프라인을 주어진 서브패스에 사용하게 합니다. 이 함수는 매번 호출할 필요는 없지만, 해당 서브패스 진행 중에 사용하면 그때부터 바로 새로 주어진 파이프라인을 사용합니다.
+            /// @param pipeline 파이프라인
+            /// @param layout 파이프라인 레이아웃
+            /// @param subpass 서브패스 번호
+            void usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass);
+            /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
             void push(void* input, int start, int end);
             /// @brief 메시를 그립니다. (TODO: 인스턴싱을 위한 인터페이스 따로 추가)
             void invoke(Mesh*);
-            /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다.
-            void start();
+            /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다. 주어진 파이프라인이 없으면 동작이 실패합니다.
+            /// @param pos 이전 서브패스의 결과인 입력 첨부물을 바인드할 위치의 시작점입니다. 예를 들어, pos=0이고 이전 타겟이 색 첨부물 2개, 깊이 첨부물 1개였으면 0, 1, 2번에 바인드됩니다. 셰이더를 그에 맞게 만들어야 합니다.
+            void start(uint32_t pos = 0);
             /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
             void execute();
             /// @brief draw 수행 이후에 호출되면 그리기가 끝나고 나서 리턴합니다. 그 외의 경우는 그냥 리턴합니다.
@@ -292,15 +306,16 @@ namespace onart {
         private:
             RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount); // 이후 다수의 서브패스를 쓸 수 있도록 변경
             ~RenderPass();
-            void constructPipeline(uint16_t index, VkShaderModule vs, VkShaderModule fs);
             void reconstruct(RenderTarget*);
             const uint16_t stageCount;
             VkFramebuffer fb = nullptr;
             VkRenderPass rp = nullptr;
             std::vector<VkPipeline> pipelines;
-            std::vector<RenderTargetType> targetTypes;
-            VkPipeline pipeline = nullptr;
-            VkPipelineLayout layout = nullptr;
+            std::vector<VkPipelineLayout> pipelineLayouts;
+            std::vector<RenderTarget*> targets;
+            int currentPass = -1;
+            VkCommandBuffer cb = nullptr;
+            
             VkFence fence = nullptr;
     };
 

@@ -378,9 +378,9 @@ namespace onart {
         free();
     }
 
-    void VkMachine::ImageSet::free(VkDevice device, VmaAllocator allocator) {
-        vkDestroyImageView(device, view, nullptr);
-        vmaDestroyImage(allocator, img, alloc);
+    void VkMachine::ImageSet::free() {
+        vkDestroyImageView(singleton->device, view, nullptr);
+        vmaDestroyImage(singleton->allocator, img, alloc);
     }
 
     VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, const string16& name, RenderTargetType type, bool sampled, bool mmap){
@@ -424,7 +424,7 @@ namespace onart {
             }
             color1->view = createImageView(device, color1->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
             if(!color1->view) {
-                color1->free(device, allocator);
+                color1->free();
                 delete color1;
                 return nullptr;
             }
@@ -433,15 +433,15 @@ namespace onart {
                 result = vmaCreateImage(allocator, &imgInfo, &allocInfo, &color2->img, &color2->alloc, nullptr);
                 if(!result) {
                     LOGWITH("Failed to create image:", result);
-                    color1->free(device, allocator);
+                    color1->free();
                     delete color1;
                     delete color2;
                     return nullptr;
                 }
                 color2->view = createImageView(device, color2->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
                 if(!color2->view) {
-                    color1->free(device, allocator);
-                    color2->free(device, allocator);
+                    color1->free();
+                    color2->free();
                     delete color1;
                     delete color2;
                     return nullptr;
@@ -451,8 +451,8 @@ namespace onart {
                     result = vmaCreateImage(allocator, &imgInfo, &allocInfo, &color3->img, &color3->alloc, nullptr);
                     if(!result) {
                         LOGWITH("Failed to create image:", result);
-                        color1->free(device, allocator);
-                        color2->free(device, allocator);
+                        color1->free();
+                        color2->free();
                         delete color1;
                         delete color2;
                         return nullptr;
@@ -460,9 +460,9 @@ namespace onart {
                     color3->view = createImageView(device, color3->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
                     if(!color3->view) {
                         vmaDestroyImage(allocator, color1->img, color1->alloc);
-                        color1->free(device, allocator);
-                        color2->free(device, allocator);
-                        color3->free(device, allocator);
+                        color1->free();
+                        color2->free();
+                        color3->free();
                         delete color1;
                         delete color2;
                         delete color3;
@@ -479,33 +479,84 @@ namespace onart {
             result = vmaCreateImage(allocator, &imgInfo, &allocInfo, &ds->img, &ds->alloc, nullptr);
             if(!result) {
                 LOGWITH("Failed to create image: ", result);
-                if(color1) {color1->free(device, allocator); delete color1;}
-                if(color2) {color2->free(device, allocator); delete color2;}
-                if(color3) {color3->free(device, allocator); delete color3;}
+                if(color1) {color1->free(); delete color1;}
+                if(color2) {color2->free(); delete color2;}
+                if(color3) {color3->free(); delete color3;}
                 delete ds;
                 return nullptr;
             }
             ds->view = createImageView(device, color3->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT | VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT);
             if(!ds->view){
-                if(color1) {color1->free(device, allocator); delete color1;}
-                if(color2) {color2->free(device, allocator); delete color2;}
-                if(color3) {color3->free(device, allocator); delete color3;}
-                ds->free(device, allocator); delete ds;
+                if(color1) {color1->free(); delete color1;}
+                if(color2) {color2->free(); delete color2;}
+                if(color3) {color3->free(); delete color3;}
+                ds->free(); delete ds;
                 return nullptr;
             }
         }
-        if(color1) images.insert(color1);
-        if(color2) images.insert(color2);
-        if(color3) images.insert(color3);
-        if(ds) images.insert(ds);
+        int nim = 0;
+        if(color1) {images.insert(color1); nim++;}
+        if(color2) {images.insert(color2); nim++;}
+        if(color3) {images.insert(color3); nim++;}
+        if(ds) {images.insert(ds); nim++;}
 
-        return renderTargets.emplace(name, new RenderTarget(type, width, height, color1, color2, color3, ds, sampled, mmap)).first->second;
+        VkDescriptorSetLayout layout = sampled ? textureLayout[0] : inputAttachmentLayout[0];
+        VkDescriptorSetLayout layouts[4] = {layout, layout, layout, layout};
+        VkDescriptorSet dsets[4];
+
+        allocateDescriptorSets(layouts, nim, dsets);
+        if(!dsets[0]){
+            LOGHERE;
+            if(color1) {color1->free(); delete color1;}
+            if(color2) {color2->free(); delete color2;}
+            if(color3) {color3->free(); delete color3;}
+            ds->free(); delete ds;
+            return;
+        }
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // TODO: 주의
+        VkWriteDescriptorSet wr{};
+        wr.dstBinding = 0;
+        wr.dstArrayElement = 0;
+        wr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        wr.descriptorCount = 1;
+        wr.pImageInfo = &imageInfo;
+        if(sampled) {
+            imageInfo.sampler = textureSampler[0];
+            wr.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        }
+        else {
+            wr.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+        }
+        nim = 0;
+        if(color1){
+            imageInfo.imageView = color1->view;
+            wr.dstSet = dsets[nim++];
+            vkUpdateDescriptorSets(device, 1, &wr, 0, nullptr);
+            if(color2){
+                imageInfo.imageView = color2->view;
+                wr.dstSet = dsets[nim++];
+                vkUpdateDescriptorSets(device, 1, &wr, 0, nullptr);
+                if(color3){
+                    imageInfo.imageView = color3->view;
+                    wr.dstSet = dsets[nim++];
+                    vkUpdateDescriptorSets(device, 1, &wr, 0, nullptr);
+                }
+            }
+        }
+        if(ds){
+            imageInfo.imageView = ds->view;
+            wr.dstSet = dsets[nim];
+            vkUpdateDescriptorSets(device, 1, &wr, 0, nullptr);
+        }
+
+        return renderTargets.emplace(name, new RenderTarget(type, width, height, color1, color2, color3, ds, sampled, mmap, dsets)).first->second;
     }
 
     void VkMachine::removeImageSet(VkMachine::ImageSet* set) {
         auto it = images.find(set);
         if(it != images.end()) {
-            (*it)->free(device, allocator);
+            (*it)->free();
             delete *it;
             images.erase(it);
         }
@@ -774,8 +825,21 @@ namespace onart {
         return singleton->textureLayout[binding];
     }
 
-    VkMachine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil, bool sampled, bool mmap)
+    VkMachine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil, bool sampled, bool mmap, VkDescriptorSet* dsets)
     :type(type), width(width), height(height), color1(color1), color2(color2), color3(color3), depthstencil(depthstencil), sampled(sampled), mapped(mmap){
+        int nim=0;
+        if(color1) {
+            dset1 = dsets[nim++];
+            if(color2) {
+                dset2 = dsets[nim++];
+                if(color3){
+                    dset3 = dsets[nim++];
+                }
+            }
+        }
+        if(depthstencil){
+            dsetDS = dsets[nim];
+        }
     }
 
     VkMachine::UniformBuffer* VkMachine::createUniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, const string16& name, uint32_t binding){
@@ -816,7 +880,6 @@ namespace onart {
             LOGWITH("Failed to create descriptor set layout:",result);
             return nullptr;
         }
-
 
         allocateDescriptorSets(&layout, 1, &dset);
         if(!dset){
@@ -874,7 +937,7 @@ namespace onart {
             arr[0].format = VkFormat::VK_FORMAT_B8G8R8A8_SRGB;
             arr[0].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
             arr[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            arr[0].storeOp = sampled || mapped ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            arr[0].storeOp = (sampled || mapped) ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
             arr[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             arr[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             arr[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -904,10 +967,10 @@ namespace onart {
     }
 
     VkMachine::RenderTarget::~RenderTarget(){
-        if(color1) singleton->removeImageSet(color1);
-        if(color2) singleton->removeImageSet(color2);
-        if(color3) singleton->removeImageSet(color3);
-        if(depthstencil) singleton->removeImageSet(depthstencil);
+        if(color1) { singleton->removeImageSet(color1); if(dset1) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset1); }
+        if(color2) { singleton->removeImageSet(color2); if(dset2) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset2); }
+        if(color3) { singleton->removeImageSet(color3); if(dset3) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset3); }
+        if(depthstencil) { singleton->removeImageSet(depthstencil); if(dsetDS) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dsetDS); }
     }
 
     VkMachine::RenderPass* VkMachine::createRenderPass(RenderTarget** targets, uint32_t subpassCount, const string16& name){
@@ -982,7 +1045,7 @@ namespace onart {
             return nullptr;
         }
         RenderPass* ret = renderPasses[name] = new RenderPass(newPass, fb, subpassCount);
-        for(uint32_t i = 0; i < subpassCount; i++){ ret->targetTypes[i] = targets[i]->type; }
+        for(uint32_t i = 0; i < subpassCount; i++){ ret->targets[i] = targets[i]; }
         return ret;
     }
 
@@ -991,11 +1054,11 @@ namespace onart {
         if(ret) return ret;
 
         const uint32_t OPT_COLOR_COUNT = 
-            (uint32_t)pass->targetTypes[subpass] & 0b100 ? 3 :
-            (uint32_t)pass->targetTypes[subpass] & 0b10 ? 2 :
-            (uint32_t)pass->targetTypes[subpass] & 0b1 ? 1 :
+            (uint32_t)pass->targets[subpass]->type & 0b100 ? 3 :
+            (uint32_t)pass->targets[subpass]->type & 0b10 ? 2 :
+            (uint32_t)pass->targets[subpass]->type & 0b1 ? 1 :
             0;
-        const bool OPT_USE_DEPTHSTENCIL = (int)pass->targetTypes[subpass] & 0b1000;
+        const bool OPT_USE_DEPTHSTENCIL = (int)pass->targets[subpass]->type & 0b1000;
 
         VkPipelineShaderStageCreateInfo shaderStagesInfo[2] = {};
         shaderStagesInfo[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -1085,6 +1148,7 @@ namespace onart {
             LOGWITH("Failed to create pipeline:",result);
             return nullptr;
         }
+        pass->usePipeline(ret, layout, subpass);
         return pipelines[name] = ret;
     }
 
@@ -1114,14 +1178,26 @@ namespace onart {
         return pipelineLayouts[name] = ret;
     }
 
-    VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount): rp(rp), fb(fb), stageCount(stageCount), pipelines(stageCount), targetTypes(stageCount){
+    VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount): rp(rp), fb(fb), stageCount(stageCount), pipelines(stageCount), targets(stageCount){
         fence = singleton->createFence(true);
+        singleton->allocateCommandBuffers(1, true, &cb);
     }
 
     VkMachine::RenderPass::~RenderPass(){
+        vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cb);
         vkDestroyFence(singleton->device, fence, nullptr);
         vkDestroyFramebuffer(singleton->device, fb, nullptr);
         vkDestroyRenderPass(singleton->device, rp, nullptr);
+    }
+
+    void VkMachine::RenderPass::usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass){
+        if(subpass > stageCount){
+            LOGWITH("Invalid subpass. This renderpass has", stageCount, "subpasses but", subpass, "given");
+            return;
+        }
+        pipelines[subpass] = pipeline;
+        pipelineLayouts[subpass] = layout;
+        if(currentPass == subpass) { vkCmdBindPipeline(cb, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline); }
     }
 
     void VkMachine::RenderPass::reconstructFB(VkMachine::RenderTarget** targets, uint32_t count){
@@ -1132,10 +1208,11 @@ namespace onart {
             return;
         }
         for(uint32_t i = 0; i < count; i++){
-            if(targetTypes[i] != targets[i]->type){
+            if(this->targets[i]->type != targets[i]->type) {
                 LOGWITH("The given parameter is incompatible to this renderpass");
                 return;
             }
+            this->targets[i] = targets[i];
         }
         std::vector<VkImageView> ivs;
         ivs.reserve(count * 4);
