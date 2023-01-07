@@ -383,7 +383,7 @@ namespace onart {
         vmaDestroyImage(singleton->allocator, img, alloc);
     }
 
-    VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, const string16& name, RenderTargetType type, bool sampled, bool mmap){
+    VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, const string16& name, RenderTargetType type, bool sampled, bool useDepthInput, bool mmap){
         if(!allocator) {
             LOGWITH("Warning: Tried to create image before initialization");
             return nullptr;
@@ -473,7 +473,7 @@ namespace onart {
         }
         if((int)type & 0b1000) {
             ds = new ImageSet;
-            imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
+            imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : (useDepthInput ? VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT : 0));
             imgInfo.format = VkFormat::VK_FORMAT_D24_UNORM_S8_UINT;
             //imgInfo.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             result = vmaCreateImage(allocator, &imgInfo, &allocInfo, &ds->img, &ds->alloc, nullptr);
@@ -498,11 +498,11 @@ namespace onart {
         if(color1) {images.insert(color1); nim++;}
         if(color2) {images.insert(color2); nim++;}
         if(color3) {images.insert(color3); nim++;}
-        if(ds) {images.insert(ds); nim++;}
+        if(ds) {images.insert(ds); if(useDepthInput) nim++;}
 
         VkDescriptorSetLayout layout = sampled ? textureLayout[0] : inputAttachmentLayout[0];
         VkDescriptorSetLayout layouts[4] = {layout, layout, layout, layout};
-        VkDescriptorSet dsets[4];
+        VkDescriptorSet dsets[4]{};
 
         allocateDescriptorSets(layouts, nim, dsets);
         if(!dsets[0]){
@@ -510,7 +510,7 @@ namespace onart {
             if(color1) {color1->free(); delete color1;}
             if(color2) {color2->free(); delete color2;}
             if(color3) {color3->free(); delete color3;}
-            ds->free(); delete ds;
+            if(ds) { ds->free(); delete ds; }
             return;
         }
         VkDescriptorImageInfo imageInfo{};
@@ -544,7 +544,7 @@ namespace onart {
                 }
             }
         }
-        if(ds){
+        if(ds && useDepthInput){
             imageInfo.imageView = ds->view;
             wr.dstSet = dsets[nim];
             vkUpdateDescriptorSets(device, 1, &wr, 0, nullptr);
@@ -840,6 +840,23 @@ namespace onart {
         if(depthstencil){
             dsetDS = dsets[nim];
         }
+    }
+
+    uint32_t VkMachine::RenderTarget::getDescriptorSets(VkDescriptorSet* sets){
+        int nim = 0;
+        if(dset1) {
+            sets[nim++]=dset1;
+            if(dset2){
+                sets[nim++]=dset2;
+                if(dset3){
+                    sets[nim++]=dset3;
+                }
+            }
+        }
+        if(depthstencil){
+            sets[nim] = dsetDS;
+        }
+        return nim;
     }
 
     VkMachine::UniformBuffer* VkMachine::createUniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, const string16& name, uint32_t binding){
@@ -1180,11 +1197,15 @@ namespace onart {
 
     VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount): rp(rp), fb(fb), stageCount(stageCount), pipelines(stageCount), targets(stageCount){
         fence = singleton->createFence(true);
+        semaphore = singleton->createSemaphore();
         singleton->allocateCommandBuffers(1, true, &cb);
+        setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
+        setScissor(targets[0]->width, targets[0]->height, 0, 0);
     }
 
     VkMachine::RenderPass::~RenderPass(){
         vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cb);
+        vkDestroySemaphore(singleton->device, semaphore, nullptr);
         vkDestroyFence(singleton->device, fence, nullptr);
         vkDestroyFramebuffer(singleton->device, fb, nullptr);
         vkDestroyRenderPass(singleton->device, rp, nullptr);
@@ -1243,10 +1264,164 @@ namespace onart {
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create framebuffer:", result);
         }
+        setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
+        setScissor(targets[0]->width, targets[0]->height, 0, 0);
+    }
+
+    void VkMachine::RenderPass::setViewport(float width, float height, float x, float y, bool applyNow){
+        viewport.height = height;
+        viewport.width = width;
+        viewport.maxDepth = 1.0f;
+        viewport.minDepth = 0.0f;
+        viewport.x = x;
+        viewport.y = y;
+        if(applyNow && currentPass != -1) {
+            vkCmdSetViewport(cb, 0, 1, &viewport);
+        }
+    }
+
+    void VkMachine::RenderPass::setScissor(uint32_t width, uint32_t height, int32_t x, int32_t y, bool applyNow){
+        scissor.extent.width = width;
+        scissor.extent.height = height;
+        scissor.offset.x = x;
+        scissor.offset.y = y;
+        if(applyNow && currentPass != -1) {
+            vkCmdSetScissor(cb, 0, 1, &scissor);
+        }
+    }
+
+    void VkMachine::RenderPass::bind(uint32_t pos, UniformBuffer* ub, uint32_t ubPos){
+        if(currentPass == -1){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        uint32_t off = ub->offset(ubPos);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &ub->dset, ub->isDynamic, &off);
+    }
+
+    void VkMachine::RenderPass::bind(uint32_t pos, Texture* tx) {
+        if(currentPass == -1){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
+    }
+
+    void VkMachine::RenderPass::bind(uint32_t pos, RenderTarget* target, uint32_t index){
+        if(currentPass == -1){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        if(!target->sampled){
+            LOGWITH("Invalid call: this target is not made with texture");
+            return;
+        }
+        VkDescriptorSet dset;
+        switch(index){
+            case 0:
+                dset = target->dset1;
+                break;
+            case 1:
+                dset = target->dset2;
+                break;
+            case 2:
+                dset = target->dset3;
+                break;
+            case 3:
+                dset = target->dsetDS;
+                break;
+            default:
+                LOGWITH("Invalid render target index");
+                return;
+        }
+        if(!dset) {
+            LOGWITH("Invalid render target index");
+            return;
+        }
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &dset, 0, nullptr);
+    }
+
+    void VkMachine::RenderPass::push(void* input, uint32_t start, uint32_t end){
+        if(currentPass == -1){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        vkCmdPushConstants(cb, pipelineLayouts[currentPass], VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
+    }
+
+    void VkMachine::RenderPass::execute(RenderPass* other){
+        vkCmdEndRenderPass(cb);
+        VkResult result;
+        if((result = vkEndCommandBuffer(cb)) != VK_SUCCESS){
+            LOGWITH("Failed to end command buffer:",result);
+            return;
+        }
+        VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &cb;
+		if(other){
+            submitInfo.waitSemaphoreCount = 1;
+            submitInfo.pWaitSemaphores = &other->semaphore;
+		    submitInfo.pWaitDstStageMask = waitStages;
+        }
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = &semaphore;
+        
+		if ((result = vkQueueSubmit(singleton->graphicsQueue, 1, &submitInfo, fence)) != VK_SUCCESS) {
+			LOGWITH("Failed to submit command buffer");
+			return;
+		}
+        if((result = vkResetFences(singleton->device, 1, &fence)) != VK_SUCCESS){
+            LOGWITH("Failed to reset fence. waiting or other operations will play incorrect");
+        }
+        currentPass = -1;
     }
 
     bool VkMachine::RenderPass::wait(uint64_t timeout){
         return vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, timeout) == VK_SUCCESS; // VK_TIMEOUT이나 VK_ERROR_DEVICE_LOST
+    }
+
+    void VkMachine::RenderPass::start(uint32_t pos){
+        if(currentPass == stageCount - 1) {
+            LOGWITH("Invalid call. The last subpass already started");
+            return;
+        }
+        currentPass++;
+        VkResult result;
+        if(currentPass == 0){
+            wait();
+            vkResetCommandBuffer(cb, 0);
+            VkCommandBufferBeginInfo cbInfo{};
+            cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            cbInfo.flags = VkCommandBufferUsageFlagBits::VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            result = vkBeginCommandBuffer(cb, &cbInfo);
+            if(result != VK_SUCCESS){
+                LOGWITH("Failed to begin command buffer:",result);
+                currentPass = -1;
+                return;
+            }
+            VkRenderPassBeginInfo rpInfo{};
+            VkClearValue iColor{0.03f,0.03f,0.03f,1.0f};
+            rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+            rpInfo.framebuffer = fb;
+            rpInfo.pClearValues = &iColor;
+            rpInfo.clearValueCount = 1;
+            rpInfo.renderArea.offset = {0,0};
+            rpInfo.renderArea.extent = {targets[0]->width, targets[0]->height};
+            
+            vkCmdBeginRenderPass(cb, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+        }
+        else{
+            vkCmdNextSubpass(cb, VK_SUBPASS_CONTENTS_INLINE);
+            VkDescriptorSet dset[4];
+            uint32_t count = targets[currentPass]->getDescriptorSets(dset);
+            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, count, dset, 0, nullptr);
+        }
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]);
+        vkCmdSetViewport(cb, 0, 1, &viewport);
+        vkCmdSetScissor(cb, 0, 1, &scissor);
     }
 
     VkMachine::UniformBuffer::UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc, void* mmap, uint32_t binding)

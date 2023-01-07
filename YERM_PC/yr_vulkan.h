@@ -109,9 +109,10 @@ namespace onart {
             /// @param name 이후 별도로 접근할 수 있는 이름을 지정합니다. 단, 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다. "screen"이라는 이름은 예약되어 있어 사용이 불가능하며, 말 그대로 화면을 뜻합니다.
             /// @param type @ref RenderTargetType 참고하세요.
             /// @param sampled true면 샘플링 텍스처로 사용되고, false면 입력 첨부물로 사용됩니다. 일단은 화면을 최종 목적지로 간주하기 때문에 그 외의 용도는 없습니다.
+            /// @param useDepthInput sampled가 false인 경우, 즉 이 타겟이 입력 첨부물로 사용될 경우에 깊이 버퍼도 입력 첨부물로 사용할지 여부입니다.
             /// @param mmap 이것이 true라면 픽셀 데이터에 순차로 접근할 수 있습니다. 단, 렌더링 성능이 낮아질 가능성이 매우 높습니다.
             /// @return 이것을 통해 렌더 패스를 생성할 수 있습니다.
-            RenderTarget* createRenderTarget2D(int width, int height, const string16& name, RenderTargetType type = RenderTargetType::COLOR1DEPTH, bool sampled = true, bool mmap = false);
+            RenderTarget* createRenderTarget2D(int width, int height, const string16& name, RenderTargetType type = RenderTargetType::COLOR1DEPTH, bool sampled = true, bool useDepthInput = false, bool mmap = false);
             /// @brief SPIR-V 컴파일된 셰이더를 VkShaderModule 형태로 저장하고 가져옵니다.
             /// @param spv SPIR-V 코드
             /// @param size 주어진 SPIR-V 코드의 길이(바이트)
@@ -257,6 +258,7 @@ namespace onart {
             /// @brief 이 타겟을 위한 첨부물을 기술합니다.
             /// @return 색 첨부물의 수(최대 3)
             uint32_t attachmentRefs(VkAttachmentDescription* descr);
+            uint32_t getDescriptorSets(VkDescriptorSet* out);
             VkMachine::ImageSet* color1, *color2, *color3, *depthstencil;
             VkDescriptorSet dset1 = nullptr, dset2 = nullptr, dset3 = nullptr, dsetDS = nullptr;
             unsigned width, height;
@@ -270,31 +272,51 @@ namespace onart {
         friend class VkMachine;
         public:
             RenderPass& operator=(const RenderPass&) = delete;
-            void setViewport();
-            void setScissor();
+            /// @brief 뷰포트를 설정합니다. 기본 상태는 프레임버퍼 생성 당시의 크기들입니다. (즉 @ref reconstructFB 를 사용 시 여기서 수동으로 정한 값은 리셋됩니다.)
+            /// 이것은 패스 내의 모든 파이프라인이 공유합니다.
+            /// @param width 뷰포트 가로 길이(px)
+            /// @param height 뷰포트 세로 길이(px)
+            /// @param x 뷰포트 좌측 좌표(px, 맨 왼쪽이 0)
+            /// @param y 뷰포트 상단 좌표(px, 맨 위쪽이 0)
+            /// @param applyNow 이 값이 참이면 변경된 값이 파이프라인에 즉시 반영됩니다.
+            void setViewport(float width, float height, float x, float y, bool applyNow = false);
+            /// @brief 시저를 설정합니다. 기본 상태는 자름 없음입니다.
+            /// 이것은 패스 내의 모든 파이프라인이 공유합니다.
+            /// @param width 살릴 직사각형의 가로 길이(px)
+            /// @param height 살릴 직사각형의 세로 길이(px)
+            /// @param x 살릴 직사각형의 좌측 좌표(px, 맨 왼쪽이 0)
+            /// @param y 살릴 직사각형의 상단 좌표(px, 맨 위쪽이 0)
+            /// @param applyNow 이 값이 참이면 변경된 값이 파이프라인에 즉시 반영됩니다.
+            void setScissor(uint32_t width, uint32_t height, int32_t x, int32_t y, bool applyNow = false);
             /// @brief 주어진 유니폼버퍼를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
             /// @param pos 바인드할 set 번호
             /// @param ub 바인드할 버퍼
             /// @param ubPos 버퍼가 동적 공유 버퍼인 경우, 그것의 몇 번째 성분을 바인드할지 정합니다. 아닌 경우 이 값은 무시됩니다.
             void bind(uint32_t pos, UniformBuffer* ub, uint32_t ubPos = 0);
-            /// @brief 주어진 유니폼버퍼를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.ㄴ
+            /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
             /// @param pos 바인드할 set 번호
             /// @param tx 바인드할 텍스처
             void bind(uint32_t pos, Texture* tx);
+            /// @brief 주어진 렌더 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다. 이 패스의 프레임버퍼에서 사용 중인 렌더타겟은 사용할 수 없습니다.
+            /// @param pos 바인드할 set 번호
+            /// @param target 바인드할 타겟
+            /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
+            void bind(uint32_t pos, RenderTarget* target, uint32_t index);
             /// @brief 주어진 파이프라인을 주어진 서브패스에 사용하게 합니다. 이 함수는 매번 호출할 필요는 없지만, 해당 서브패스 진행 중에 사용하면 그때부터 바로 새로 주어진 파이프라인을 사용합니다.
             /// @param pipeline 파이프라인
             /// @param layout 파이프라인 레이아웃
             /// @param subpass 서브패스 번호
             void usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass);
             /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
-            void push(void* input, int start, int end);
+            void push(void* input, uint32_t start, uint32_t end);
             /// @brief 메시를 그립니다. (TODO: 인스턴싱을 위한 인터페이스 따로 추가)
             void invoke(Mesh*);
             /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다. 주어진 파이프라인이 없으면 동작이 실패합니다.
             /// @param pos 이전 서브패스의 결과인 입력 첨부물을 바인드할 위치의 시작점입니다. 예를 들어, pos=0이고 이전 타겟이 색 첨부물 2개, 깊이 첨부물 1개였으면 0, 1, 2번에 바인드됩니다. 셰이더를 그에 맞게 만들어야 합니다.
             void start(uint32_t pos = 0);
             /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
-            void execute();
+            /// @param other 이 패스가 시작하기 전에 기다릴 다른 렌더패스입니다. 전후 의존성이 존재할 경우 사용하는 것이 좋습니다. (Vk세마포어 동기화를 사용) 현재 버전에서 기다리는 단계는 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT 하나로 고정입니다.
+            void execute(RenderPass* other = nullptr);
             /// @brief draw 수행 이후에 호출되면 그리기가 끝나고 나서 리턴합니다. 그 외의 경우는 그냥 리턴합니다.
             /// @param timeout 기다릴 최대 시간(ns), UINT64_MAX (~0) 값이 입력되면 무한정 기다립니다.
             /// @return 렌더패스 동작이 실제로 끝나서 리턴했으면 true입니다.
@@ -314,12 +336,17 @@ namespace onart {
             std::vector<VkPipelineLayout> pipelineLayouts;
             std::vector<RenderTarget*> targets;
             int currentPass = -1;
+            VkViewport viewport;
+            VkRect2D scissor;
             VkCommandBuffer cb = nullptr;
             
             VkFence fence = nullptr;
+            VkSemaphore semaphore = nullptr;
     };
 
     class VkMachine::Texture{
+        friend class VkMachine;
+        friend class RenderPass;
         public:
         protected:
             Texture(VkImage img, VkImageView imgView, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding);
@@ -340,8 +367,8 @@ namespace onart {
 
     class VkMachine::UniformBuffer{
         friend class VkMachine;
+        friend class RenderPass;
         public:
-            inline uint32_t offset(uint32_t index) { return individual * index; }
             /// @brief 동적 공유 버퍼에 한하여 버퍼 원소 수를 주어진 만큼으로 조정합니다. 기존 데이터 중 주어진 크기 이내에 있는 것은 유지됩니다. 단, 어지간해서는 이 함수를 직/간접적으로 호출할 일이 없도록 첫 생성 시 크기(매개변수 length)를 적절히 마련합시다.
             void resize(uint32_t size);
             /// @brief 유니폼 버퍼의 내용을 갱신합니다.
@@ -355,6 +382,7 @@ namespace onart {
             /// @brief 파이프라인을 정의하기 위한 레이아웃을 가져옵니다.
             inline VkDescriptorSetLayout getLayout() { return layout; }
         private:
+            inline uint32_t offset(uint32_t index) { return individual * index; }
             /// @brief 임시로 저장되어 있던 내용을 모두 GPU로 올립니다.
             void sync();
             UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc, void* mmap, uint32_t binding);
