@@ -69,6 +69,9 @@ target_include_directories(yerm_android
         ../../../../..
         ../../../../../externals
         )
+
+target_link_directories(yerm_android PUBLIC ../jniLibs/${ANDROID_ABI})
+
 target_link_libraries( # Specifies the target library.
         yerm_android
 
@@ -78,6 +81,7 @@ target_link_libraries( # Specifies the target library.
         games-frame-pacing::swappy_static
         games-performance-tuner::tuningfork_static
         oboe::oboe
+        ktx
         # Links the target library to the log library
         # included in the NDK.
         ${log-lib} )

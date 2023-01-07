@@ -23,6 +23,7 @@
 
 #include "yr_math.hpp"
 
+#include <type_traits>
 #include <vector>
 #include <set>
 #include <queue>
@@ -203,23 +204,23 @@ namespace onart {
             inline void operator delete(void*){}
         private:
             static VkMachine* singleton;
-            VkInstance instance = nullptr;
+            VkInstance instance = VK_NULL_HANDLE;
             struct{
                 VkSurfaceKHR handle;
                 VkSurfaceCapabilitiesKHR caps;
                 VkSurfaceFormatKHR format;
             } surface;
             struct{
-                VkPhysicalDevice card = nullptr;
+                VkPhysicalDevice card = VK_NULL_HANDLE;
                 uint32_t gq, pq;
                 uint64_t minUBOffsetAlignment;
             } physicalDevice;
-            VkDevice device = nullptr;
-            VkQueue graphicsQueue = nullptr;
-            VkQueue presentQueue = nullptr;
+            VkDevice device = VK_NULL_HANDLE;
+            VkQueue graphicsQueue = VK_NULL_HANDLE;
+            VkQueue presentQueue = VK_NULL_HANDLE;
             VkCommandPool gCommandPool = 0;
             VkCommandBuffer baseBuffer[1]={};
-            VkDescriptorPool descriptorPool = nullptr;
+            VkDescriptorPool descriptorPool = 0;
             VkDescriptorSetLayout textureLayout[4] = {}; // 바인딩 0~3 하나씩
             VkDescriptorSetLayout inputAttachmentLayout[4] = {}; // 바인딩 0~3 하나씩
             
@@ -237,8 +238,8 @@ namespace onart {
             std::map<string16, VkPipeline> pipelines;
             std::map<string128, pTexture> textures;
             struct ImageSet{
-                VkImage img = nullptr;
-                VkImageView view = nullptr;
+                VkImage img = 0;
+                VkImageView view = 0;
                 VmaAllocation alloc = nullptr;
                 void free();
             };
@@ -260,7 +261,7 @@ namespace onart {
             uint32_t attachmentRefs(VkAttachmentDescription* descr);
             uint32_t getDescriptorSets(VkDescriptorSet* out);
             VkMachine::ImageSet* color1, *color2, *color3, *depthstencil;
-            VkDescriptorSet dset1 = nullptr, dset2 = nullptr, dset3 = nullptr, dsetDS = nullptr;
+            VkDescriptorSet dset1 = 0, dset2 = 0, dset3 = 0, dsetDS = 0;
             unsigned width, height;
             const bool mapped, sampled;
             const RenderTargetType type;
@@ -330,18 +331,18 @@ namespace onart {
             ~RenderPass();
             void reconstruct(RenderTarget*);
             const uint16_t stageCount;
-            VkFramebuffer fb = nullptr;
-            VkRenderPass rp = nullptr;
+            VkFramebuffer fb = 0;
+            VkRenderPass rp = 0;
             std::vector<VkPipeline> pipelines;
             std::vector<VkPipelineLayout> pipelineLayouts;
             std::vector<RenderTarget*> targets;
             int currentPass = -1;
             VkViewport viewport;
             VkRect2D scissor;
-            VkCommandBuffer cb = nullptr;
+            VkCommandBuffer cb = VK_NULL_HANDLE;
             
-            VkFence fence = nullptr;
-            VkSemaphore semaphore = nullptr;
+            VkFence fence = 0;
+            VkSemaphore semaphore = VK_NULL_HANDLE;
     };
 
     class VkMachine::Texture{
@@ -387,9 +388,9 @@ namespace onart {
             void sync();
             UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc, void* mmap, uint32_t binding);
             ~UniformBuffer();
-            VkDescriptorSetLayout layout = nullptr;
-            VkDescriptorSet dset = nullptr;
-            VkBuffer buffer = nullptr;
+            VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+            VkDescriptorSet dset = VK_NULL_HANDLE;
+            VkBuffer buffer = VK_NULL_HANDLE;
             VmaAllocation alloc = nullptr;
             const bool isDynamic;
             uint32_t binding;
@@ -414,22 +415,22 @@ namespace onart {
             using A_TYPE = std::remove_reference_t<decltype(Vertex().get<LOCATION>())>;
             vattrs->binding = 0;
             vattrs->location = LOCATION;
-            vattrs->format = getFormat<A_TYPE<LOCATION>>();
-            vattrs->offset = ftuple<FATTR, ATTR...>::offset<LOCATION>();
+            vattrs->format = getFormat<A_TYPE>();
+            vattrs->offset = ftuple<FATTR, ATTR...>::template offset<LOCATION>();
             if constexpr(LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(vattrs + 1);
         }
         template<class F>
         inline static constexpr VkFormat getFormat(){
             if constexpr(is_one_of<F, VERTEX_FLOAT_TYPES>) {
                 if constexpr(sizeof(F) / sizeof(float) == 1) return VK_FORMAT_R32_SFLOAT;
-                if constexpr(is_same_v<F, vec2> || sizeof(F) / sizeof(float) == 2) return VK_FORMAT_R32G32_SFLOAT;
-                if constexpr(is_same_v<F, vec3> || sizeof(F) / sizeof(float) == 3) return VK_FORMAT_R32G32B32_SFLOAT;
+                if constexpr(std::is_same_v<F, vec2> || sizeof(F) / sizeof(float) == 2) return VK_FORMAT_R32G32_SFLOAT;
+                if constexpr(std::is_same_v<F, vec3> || sizeof(F) / sizeof(float) == 3) return VK_FORMAT_R32G32B32_SFLOAT;
                 return VK_FORMAT_R32G32B32A32_SFLOAT;
             }
             else if constexpr(is_one_of<F, VERTEX_DOUBLE_TYPES>) {
                 if constexpr(sizeof(F) / sizeof(double) == 1) return VK_FORMAT_R64_SFLOAT;
-                if constexpr(is_same_v<F, dvec2> || sizeof(F) / sizeof(double) == 2) return VK_FORMAT_R64G64_SFLOAT;
-                if constexpr(is_same_v<F, dvec3> || sizeof(F) / sizeof(double) == 3) return VK_FORMAT_R64G64B64_SFLOAT;
+                if constexpr(std::is_same_v<F, dvec2> || sizeof(F) / sizeof(double) == 2) return VK_FORMAT_R64G64_SFLOAT;
+                if constexpr(std::is_same_v<F, dvec3> || sizeof(F) / sizeof(double) == 3) return VK_FORMAT_R64G64B64_SFLOAT;
                 return VK_FORMAT_R64G64B64A64_SFLOAT;
             }
             else if constexpr(is_one_of<F, VERTEX_INT8_TYPES>) {
@@ -458,14 +459,14 @@ namespace onart {
             }
             else if constexpr(is_one_of<F, VERTEX_INT32_TYPES>) {
                 if constexpr(sizeof(F) / sizeof(int32_t) == 1) return VK_FORMAT_R32_SINT;
-                if constexpr(is_same_v<F, ivec2> || sizeof(F) / sizeof(int32_t) == 2) return VK_FORMAT_R32G32_SINT;
-                if constexpr(is_same_v<F, ivec3> || sizeof(F) / sizeof(int32_t) == 3) return VK_FORMAT_R32G32B32_SINT;
+                if constexpr(std::is_same_v<F, ivec2> || sizeof(F) / sizeof(int32_t) == 2) return VK_FORMAT_R32G32_SINT;
+                if constexpr(std::is_same_v<F, ivec3> || sizeof(F) / sizeof(int32_t) == 3) return VK_FORMAT_R32G32B32_SINT;
                 return VK_FORMAT_R32G32B32A32_SINT;
             }
             else if constexpr(is_one_of<F, VERTEX_UINT32_TYPES>) {
                 if constexpr(sizeof(F) / sizeof(uint32_t) == 1) return VK_FORMAT_R32_UINT;
-                if constexpr(is_same_v<F, uvec2> || sizeof(F) / sizeof(uint32_t) == 2) return VK_FORMAT_R32G32_UINT;
-                if constexpr(is_same_v<F, uvec3> || sizeof(F) / sizeof(uint32_t) == 3) return VK_FORMAT_R32G32B32_UINT;
+                if constexpr(std::is_same_v<F, uvec2> || sizeof(F) / sizeof(uint32_t) == 2) return VK_FORMAT_R32G32_UINT;
+                if constexpr(std::is_same_v<F, uvec3> || sizeof(F) / sizeof(uint32_t) == 3) return VK_FORMAT_R32G32B32_UINT;
                 return VK_FORMAT_R32G32B32A32_UINT;
             }
             return VK_FORMAT_UNDEFINED; // UNREACHABLE
@@ -475,7 +476,14 @@ namespace onart {
         inline Vertex(const FATTR& first, const ATTR&... rest):member(first, rest...) { static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
         /// @brief 주어진 번호의 참조를 리턴합니다. 인덱스 초과 시 컴파일되지 않습니다.
         template<unsigned POS, std::enable_if_t<POS <= sizeof...(ATTR), bool> = false>
-        constexpr inline auto& get() { return member.get<POS>(); }
+        constexpr inline auto& get() { return member.template get<POS>(); }
+        /* template 키워드 설명
+         * When the name of a member template specialization appears after . or -> in a postfix-expression,
+         * or after nested-name-specifier in a qualified-id,
+         * and the postfix-expression or qualified-id explicitly depends on a template-parameter (14.6.2),
+         * the member template name must be prefixed by the keyword template.
+         * Otherwise the name is assumed to name a non-template.
+         * */
     };
 }
 

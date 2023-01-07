@@ -15,7 +15,12 @@
 #include "yr_vulkan.h"
 #include "logger.hpp"
 #include "yr_sys.h"
+
+#include "../externals/boost/predef/platform.h"
+
+#if !BOOST_PLAT_ANDROID
 #define KHRONOS_STATIC
+#endif
 #include "../externals/ktx/ktx.h"
 
 #include <algorithm>
@@ -121,10 +126,10 @@ namespace onart {
         fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         if(signaled) fenceInfo.flags = VkFenceCreateFlagBits::VK_FENCE_CREATE_SIGNALED_BIT;
         VkFence ret;
-        VkResult result = vkCreateFence(device, &fenceInfo, nullptr, &ret);
+        VkResult result = vkCreateFence(device, &fenceInfo, VK_NULL_HANDLE, &ret);
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create fence:",result);
-            return nullptr;
+            return VK_NULL_HANDLE;
         }
         return ret;
     }
@@ -133,10 +138,10 @@ namespace onart {
         VkSemaphoreCreateInfo smInfo{};
         smInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
         VkSemaphore ret;
-        VkResult result = vkCreateSemaphore(device, &smInfo, nullptr, &ret);
+        VkResult result = vkCreateSemaphore(device, &smInfo, VK_NULL_HANDLE, &ret);
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create fence:",result);
-            return nullptr;
+            return VK_NULL_HANDLE;
         }
         return ret;
     }
@@ -144,13 +149,13 @@ namespace onart {
     VkPipeline VkMachine::getPipeline(const string16& name){
         auto it = pipelines.find(name);
         if(it != pipelines.end()) return it->second;
-        else return nullptr;
+        else return VK_NULL_HANDLE;
     }
 
     VkPipelineLayout VkMachine::getPipelineLayout(const string16& name){
         auto it = pipelineLayouts.find(name);
         if(it != pipelineLayouts.end()) return it->second;
-        else return nullptr;
+        else return VK_NULL_HANDLE;
     }
 
     VkMachine::RenderTarget* VkMachine::getRenderTarget(const string16& name){
@@ -168,7 +173,7 @@ namespace onart {
     VkShaderModule VkMachine::getShader(const string16& name){
         auto it = shaders.find(name);
         if(it != shaders.end()) return it->second;
-        else return nullptr;
+        else return VK_NULL_HANDLE;
     }
             
     VkMachine::pTexture VkMachine::getTexture(const string128& name){
@@ -179,7 +184,7 @@ namespace onart {
 
     void VkMachine::resetWindow(Window* window) {
         destroySwapchain();
-        vkDestroySurfaceKHR(instance, surface.handle, nullptr);
+        vkDestroySurfaceKHR(instance, surface.handle, VK_NULL_HANDLE);
         VkResult result = window->createWindowSurface(instance, &surface.handle);
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create new window surface:", result);
@@ -200,7 +205,7 @@ namespace onart {
         VkResult result;
         if((result = vkAllocateCommandBuffers(device, &bufferInfo, buffers))!=VK_SUCCESS){
             LOGWITH("Failed to allocate command buffers:", result);
-            buffers[0] = nullptr;
+            buffers[0] = VK_NULL_HANDLE;
         }
     }
 
@@ -305,9 +310,9 @@ namespace onart {
     }
 
     void VkMachine::free() {
-        for(VkDescriptorSetLayout& layout: textureLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = nullptr; }
-        for(VkDescriptorSetLayout& layout: inputAttachmentLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = nullptr; }
-        for(VkSampler& sampler: textureSampler) { vkDestroySampler(device, sampler, nullptr); sampler = nullptr; }
+        for(VkDescriptorSetLayout& layout: textureLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = VK_NULL_HANDLE; }
+        for(VkDescriptorSetLayout& layout: inputAttachmentLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = VK_NULL_HANDLE; }
+        for(VkSampler& sampler: textureSampler) { vkDestroySampler(device, sampler, nullptr); sampler = VK_NULL_HANDLE; }
         for(auto& rp: renderPasses) { delete rp.second; }
         for(auto& rt: renderTargets){ delete rt.second; }
         for(auto& sh: shaders) { vkDestroyShaderModule(device, sh.second, nullptr); }
@@ -326,14 +331,14 @@ namespace onart {
         vkDestroyDevice(device, nullptr);
         vkDestroySurfaceKHR(instance, surface.handle, nullptr);
         vkDestroyInstance(instance, nullptr);
-        allocator = nullptr;
-        gCommandPool = 0;
-        descriptorPool = nullptr;
-        device = nullptr;
-        graphicsQueue = nullptr;
-        presentQueue = nullptr;
-        surface.handle = nullptr;
-        instance = nullptr;
+        allocator = VK_NULL_HANDLE;
+        gCommandPool = VK_NULL_HANDLE;
+        descriptorPool = VK_NULL_HANDLE;
+        device = VK_NULL_HANDLE;
+        graphicsQueue = VK_NULL_HANDLE;
+        presentQueue = VK_NULL_HANDLE;
+        surface.handle = VK_NULL_HANDLE;
+        instance = VK_NULL_HANDLE;
     }
 
     void VkMachine::allocateDescriptorSets(VkDescriptorSetLayout* layouts, uint32_t count, VkDescriptorSet* output){
@@ -346,7 +351,7 @@ namespace onart {
         VkResult result = vkAllocateDescriptorSets(device, &dsAllocInfo, output);
         if(result != VK_SUCCESS){
             LOGWITH("Failed to allocate descriptor sets:",result);
-            output[0]=nullptr;
+            output[0] = VK_NULL_HANDLE;
         }
     }
 
@@ -511,7 +516,7 @@ namespace onart {
             if(color2) {color2->free(); delete color2;}
             if(color3) {color3->free(); delete color3;}
             if(ds) { ds->free(); delete ds; }
-            return;
+            return nullptr;
         }
         VkDescriptorImageInfo imageInfo{};
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // TODO: 주의
@@ -573,7 +578,7 @@ namespace onart {
         VkResult result = vkCreateShaderModule(device, &smInfo, nullptr, &ret);
         if(result != VK_SUCCESS) {
             LOGWITH("Failed to create shader moudle:", result);
-            return nullptr;
+            return VK_NULL_HANDLE;
         }
         return shaders[name] = ret;
     }
@@ -725,7 +730,7 @@ namespace onart {
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &copyCmd;
-        if((result = vkQueueSubmit(graphicsQueue, 1, &submitInfo, nullptr)) != VK_SUCCESS){
+        if((result = vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE)) != VK_SUCCESS){ // TODO: 큐 전체대기 -> 펜스대기
             LOGWITH("Failed to submit copy command:",result);
             ktxTexture_Destroy(ktxTexture(texture));
             vkFreeCommandBuffers(device, gCommandPool, 1, &copyCmd);
@@ -794,8 +799,10 @@ namespace onart {
         if(ret) return ret;
         
         ktxTexture2* texture;
+        ktxTexture* textureP = ktxTexture(texture);
         ktx_error_code_e k2result;
-        if((k2result= ktxTexture2_CreateFromNamedFile(fileName.c_str(), KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS){
+
+        if((k2result= ktxTexture_CreateFromNamedFile(fileName.c_str(), KTX_TEXTURE_CREATE_NO_FLAGS, &textureP)) != KTX_SUCCESS){
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }
@@ -806,8 +813,10 @@ namespace onart {
         pTexture ret(std::move(getTexture(name)));
         if(ret) return ret;
         ktxTexture2* texture;
+        ktxTexture* textureP = ktxTexture(texture);
         ktx_error_code_e k2result;
-        if((k2result = ktxTexture2_CreateFromMemory(mem, size, KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS){
+        
+        if((k2result = ktxTexture_CreateFromMemory(mem, size, KTX_TEXTURE_CREATE_NO_FLAGS, &textureP)) != KTX_SUCCESS){
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }
@@ -1160,10 +1169,10 @@ namespace onart {
         // pInfo.pMultisampleState, pInfo.pTessellationState // TODO: 선택권
         if(OPT_COLOR_COUNT) { pInfo.pColorBlendState = &colorBlendStateCreateInfo; }
         if(OPT_USE_DEPTHSTENCIL){ pInfo.pDepthStencilState = &dsInfo; }
-        VkResult result = vkCreateGraphicsPipelines(device, nullptr, 1, &pInfo, nullptr, &ret);
+        VkResult result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pInfo, nullptr, &ret);
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create pipeline:",result);
-            return nullptr;
+            return VK_NULL_HANDLE;
         }
         pass->usePipeline(ret, layout, subpass);
         return pipelines[name] = ret;
@@ -1190,7 +1199,7 @@ namespace onart {
         VkResult result = vkCreatePipelineLayout(device, &layoutInfo, nullptr, &ret);
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create pipeline layout:",result);
-            return nullptr;
+            return VK_NULL_HANDLE;
         }
         return pipelineLayouts[name] = ret;
     }
@@ -1223,7 +1232,7 @@ namespace onart {
 
     void VkMachine::RenderPass::reconstructFB(VkMachine::RenderTarget** targets, uint32_t count){
         vkDestroyFramebuffer(singleton->device, fb, nullptr);
-        fb = nullptr;
+        fb = VK_NULL_HANDLE;
         if(stageCount != count) {
             LOGWITH("The given parameter is incompatible to this renderpass");
             return;
@@ -1439,7 +1448,8 @@ namespace onart {
 
         uint16_t ret = indices.top();
         if(ret >= length) {
-            indices.swap(decltype(indices)());
+            decltype(indices) sw;
+            indices.swap(sw);
             resize(length * 3 / 2);
             ret = indices.top();
         }
@@ -1468,7 +1478,7 @@ namespace onart {
         length = size;
         vmaUnmapMemory(singleton->allocator, alloc);
         vmaDestroyBuffer(singleton->allocator, buffer, alloc); // 이것 때문에 렌더링과 동시에 진행 불가능
-        buffer = nullptr;
+        buffer = VK_NULL_HANDLE;
         mmap = nullptr;
         alloc = nullptr;
 
@@ -1545,7 +1555,7 @@ namespace onart {
 
         if((result = vkCreateInstance(&instInfo, nullptr, &instance)) != VK_SUCCESS){
             LOGWITH("Failed to create vulkan instance:", result);
-            return nullptr;
+            return VK_NULL_HANDLE;
         }
         return instance;
     }
@@ -1557,7 +1567,7 @@ namespace onart {
         vkEnumeratePhysicalDevices(instance, &count, cards.data());
 
         uint64_t maxScore = 0;
-        VkPhysicalDevice goodCard = nullptr;
+        VkPhysicalDevice goodCard = VK_NULL_HANDLE;
         uint32_t maxGq = 0, maxPq = 0;
         for(VkPhysicalDevice card: cards) {
 
@@ -1673,7 +1683,7 @@ namespace onart {
         VkResult result;
         if((result = vkCreateDevice(card, &deviceInfo, nullptr, &ret)) != VK_SUCCESS){
             LOGWITH("Failed to create Vulkan device:", result);
-            return nullptr;
+            return VK_NULL_HANDLE;
         }
         return ret;
     }
@@ -1748,7 +1758,7 @@ namespace onart {
         VkResult result;
         if((result = vkCreateDescriptorPool(device, &dPoolInfo, nullptr, &ret)) != VK_SUCCESS){
             LOGWITH("Failed to create descriptor pool:",result);
-            return nullptr;
+            return VK_NULL_HANDLE;
         }
         return ret;
     }

@@ -173,7 +173,7 @@ namespace onart {
 
         ftuple() = default;
         ftuple(const ftuple&) = default;
-        ftuple(F&& f, T&&... t): firstType{f}. lastType(t...){}
+        ftuple(F&& f, T&&... t): firstType{f}, lastType(t...){}
         ftuple(const F& f, const T&... t) : firstType{ f }, lastType(t...) {}
         ftuple& operator=(const ftuple&) = default;
     };
