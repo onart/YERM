@@ -182,7 +182,7 @@ namespace onart {
             /// @brief 창 표면 초기화 이후 호출되어 특성을 파악합니다.
             void checkSurfaceHandle();
             /// @brief 기존 스왑체인을 제거하고 다시 생성하며, 스왑체인에 대한 이미지뷰도 가져옵니다.
-            void createSwapchain(uint32_t width, uint32_t height, uint32_t gq, uint32_t pq);
+            void createSwapchain(uint32_t width, uint32_t height);
             /// @brief 기존 스왑체인과 관련된 모든 것을 해제합니다.
             void destroySwapchain();
             /// @brief 텍스처와 입력 첨부물에 대한 기술자 집합 레이아웃을 미리 만들어 둡니다.
@@ -216,15 +216,15 @@ namespace onart {
             VkDevice device = VK_NULL_HANDLE;
             VkQueue graphicsQueue = VK_NULL_HANDLE;
             VkQueue presentQueue = VK_NULL_HANDLE;
-            VkCommandPool gCommandPool = 0;
+            VkCommandPool gCommandPool = VK_NULL_HANDLE;
             VkCommandBuffer baseBuffer[1]={};
-            VkDescriptorPool descriptorPool = 0;
+            VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
             VkDescriptorSetLayout textureLayout[4] = {}; // 바인딩 0~3 하나씩
             VkDescriptorSetLayout inputAttachmentLayout[4] = {}; // 바인딩 0~3 하나씩
             
             VkSampler textureSampler[16] = {}; // maxLod 1~17. TODO: 비등방성 샘플링 선택 제공
             struct{
-                VkSwapchainKHR handle = 0;
+                VkSwapchainKHR handle = VK_NULL_HANDLE;
                 VkExtent2D extent;
                 std::vector<VkImageView> imageView;
             }swapchain;
@@ -236,8 +236,8 @@ namespace onart {
             std::map<string16, VkPipeline> pipelines;
             std::map<string128, pTexture> textures;
             struct ImageSet{
-                VkImage img = 0;
-                VkImageView view = 0;
+                VkImage img = VK_NULL_HANDLE;
+                VkImageView view = VK_NULL_HANDLE;
                 VmaAllocation alloc = nullptr;
                 void free();
             };
@@ -251,6 +251,7 @@ namespace onart {
 
     class VkMachine::RenderTarget{
         friend class VkMachine;
+        friend class RenderPass;
         public:
             RenderTarget& operator=(const RenderTarget&) = delete;
         private:
@@ -259,7 +260,7 @@ namespace onart {
             uint32_t attachmentRefs(VkAttachmentDescription* descr);
             uint32_t getDescriptorSets(VkDescriptorSet* out);
             VkMachine::ImageSet* color1, *color2, *color3, *depthstencil;
-            VkDescriptorSet dset1 = 0, dset2 = 0, dset3 = 0, dsetDS = 0;
+            VkDescriptorSet dset1 = VK_NULL_HANDLE, dset2 = VK_NULL_HANDLE, dset3 = VK_NULL_HANDLE, dsetDS = VK_NULL_HANDLE;
             unsigned width, height;
             const bool mapped, sampled;
             const RenderTargetType type;
@@ -329,8 +330,8 @@ namespace onart {
             ~RenderPass();
             void reconstruct(RenderTarget*);
             const uint16_t stageCount;
-            VkFramebuffer fb = 0;
-            VkRenderPass rp = 0;
+            VkFramebuffer fb = VK_NULL_HANDLE;
+            VkRenderPass rp = VK_NULL_HANDLE;
             std::vector<VkPipeline> pipelines;
             std::vector<VkPipelineLayout> pipelineLayouts;
             std::vector<RenderTarget*> targets;
@@ -339,7 +340,7 @@ namespace onart {
             VkRect2D scissor;
             VkCommandBuffer cb = VK_NULL_HANDLE;
             
-            VkFence fence = 0;
+            VkFence fence = VK_NULL_HANDLE;
             VkSemaphore semaphore = VK_NULL_HANDLE;
     };
 

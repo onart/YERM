@@ -55,6 +55,7 @@ namespace onart{
             static const std::chrono::steady_clock::time_point longTp;
             static void* hd;
         private:
+            static void windowResized(int x, int y);
             static void finalize();
             static bool init();
             static void update();

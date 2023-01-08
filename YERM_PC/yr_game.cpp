@@ -90,7 +90,12 @@ namespace onart{
         window->keyCallback = Input::keyboard;
         window->posCallback = Input::moveCursor;
         window->touchCallback = Input::touch;
+        window->windowSizeCallback = windowResized;
         return true;
+    }
+
+    void Game::windowResized(int x, int y){
+        vk->createSwapchain(x, y);
     }
 
     void Game::exit(){

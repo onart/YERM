@@ -106,7 +106,7 @@ namespace onart {
         }
         int w,h;
         window->getSize(&w,&h);
-        createSwapchain(w, h, physicalDevice.gq, physicalDevice.pq);
+        createSwapchain(w, h);
 
         if(!(descriptorPool = createDescriptorPool(device))){
             free();
@@ -210,12 +210,16 @@ namespace onart {
         }
     }
 
-    void VkMachine::createSwapchain(uint32_t width, uint32_t height, uint32_t gq, uint32_t pq){
+    void VkMachine::createSwapchain(uint32_t width, uint32_t height){
         destroySwapchain();
+        if(width == 0 || height == 0) { // 창 최소화 상태 등. VkMachine은 swapchain이 nullptr일 때 그것이 대상인 렌더패스를 사용할 수 없음 (그리기 호출 시 아무것도 하지 않음)
+            return;
+        }
+        checkSurfaceHandle();
         VkSwapchainCreateInfoKHR scInfo{};
         scInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
         scInfo.surface = surface.handle;
-        scInfo.minImageCount = 2;
+        scInfo.minImageCount = std::min(3u, surface.caps.maxImageCount == 0 ? 3u : surface.caps.maxImageCount);
         scInfo.imageFormat = surface.format.format;
         scInfo.imageColorSpace = surface.format.colorSpace;
         scInfo.imageExtent.width = std::clamp(width, surface.caps.minImageExtent.width, surface.caps.maxImageExtent.width);
@@ -223,15 +227,16 @@ namespace onart {
         scInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
         scInfo.imageArrayLayers = 1;
         scInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-        scInfo.preTransform = VkSurfaceTransformFlagBitsKHR::VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+        scInfo.preTransform = surface.caps.currentTransform; // IDENTITY: 1, 90: 2, 180: 4, 270: 8
         scInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         scInfo.clipped = VK_TRUE;
         scInfo.oldSwapchain = VK_NULL_HANDLE; // 같은 표면에 대한 핸들은 올드로 사용할 수 없음
-        uint32_t qfi[2] = {gq, pq};
-        if(gq == pq){
+        uint32_t qfi[2] = {physicalDevice.gq, physicalDevice.pq};
+        if(physicalDevice.gq == physicalDevice.pq){
             scInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
         }
         else{
+            scInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
             scInfo.queueFamilyIndexCount = 2;
             scInfo.pQueueFamilyIndices = qfi;
         }
@@ -257,6 +262,7 @@ namespace onart {
     }
 
     void VkMachine::destroySwapchain(){
+        vkDeviceWaitIdle(device);
         for(VkImageView v: swapchain.imageView){ vkDestroyImageView(device, v, nullptr); }
         vkDestroySwapchainKHR(device, swapchain.handle, nullptr);
         swapchain.imageView.clear();
