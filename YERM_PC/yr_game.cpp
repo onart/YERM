@@ -37,10 +37,9 @@ namespace onart{
     VkMachine* Game::vk = nullptr;
     Window* Game::window = nullptr;
     void* Game::hd = nullptr;
-    Game::State Game::canRestart = Game::State::INITIAL;
 
     int Game::start(void* hd, Window::CreationOptions* opt){
-        if(canRestart == State::ONGOING) {
+        if(window) {
             LOGWITH("Warning: already started");
             return 2;
         }
@@ -55,18 +54,12 @@ namespace onart{
             Window::terminate();
             return 1;
         }
-        if(canRestart == State::WINDOW_CLOSED){
-            vk->resetWindow(window);
-        }
-        else{
-            vk = new VkMachine(window);
-        }
+        vk = new VkMachine(window);
         if(!init()){
             delete window;
             Window::terminate();
             return 1;
         }
-        canRestart = State::ONGOING;
 
         for(;; _frame++) {
             window->pollEvents();
@@ -78,11 +71,6 @@ namespace onart{
             _idt = 1.0f / _dt;
         }
 
-        canRestart = State::WINDOW_CLOSED;
-
-#if BOOST_PLAT_ANDROID
-        if(canRestart == State::REQUSTED_EXIT)
-#endif
         finalize();
         return 0;
     }
@@ -107,7 +95,6 @@ namespace onart{
 
     void Game::exit(){
         window->close();
-        canRestart = State::REQUSTED_EXIT;
     }
 
     void Game::readFile(const char* fileName, std::basic_string<uint8_t>* buffer){

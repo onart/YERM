@@ -182,20 +182,6 @@ namespace onart {
         else return pTexture();
     }
 
-    void VkMachine::resetWindow(Window* window) {
-        destroySwapchain();
-        vkDestroySurfaceKHR(instance, surface.handle, VK_NULL_HANDLE);
-        VkResult result = window->createWindowSurface(instance, &surface.handle);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create new window surface:", result);
-            return;
-        }
-        checkSurfaceHandle();
-        int x,y;
-        window->getSize(&x,&y);
-        createSwapchain(x, y, physicalDevice.gq, physicalDevice.pq);
-    }
-
     void VkMachine::allocateCommandBuffers(int count, bool isPrimary, VkCommandBuffer* buffers){
         VkCommandBufferAllocateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -799,10 +785,9 @@ namespace onart {
         if(ret) return ret;
         
         ktxTexture2* texture;
-        ktxTexture* textureP = ktxTexture(texture);
         ktx_error_code_e k2result;
 
-        if((k2result= ktxTexture_CreateFromNamedFile(fileName.c_str(), KTX_TEXTURE_CREATE_NO_FLAGS, &textureP)) != KTX_SUCCESS){
+        if((k2result= ktxTexture2_CreateFromNamedFile(fileName.c_str(), KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS){
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }
@@ -813,10 +798,9 @@ namespace onart {
         pTexture ret(std::move(getTexture(name)));
         if(ret) return ret;
         ktxTexture2* texture;
-        ktxTexture* textureP = ktxTexture(texture);
         ktx_error_code_e k2result;
         
-        if((k2result = ktxTexture_CreateFromMemory(mem, size, KTX_TEXTURE_CREATE_NO_FLAGS, &textureP)) != KTX_SUCCESS){
+        if((k2result = ktxTexture2_CreateFromMemory(mem, size, KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS){
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }

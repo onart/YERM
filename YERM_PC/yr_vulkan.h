@@ -179,8 +179,6 @@ namespace onart {
             /// @param count 할당할 수
             /// @param output 리턴받을 곳. 실패하면 첫 번째 원소가 nullptr로 들어감이 보장됩니다.
             void allocateDescriptorSets(VkDescriptorSetLayout* layouts, uint32_t count, VkDescriptorSet* output);
-            /// @brief 창 표면을 재설정합니다. 이에 따라 스왑체인, 생성한 모든 말단 렌더패스들도 모두 재생성됩니다.
-            void resetWindow(Window* window);
             /// @brief 창 표면 초기화 이후 호출되어 특성을 파악합니다.
             void checkSurfaceHandle();
             /// @brief 기존 스왑체인을 제거하고 다시 생성하며, 스왑체인에 대한 이미지뷰도 가져옵니다.
