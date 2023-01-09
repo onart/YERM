@@ -41,7 +41,7 @@ else()
         set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT yerm) # 재생버튼 눌러서 바로 실행해볼 수 있게 됨
         target_link_libraries(yerm glfw3_mt vulkan-1 ktx shaderc_shared)
     else()
-        target_link_libraries(yerm glfw3 vulkan shaderc_shared dl m pthread X11) # TODO: X11 부분을 타겟에 잘 맞게 분류
+        target_link_libraries(yerm glfw3 vulkan shaderc_shared ktx dl m pthread X11) # TODO: X11 부분을 타겟에 잘 맞게 분류
     endif()
     
 endif()
