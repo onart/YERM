@@ -60,9 +60,11 @@ namespace onart {
             constexpr static bool USE_VALIDATION_LAYER = false;
             /// @brief 그리기 대상입니다. 텍스처로 사용하거나 메모리 맵으로 데이터에 접근할 수 있습니다. 
             class RenderTarget;
-            /// @brief 
+            /// @brief 오프스크린용 렌더 패스입니다.
             class RenderPass;
-            /// @brief 
+            /// @brief 화면에 그리기 위한 렌더 패스입니다. 여러 개 갖고 있을 수는 있지만 동시에 여러 개를 사용할 수는 없습니다.
+            class RenderPass2Screen;
+            /// @brief 직접 불러오는 텍스처입니다.
             class Texture;
             /// @brief 속성을 직접 정의하는 정점 객체입니다.
             template<class, class...>
@@ -93,6 +95,7 @@ namespace onart {
             enum PipelineOptions: uint32_t {
                 USE_DEPTH = 0b1,
                 USE_STENCIL = 0b10,
+                CULL_BACK = 0b100,
             };
             /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param fileName 파일 이름
@@ -131,6 +134,13 @@ namespace onart {
             /// @param subpassCount targets 배열의 크기입니다.
             /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
             RenderPass* createRenderPass(RenderTarget** targets, uint32_t subpassCount, const string16& name);
+            /// @brief 화면으로 이어지는 렌더패스를 생성합니다. 각 패스의 타겟들은 현재 창의 해상도와 동일하게 맞춰집니다.
+            /// @param targets 생성할 렌더 타겟들의 타입 배열입니다. 서브패스의 마지막은 이것을 제외한 스왑체인 이미지입니다.
+            /// @param subpassCount 최종 서브패스의 수입니다. 즉 targets 배열 길이 + 1을 입력해야 합니다.
+            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. (RenderPass 객체와 같은 집합을 공유하지 않음) 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
+            /// @param useDepth subpassCount가 1이고 이 값이 true인 경우 최종 패스에서 깊이/스텐실 이미지를 사용하게 됩니다. subpassCount가 1이 아니면 무시됩니다.
+            /// @param useDepthAsInput targets와 일대일 대응하며, 대응하는 성분의 깊이 성분을 다음 서브패스의 입력으로 사용하려면 true를 줍니다. nullptr를 주는 경우 일괄 false로 취급됩니다.
+            RenderPass2Screen* createRenderPass2Screen(RenderTargetType* targets, uint32_t subpassCount, const string16& name, bool useDepth = true, bool* useDepthAsInput = nullptr);
             /// @brief 파이프라인 레이아웃을 만듭니다. 파이파라인 레이아웃은 셰이더에서 접근할 수 있는 uniform 버퍼, 입력 첨부물, 텍스처 등의 사양을 말합니다.
             /// @param layouts 레이아웃 객체의 배열입니다. Texture, UniformBuffer, RenderTarget의 getLayout으로 얻을 수 있습니다.
             /// @param count layouts의 길이
@@ -149,7 +159,20 @@ namespace onart {
             /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
             /// @param front 앞면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
             /// @param back 뒷면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
-            inline VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, RenderPass* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr);
+            VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, RenderPass* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr);
+            /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 사용할 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
+            /// @param vinfo 정점 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다.
+            /// @param vsize 개별 정점의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
+            /// @param vattr vinfo 배열의 길이, 즉 정점 속성의 수입니다.
+            /// @param pass 이 파이프라인을 사용할 렌더패스입니다. 이걸 명시했다고 꼭 여기에만 사용할 수 있는 것은 아닙니다. 입/출력 첨부물의 사양이 맞기만 하면 됩니다.
+            /// @param subpass 이 파이프라인을 사용할, 주어진 렌더패스의 서브패스 번호입니다. 이걸 명시했다고 꼭 여기에만 사용할 수 있는 것은 아닙니다. 입/출력 첨부물의 사양이 맞기만 하면 됩니다.
+            /// @param flags 파이프라인 고정 옵션의 플래그입니다. @ref PipelineOptions
+            /// @param vs 정점 셰이더 모듈입니다.
+            /// @param fs 조각 셰이더 모듈입니다.
+            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
+            /// @param front 앞면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
+            /// @param back 뒷면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
+            VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr);
             /// @brief 큐브맵 렌더 타겟을 생성하고 핸들을 리턴합니다. 한 번 부여된 핸들 번호는 같은 프로세스에서 다시는 사용되지 않습니다.
             /// @param size 각 면의 가로/세로 길이(px)
             /// @return 핸들입니다. 이것을 통해 렌더 패스를 생성할 수 있습니다.
@@ -340,8 +363,88 @@ namespace onart {
             VkRect2D scissor;
             VkCommandBuffer cb = VK_NULL_HANDLE;
             
+            
             VkFence fence = VK_NULL_HANDLE;
             VkSemaphore semaphore = VK_NULL_HANDLE;
+    };
+
+    class VkMachine::RenderPass2Screen{
+        friend class VkMachine;
+        public:
+            RenderPass2Screen& operator=(const RenderPass2Screen&) = delete;
+            /// @brief 뷰포트를 설정합니다. 기본 상태는 프레임버퍼 생성 당시의 크기들입니다. (즉 @ref reconstructFB 를 사용 시 여기서 수동으로 정한 값은 리셋됩니다.)
+            /// 이것은 패스 내의 모든 파이프라인이 공유합니다.
+            /// @param width 뷰포트 가로 길이(px)
+            /// @param height 뷰포트 세로 길이(px)
+            /// @param x 뷰포트 좌측 좌표(px, 맨 왼쪽이 0)
+            /// @param y 뷰포트 상단 좌표(px, 맨 위쪽이 0)
+            /// @param applyNow 이 값이 참이면 변경된 값이 파이프라인에 즉시 반영됩니다.
+            void setViewport(float width, float height, float x, float y, bool applyNow = false);
+            /// @brief 시저를 설정합니다. 기본 상태는 자름 없음입니다.
+            /// 이것은 패스 내의 모든 파이프라인이 공유합니다.
+            /// @param width 살릴 직사각형의 가로 길이(px)
+            /// @param height 살릴 직사각형의 세로 길이(px)
+            /// @param x 살릴 직사각형의 좌측 좌표(px, 맨 왼쪽이 0)
+            /// @param y 살릴 직사각형의 상단 좌표(px, 맨 위쪽이 0)
+            /// @param applyNow 이 값이 참이면 변경된 값이 파이프라인에 즉시 반영됩니다.
+            void setScissor(uint32_t width, uint32_t height, int32_t x, int32_t y, bool applyNow = false);
+            /// @brief 주어진 유니폼버퍼를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+            /// @param pos 바인드할 set 번호
+            /// @param ub 바인드할 버퍼
+            /// @param ubPos 버퍼가 동적 공유 버퍼인 경우, 그것의 몇 번째 성분을 바인드할지 정합니다. 아닌 경우 이 값은 무시됩니다.
+            void bind(uint32_t pos, UniformBuffer* ub, uint32_t ubPos = 0);
+            /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+            /// @param pos 바인드할 set 번호
+            /// @param tx 바인드할 텍스처
+            void bind(uint32_t pos, Texture* tx);
+            /// @brief 주어진 렌더 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다. 이 패스의 프레임버퍼에서 사용 중인 렌더타겟은 (어차피 접근도 불가능하지만) 사용할 수 없습니다.
+            /// @param pos 바인드할 set 번호
+            /// @param target 바인드할 타겟
+            /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
+            void bind(uint32_t pos, RenderTarget* target, uint32_t index);
+            /// @brief 주어진 파이프라인을 주어진 서브패스에 사용하게 합니다. 이 함수는 매번 호출할 필요는 없지만, 해당 서브패스 진행 중에 사용하면 그때부터 바로 새로 주어진 파이프라인을 사용합니다.
+            /// @param pipeline 파이프라인
+            /// @param layout 파이프라인 레이아웃
+            /// @param subpass 서브패스 번호
+            void usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass);
+            /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
+            void push(void* input, uint32_t start, uint32_t end);
+            /// @brief 메시를 그립니다. (TODO: 인스턴싱을 위한 인터페이스 따로 추가)
+            void invoke(Mesh*);
+            /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다. 주어진 파이프라인이 없으면 동작이 실패합니다.
+            /// @param pos 이전 서브패스의 결과인 입력 첨부물을 바인드할 위치의 시작점입니다. 예를 들어, pos=0이고 이전 타겟이 색 첨부물 2개, 깊이 첨부물 1개였으면 0, 1, 2번에 바인드됩니다. 셰이더를 그에 맞게 만들어야 합니다.
+            void start(uint32_t pos = 0);
+            /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
+            /// @param other 이 패스가 시작하기 전에 기다릴 다른 렌더패스입니다. 전후 의존성이 존재할 경우 사용하는 것이 좋습니다. (Vk세마포어 동기화를 사용) 현재 버전에서 기다리는 단계는 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT 하나로 고정입니다.
+            void execute(RenderPass* other = nullptr);
+            /// @brief draw 수행 이후에 호출되면 가장 최근에 제출된 그리기 및 화면 표시 명령이 끝나고 나서 리턴합니다. 그 외의 경우는 그냥 리턴합니다.
+            /// @param timeout 기다릴 최대 시간(ns), UINT64_MAX (~0) 값이 입력되면 무한정 기다립니다.
+            /// @return 렌더패스 동작이 실제로 끝나서 리턴했으면 true입니다.
+            bool wait(uint64_t timeout = UINT64_MAX);
+        private:
+            /// @brief 프레임버퍼 이미지를 처음부터 다시 만들어 프레임버퍼를 다시 생성합니다.
+            /// @param width 가로 길이
+            /// @param height 세로 길이
+            void reconstructFB(uint32_t width, uint32_t height);
+            constexpr static uint32_t COMMANDBUFFER_COUNT = 4; // 트리플버퍼링 상정
+            VkRenderPass rp = VK_NULL_HANDLE;
+            std::vector<VkFramebuffer> fbs; // 스왑체인 이미지마다 하나씩
+            std::vector<RenderTarget*> targets; // 마지막 단계 제외 서브패스마다 하나씩
+            std::vector<VkPipeline> pipelines; // 서브패스마다 하나씩
+            std::vector<VkPipelineLayout> pipelineLayouts; // 서브패스마다 하나씩
+
+            VkCommandBuffer cbs[COMMANDBUFFER_COUNT] = {};
+            VkFence fences[COMMANDBUFFER_COUNT] = {};
+            VkSemaphore acquireSm[COMMANDBUFFER_COUNT] = {};
+            VkSemaphore drawSm[COMMANDBUFFER_COUNT] = {};
+
+            const bool useDepth;
+            uint32_t currentCB = 0;
+            uint32_t recently = 3;
+            
+            int currentPass = -1;
+            VkViewport viewport;
+            VkRect2D scissor;
     };
 
     class VkMachine::Texture{

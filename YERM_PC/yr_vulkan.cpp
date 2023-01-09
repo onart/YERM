@@ -46,6 +46,8 @@ namespace onart {
     static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t samplerLimit = 256, uint32_t dynUniLimit = 8, uint32_t uniLimit = 16, uint32_t intputAttachmentLimit = 16);
     /// @brief 주어진 기반 형식과 아귀가 맞는, 현재 장치에서 사용 가능한 압축 형식을 리턴합니다.
     static VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, VkFormat base, bool hq = true, VkImageCreateFlagBits flags = VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT);
+    /// @brief 파이프라인을 주어진 옵션에 따라 생성합니다.
+    static VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, VkRenderPass pass, uint32_t subpass, uint32_t flags, const uint32_t OPT_COLOR_COUNT, const bool OPT_USE_DEPTHSTENCIL, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkStencilOpState* front, VkStencilOpState* back);
 
     /// @brief 활성화할 장치 확장
     constexpr const char* VK_DESIRED_DEVICE_EXT[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
@@ -210,7 +212,7 @@ namespace onart {
         }
     }
 
-    void VkMachine::createSwapchain(uint32_t width, uint32_t height){
+    void VkMachine::createSwapchain(uint32_t width, uint32_t height){ // TODO: 안드로이드 대상에서는 이것 호출에서 처음 값을 유지하기
         destroySwapchain();
         if(width == 0 || height == 0) { // 창 최소화 상태 등. VkMachine은 swapchain이 nullptr일 때 그것이 대상인 렌더패스를 사용할 수 없음 (그리기 호출 시 아무것도 하지 않음)
             return;
@@ -1067,7 +1069,10 @@ namespace onart {
 
     VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, RenderPass* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front, VkStencilOpState* back){
         VkPipeline ret = getPipeline(name);
-        if(ret) return ret;
+        if(ret) {
+            pass->usePipeline(ret, layout, subpass);
+            return ret;
+        }
 
         const uint32_t OPT_COLOR_COUNT = 
             (uint32_t)pass->targets[subpass]->type & 0b100 ? 3 :
@@ -1076,92 +1081,39 @@ namespace onart {
             0;
         const bool OPT_USE_DEPTHSTENCIL = (int)pass->targets[subpass]->type & 0b1000;
 
-        VkPipelineShaderStageCreateInfo shaderStagesInfo[2] = {};
-        shaderStagesInfo[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        shaderStagesInfo[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-        shaderStagesInfo[0].module = vs;
-        shaderStagesInfo[0].pName = "main";
-        
-        shaderStagesInfo[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        shaderStagesInfo[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        shaderStagesInfo[1].module = fs;
-        shaderStagesInfo[1].pName = "main";
-
-        VkVertexInputBindingDescription vbind{};
-        vbind.binding = 0;
-        vbind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        vbind.stride = size;
-
-        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
-        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertexInputInfo.vertexBindingDescriptionCount = 1; // TODO: 인스턴싱을 위한 인터페이스
-        vertexInputInfo.pVertexBindingDescriptions = &vbind;
-        vertexInputInfo.vertexAttributeDescriptionCount = vattr;
-        vertexInputInfo.pVertexAttributeDescriptions = vinfo;
-
-        VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo{};
-        inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-        inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-        inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
-
-        VkPipelineRasterizationStateCreateInfo rtrInfo{};
-        rtrInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        rtrInfo.cullMode= VK_CULL_MODE_BACK_BIT;
-        rtrInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-        rtrInfo.lineWidth = 1.0f;
-        rtrInfo.polygonMode = VK_POLYGON_MODE_FILL;
-
-        VkPipelineDepthStencilStateCreateInfo dsInfo{};
-        if(OPT_USE_DEPTHSTENCIL){
-            dsInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-            dsInfo.depthCompareOp = VK_COMPARE_OP_LESS;
-            dsInfo.depthTestEnable = (flags & PipelineOptions::USE_DEPTH) ? VK_TRUE : VK_FALSE;
-            dsInfo.depthWriteEnable = dsInfo.depthWriteEnable;
-            dsInfo.stencilTestEnable = (flags & PipelineOptions::USE_STENCIL) ? VK_TRUE : VK_FALSE;
-            if(front) dsInfo.front = *front;
-            if(back) dsInfo.back = *back;
+        ret = onart::createPipeline(device, vinfo, size, vattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, front, back);
+        if(!ret){
+            LOGHERE;
+            return VK_NULL_HANDLE;
         }
-        
-        VkPipelineColorBlendAttachmentState blendStates[3]{};
-        for(VkPipelineColorBlendAttachmentState& blendInfo: blendStates){
-            blendInfo.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-            blendInfo.colorBlendOp = VK_BLEND_OP_ADD;
-            blendInfo.alphaBlendOp = VK_BLEND_OP_ADD;
-            blendInfo.blendEnable = VK_TRUE;
-            blendInfo.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-            blendInfo.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-            blendInfo.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-            blendInfo.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        pass->usePipeline(ret, layout, subpass);
+        return pipelines[name] = ret;
+    }
+
+    VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front, VkStencilOpState* back) {
+        VkPipeline ret = getPipeline(name);
+        if(ret) {
+            pass->usePipeline(ret, layout, subpass);
+            return ret;
+        }
+        uint32_t OPT_COLOR_COUNT;
+        bool OPT_USE_DEPTHSTENCIL;
+        if(subpass == pass->targets.size()) {
+            OPT_COLOR_COUNT = 1;
+            OPT_USE_DEPTHSTENCIL = pass->useDepth;
+        }
+        else{
+            OPT_COLOR_COUNT = 
+            (uint32_t)pass->targets[subpass]->type & 0b100 ? 3 :
+            (uint32_t)pass->targets[subpass]->type & 0b10 ? 2 :
+            (uint32_t)pass->targets[subpass]->type & 0b1 ? 1 :
+            0;
+            OPT_USE_DEPTHSTENCIL = (int)pass->targets[subpass]->type & 0b1000;
         }
 
-        VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
-        colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        colorBlendStateCreateInfo.attachmentCount = OPT_COLOR_COUNT;
-        colorBlendStateCreateInfo.pAttachments = blendStates;
-
-        VkDynamicState dynStates[2] = {VkDynamicState::VK_DYNAMIC_STATE_VIEWPORT, VkDynamicState::VK_DYNAMIC_STATE_SCISSOR};
-        VkPipelineDynamicStateCreateInfo dynInfo{};
-        dynInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-        dynInfo.pDynamicStates = dynStates;
-        dynInfo.dynamicStateCount = sizeof(dynStates) / sizeof(dynStates[0]);
-
-        VkGraphicsPipelineCreateInfo pInfo{};
-        pInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-        pInfo.stageCount = sizeof(shaderStagesInfo) / sizeof(shaderStagesInfo[0]);
-        pInfo.pStages = shaderStagesInfo;
-        pInfo.pVertexInputState = &vertexInputInfo;
-        pInfo.renderPass = pass->rp;
-        pInfo.subpass = subpass;
-        pInfo.pDynamicState = &dynInfo;
-        pInfo.layout = layout;
-        pInfo.pRasterizationState = &rtrInfo;
-        pInfo.pInputAssemblyState = &inputAssemblyInfo;
-        // pInfo.pMultisampleState, pInfo.pTessellationState // TODO: 선택권
-        if(OPT_COLOR_COUNT) { pInfo.pColorBlendState = &colorBlendStateCreateInfo; }
-        if(OPT_USE_DEPTHSTENCIL){ pInfo.pDepthStencilState = &dsInfo; }
-        VkResult result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pInfo, nullptr, &ret);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create pipeline:",result);
+        ret = onart::createPipeline(device, vinfo, size, vattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, front, back);
+        if(!ret){
+            LOGHERE;
             return VK_NULL_HANDLE;
         }
         pass->usePipeline(ret, layout, subpass);
@@ -1367,14 +1319,17 @@ namespace onart {
         }
 		submitInfo.signalSemaphoreCount = 1;
 		submitInfo.pSignalSemaphores = &semaphore;
+
+        if((result = vkResetFences(singleton->device, 1, &fence)) != VK_SUCCESS){
+            LOGWITH("Failed to reset fence. waiting or other operations will play incorrect");
+            return;
+        }
         
 		if ((result = vkQueueSubmit(singleton->graphicsQueue, 1, &submitInfo, fence)) != VK_SUCCESS) {
 			LOGWITH("Failed to submit command buffer");
 			return;
 		}
-        if((result = vkResetFences(singleton->device, 1, &fence)) != VK_SUCCESS){
-            LOGWITH("Failed to reset fence. waiting or other operations will play incorrect");
-        }
+
         currentPass = -1;
     }
 
@@ -1405,7 +1360,7 @@ namespace onart {
             VkClearValue iColor{0.03f,0.03f,0.03f,1.0f};
             rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
             rpInfo.framebuffer = fb;
-            rpInfo.pClearValues = &iColor;
+            rpInfo.pClearValues = &iColor; // TODO: 렌더패스 첨부물 인덱스에 대응하게 준비해야 함
             rpInfo.clearValueCount = 1;
             rpInfo.renderArea.offset = {0,0};
             rpInfo.renderArea.extent = {targets[0]->width, targets[0]->height};
@@ -1415,12 +1370,216 @@ namespace onart {
         else{
             vkCmdNextSubpass(cb, VK_SUBPASS_CONTENTS_INLINE);
             VkDescriptorSet dset[4];
-            uint32_t count = targets[currentPass]->getDescriptorSets(dset);
+            uint32_t count = targets[currentPass - 1]->getDescriptorSets(dset);
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, count, dset, 0, nullptr);
         }
         vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]);
         vkCmdSetViewport(cb, 0, 1, &viewport);
         vkCmdSetScissor(cb, 0, 1, &scissor);
+    }
+
+    void VkMachine::RenderPass2Screen::setViewport(float width, float height, float x, float y, bool applyNow){
+        viewport.height = height;
+        viewport.width = width;
+        viewport.maxDepth = 1.0f;
+        viewport.minDepth = 0.0f;
+        viewport.x = x;
+        viewport.y = y;
+        if(applyNow && currentPass != -1) {
+            vkCmdSetViewport(cbs[currentCB], 0, 1, &viewport);
+        }
+    }
+
+    void VkMachine::RenderPass2Screen::setScissor(uint32_t width, uint32_t height, int32_t x, int32_t y, bool applyNow){
+        scissor.extent.width = width;
+        scissor.extent.height = height;
+        scissor.offset.x = x;
+        scissor.offset.y = y;
+        if(applyNow && currentPass != -1) {
+            vkCmdSetScissor(cbs[currentCB], 0, 1, &scissor);
+        }
+    }
+
+    void VkMachine::RenderPass2Screen::bind(uint32_t pos, UniformBuffer* ub, uint32_t ubPos){
+        if(currentPass == -1){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        uint32_t off = ub->offset(ubPos);
+        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &ub->dset, ub->isDynamic, &off);
+    }
+
+    void VkMachine::RenderPass2Screen::bind(uint32_t pos, Texture* tx) {
+        if(currentPass == -1){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
+    }
+
+    void VkMachine::RenderPass2Screen::bind(uint32_t pos, RenderTarget* target, uint32_t index){
+        if(currentPass == -1){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        if(!target->sampled){
+            LOGWITH("Invalid call: this target is not made with texture");
+            return;
+        }
+        VkDescriptorSet dset;
+        switch(index){
+            case 0:
+                dset = target->dset1;
+                break;
+            case 1:
+                dset = target->dset2;
+                break;
+            case 2:
+                dset = target->dset3;
+                break;
+            case 3:
+                dset = target->dsetDS;
+                break;
+            default:
+                LOGWITH("Invalid render target index");
+                return;
+        }
+        if(!dset) {
+            LOGWITH("Invalid render target index");
+            return;
+        }
+        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &dset, 0, nullptr);
+    }
+
+    void VkMachine::RenderPass2Screen::start(uint32_t pos){
+        if(currentPass == targets.size() - 1) {
+            LOGWITH("Invalid call. The last subpass already started");
+            return;
+        }
+        if(!singleton->swapchain.handle) {
+            LOGWITH("Swapchain not ready. This message can be ignored safely if the rendering goes fine after now");
+            return;
+        }
+        currentPass++;
+        VkResult result;
+        if(currentPass == 0){
+            uint32_t index;
+            result = vkAcquireNextImageKHR(singleton->device, singleton->swapchain.handle, UINT64_MAX, acquireSm[currentCB], VK_NULL_HANDLE, &index);
+            if(result != VK_SUCCESS) {
+                LOGWITH("Failed to acquire swapchain image:",result,"\nThis message can be ignored safely if the rendering goes fine after now");
+                currentPass = -1;
+                return;
+            }
+
+            vkWaitForFences(singleton->device, 1, &fences[currentCB], VK_FALSE, UINT64_MAX);
+            vkResetCommandBuffer(cbs[currentCB], 0);
+            VkCommandBufferBeginInfo cbInfo{};
+            cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            cbInfo.flags = VkCommandBufferUsageFlagBits::VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            result = vkBeginCommandBuffer(cbs[currentCB], &cbInfo);
+            if(result != VK_SUCCESS){
+                LOGWITH("Failed to begin command buffer:",result);
+                currentPass = -1;
+                return;
+            }
+            VkRenderPassBeginInfo rpInfo{};
+            VkClearValue iColor{0.03f,0.03f,0.03f,1.0f};
+            rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+            rpInfo.framebuffer = fbs[index];
+            rpInfo.pClearValues = &iColor; // TODO: 렌더패스 첨부물 인덱스에 대응하게 준비해야 함
+            rpInfo.clearValueCount = 1;
+            rpInfo.renderArea.offset = {0,0};
+            rpInfo.renderArea.extent = {targets[0]->width, targets[0]->height};
+            
+            vkCmdBeginRenderPass(cbs[currentCB], &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+        }
+        else{
+            vkCmdNextSubpass(cbs[currentCB], VK_SUBPASS_CONTENTS_INLINE);
+            VkDescriptorSet dset[4];
+            uint32_t count = targets[currentPass - 1]->getDescriptorSets(dset);
+            vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, count, dset, 0, nullptr);
+        }
+        vkCmdBindPipeline(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]);
+        vkCmdSetViewport(cbs[currentCB], 0, 1, &viewport);
+        vkCmdSetScissor(cbs[currentCB], 0, 1, &scissor);
+    }
+
+    void VkMachine::RenderPass2Screen::execute(RenderPass* other){
+        vkCmdEndRenderPass(cbs[currentCB]);
+        VkResult result;
+        if((result = vkEndCommandBuffer(cbs[currentCB])) != VK_SUCCESS){
+            LOGWITH("Failed to end command buffer:",result);
+            return;
+        }
+
+        if(!singleton->swapchain.handle){
+            LOGWITH("Swapchain is not ready. This message can be ignored safely if the rendering goes fine after now");
+            return;
+        }
+
+        VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &cbs[currentCB];
+        VkSemaphore waits[2];
+        waits[0] = acquireSm[currentCB];
+        submitInfo.pWaitSemaphores = waits;
+        submitInfo.waitSemaphoreCount = 1;
+		if(other){
+            submitInfo.waitSemaphoreCount = 2;
+            waits[1] = other->semaphore;
+		    submitInfo.pWaitDstStageMask = waitStages;
+        }
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = &drawSm[currentCB];
+
+        if((result = vkResetFences(singleton->device, 1, &fences[currentCB])) != VK_SUCCESS){
+            LOGWITH("Failed to reset fence. waiting or other operations will play incorrect");
+            return;
+        }
+
+		if ((result = vkQueueSubmit(singleton->graphicsQueue, 1, &submitInfo, fences[currentCB])) != VK_SUCCESS) {
+			LOGWITH("Failed to submit command buffer");
+			return;
+		}
+
+        recently = currentCB;
+        currentCB = (currentCB + 1) % COMMANDBUFFER_COUNT;
+        currentPass = -1;
+
+        VkPresentInfoKHR presentInfo{};
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = &singleton->swapchain.handle;
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = &drawSm[currentCB];
+
+        if((result = vkQueuePresentKHR(singleton->presentQueue, &presentInfo)) != VK_SUCCESS){
+            LOGWITH("Failed to submit command present operation");
+            return;
+        }
+    }
+
+    void VkMachine::RenderPass2Screen::push(void* input, uint32_t start, uint32_t end){
+        if(currentPass == -1){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        vkCmdPushConstants(cbs[currentCB], pipelineLayouts[currentPass], VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
+    }
+
+    void VkMachine::RenderPass2Screen::usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass){
+        if(subpass > targets.size()){
+            LOGWITH("Invalid subpass. This renderpass has", targets.size() + 1, "subpasses but", subpass, "given");
+            return;
+        }
+        pipelines[subpass] = pipeline;
+        pipelineLayouts[subpass] = layout;
+        if(currentPass == subpass) { vkCmdBindPipeline(cbs[currentCB], VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline); }
+    }
+
+    bool VkMachine::RenderPass2Screen::wait(uint64_t timeout){
+        return vkWaitForFences(singleton->device, 1, &fences[recently], VK_FALSE, timeout) == VK_SUCCESS; // VK_TIMEOUT이나 VK_ERROR_DEVICE_LOST
     }
 
     VkMachine::UniformBuffer::UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc, void* mmap, uint32_t binding)
@@ -1832,6 +1991,101 @@ namespace onart {
         }
         return base;
     #undef CHECK_N_RETURN
+    }
+
+    static VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, 
+    VkRenderPass pass, uint32_t subpass, uint32_t flags, const uint32_t OPT_COLOR_COUNT, const bool OPT_USE_DEPTHSTENCIL,
+    VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkStencilOpState* front, VkStencilOpState* back) {
+        VkPipelineShaderStageCreateInfo shaderStagesInfo[2] = {};
+        shaderStagesInfo[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStagesInfo[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        shaderStagesInfo[0].module = vs;
+        shaderStagesInfo[0].pName = "main";
+            
+        shaderStagesInfo[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStagesInfo[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        shaderStagesInfo[1].module = fs;
+        shaderStagesInfo[1].pName = "main";
+
+        VkVertexInputBindingDescription vbind{};
+        vbind.binding = 0;
+        vbind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        vbind.stride = size;
+
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInputInfo.vertexBindingDescriptionCount = 1; // TODO: 인스턴싱을 위한 인터페이스
+        vertexInputInfo.pVertexBindingDescriptions = &vbind;
+        vertexInputInfo.vertexAttributeDescriptionCount = vattr;
+        vertexInputInfo.pVertexAttributeDescriptions = vinfo;
+
+        VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo{};
+        inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
+
+        VkPipelineRasterizationStateCreateInfo rtrInfo{};
+        rtrInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rtrInfo.cullMode= VK_CULL_MODE_BACK_BIT;
+        rtrInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rtrInfo.lineWidth = 1.0f;
+        rtrInfo.polygonMode = VK_POLYGON_MODE_FILL;
+
+        VkPipelineDepthStencilStateCreateInfo dsInfo{};
+        if(OPT_USE_DEPTHSTENCIL){
+            dsInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+            dsInfo.depthCompareOp = VK_COMPARE_OP_LESS;
+            dsInfo.depthTestEnable = (flags & VkMachine::PipelineOptions::USE_DEPTH) ? VK_TRUE : VK_FALSE;
+            dsInfo.depthWriteEnable = dsInfo.depthWriteEnable;
+            dsInfo.stencilTestEnable = (flags & VkMachine::PipelineOptions::USE_STENCIL) ? VK_TRUE : VK_FALSE;
+            if(front) dsInfo.front = *front;
+            if(back) dsInfo.back = *back;
+        }
+            
+        VkPipelineColorBlendAttachmentState blendStates[3]{};
+        for(VkPipelineColorBlendAttachmentState& blendInfo: blendStates){
+            blendInfo.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            blendInfo.colorBlendOp = VK_BLEND_OP_ADD;
+            blendInfo.alphaBlendOp = VK_BLEND_OP_ADD;
+            blendInfo.blendEnable = VK_TRUE;
+            blendInfo.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            blendInfo.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blendInfo.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            blendInfo.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        }
+
+        VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
+        colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        colorBlendStateCreateInfo.attachmentCount = OPT_COLOR_COUNT;
+        colorBlendStateCreateInfo.pAttachments = blendStates;
+
+        VkDynamicState dynStates[2] = {VkDynamicState::VK_DYNAMIC_STATE_VIEWPORT, VkDynamicState::VK_DYNAMIC_STATE_SCISSOR};
+        VkPipelineDynamicStateCreateInfo dynInfo{};
+        dynInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynInfo.pDynamicStates = dynStates;
+        dynInfo.dynamicStateCount = sizeof(dynStates) / sizeof(dynStates[0]);
+
+        VkGraphicsPipelineCreateInfo pInfo{};
+        pInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pInfo.stageCount = sizeof(shaderStagesInfo) / sizeof(shaderStagesInfo[0]);
+        pInfo.pStages = shaderStagesInfo;
+        pInfo.pVertexInputState = &vertexInputInfo;
+        pInfo.renderPass = pass;
+        pInfo.subpass = subpass;
+        pInfo.pDynamicState = &dynInfo;
+        pInfo.layout = layout;
+        pInfo.pRasterizationState = &rtrInfo;
+        pInfo.pInputAssemblyState = &inputAssemblyInfo;
+        // pInfo.pMultisampleState, pInfo.pTessellationState // TODO: 선택권
+        if(OPT_COLOR_COUNT) { pInfo.pColorBlendState = &colorBlendStateCreateInfo; }
+        if(OPT_USE_DEPTHSTENCIL){ pInfo.pDepthStencilState = &dsInfo; }
+        VkPipeline ret;
+        VkResult result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pInfo, nullptr, &ret);
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create pipeline:",result);
+            return VK_NULL_HANDLE;
+        }
+        return ret;
     }
 
 }
