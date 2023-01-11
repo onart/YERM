@@ -40,13 +40,13 @@
 #define VERTEX_UINT32_TYPES uint32_t, uvec2, uvec3, uvec4, uint32_t[1], uint32_t[2], uint32_t[3], uint32_t[4]
 
 #define VERTEX_ATTR_TYPES VERTEX_FLOAT_TYPES, \
-				VERTEX_DOUBLE_TYPES, \
-				VERTEX_INT8_TYPES, \
-				VERTEX_UINT8_TYPES,\
-				VERTEX_INT16_TYPES,\
-				VERTEX_UINT16_TYPES,\
-				VERTEX_INT32_TYPES,\
-				VERTEX_UINT32_TYPES
+                VERTEX_DOUBLE_TYPES, \
+                VERTEX_INT8_TYPES, \
+                VERTEX_UINT8_TYPES,\
+                VERTEX_INT16_TYPES,\
+                VERTEX_UINT16_TYPES,\
+                VERTEX_INT32_TYPES,\
+                VERTEX_UINT32_TYPES
 
 namespace onart {
 
@@ -139,7 +139,7 @@ namespace onart {
             /// @param subpassCount 최종 서브패스의 수입니다. 즉 targets 배열 길이 + 1을 입력해야 합니다.
             /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. (RenderPass 객체와 같은 집합을 공유하지 않음) 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
             /// @param useDepth subpassCount가 1이고 이 값이 true인 경우 최종 패스에서 깊이/스텐실 이미지를 사용하게 됩니다. subpassCount가 1이 아니면 무시됩니다.
-            /// @param useDepthAsInput targets와 일대일 대응하며, 대응하는 성분의 깊이 성분을 다음 서브패스의 입력으로 사용하려면 true를 줍니다. nullptr를 주는 경우 일괄 false로 취급됩니다.
+            /// @param useDepthAsInput targets와 일대일 대응하며, 대응하는 성분의 깊이 성분을 다음 서브패스의 입력으로 사용하려면 true를 줍니다. nullptr를 주는 경우 일괄 false로 취급됩니다. 즉 nullptr가 아니라면 반드시 subpassCount - 1 길이의 배열이 주어져야 합니다.
             RenderPass2Screen* createRenderPass2Screen(RenderTargetType* targets, uint32_t subpassCount, const string16& name, bool useDepth = true, bool* useDepthAsInput = nullptr);
             /// @brief 파이프라인 레이아웃을 만듭니다. 파이파라인 레이아웃은 셰이더에서 접근할 수 있는 uniform 버퍼, 입력 첨부물, 텍스처 등의 사양을 말합니다.
             /// @param layouts 레이아웃 객체의 배열입니다. Texture, UniformBuffer, RenderTarget의 getLayout으로 얻을 수 있습니다.
@@ -252,6 +252,7 @@ namespace onart {
                 std::vector<VkImageView> imageView;
             }swapchain;
             std::map<string16, RenderPass*> renderPasses;
+            std::map<string16, RenderPass2Screen*> finalPasses;
             std::map<string16, RenderTarget*> renderTargets;
             std::map<string16, VkShaderModule> shaders;
             std::map<string16, UniformBuffer*> uniformBuffers;
@@ -275,6 +276,7 @@ namespace onart {
     class VkMachine::RenderTarget{
         friend class VkMachine;
         friend class RenderPass;
+        friend class RenderPass2Screen;
         public:
             RenderTarget& operator=(const RenderTarget&) = delete;
         private:
@@ -351,7 +353,6 @@ namespace onart {
         private:
             RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount); // 이후 다수의 서브패스를 쓸 수 있도록 변경
             ~RenderPass();
-            void reconstruct(RenderTarget*);
             const uint16_t stageCount;
             VkFramebuffer fb = VK_NULL_HANDLE;
             VkRenderPass rp = VK_NULL_HANDLE;
@@ -426,19 +427,25 @@ namespace onart {
             /// @param width 가로 길이
             /// @param height 세로 길이
             void reconstructFB(uint32_t width, uint32_t height);
+            RenderPass2Screen(VkRenderPass rp, std::vector<RenderTarget*>&& targets, std::vector<VkFramebuffer>&& fbs, VkImage dsImage, VkImageView dsView, VmaAllocation dsAlloc);
+            ~RenderPass2Screen();
             constexpr static uint32_t COMMANDBUFFER_COUNT = 4; // 트리플버퍼링 상정
             VkRenderPass rp = VK_NULL_HANDLE;
+
             std::vector<VkFramebuffer> fbs; // 스왑체인 이미지마다 하나씩
             std::vector<RenderTarget*> targets; // 마지막 단계 제외 서브패스마다 하나씩
             std::vector<VkPipeline> pipelines; // 서브패스마다 하나씩
             std::vector<VkPipelineLayout> pipelineLayouts; // 서브패스마다 하나씩
 
+            VkImage dsImage;
+            VkImageView dsView;
+            VmaAllocation dsAlloc;
+
             VkCommandBuffer cbs[COMMANDBUFFER_COUNT] = {};
             VkFence fences[COMMANDBUFFER_COUNT] = {};
             VkSemaphore acquireSm[COMMANDBUFFER_COUNT] = {};
-            VkSemaphore drawSm[COMMANDBUFFER_COUNT] = {};
+            VkSemaphore drawSm[COMMANDBUFFER_COUNT] = {}; // 하나로 같이 쓰면 낮은 확률로 화면 프레젠트가 먼저 실행될 수도 있음
 
-            const bool useDepth;
             uint32_t currentCB = 0;
             uint32_t recently = 3;
             
