@@ -261,6 +261,11 @@ namespace onart {
             }
         }
 
+        for(auto& fpass: finalPasses){
+            if(!fpass.second->reconstructFB(width, height)){
+                LOGWITH("RenderPass",fpass.first,": Failed to be recreate framebuffer");
+            }
+        }
     }
 
     void VkMachine::destroySwapchain(){
@@ -1147,7 +1152,7 @@ namespace onart {
         rpInfo.dependencyCount = subpassCount; // 스왑체인 의존성은 이 함수를 통해 만들지 않기 때문에 이대로 사용
         rpInfo.pDependencies = &dependencies[0];
         VkRenderPass newPass;
-        VkResult result;
+
         if((result = vkCreateRenderPass(device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
             LOGWITH("Failed to create renderpass:",result);
             for(RenderTarget* t:targets) delete t;
@@ -1587,18 +1592,68 @@ namespace onart {
         for(VkSemaphore& semaphore: acquireSm) semaphore = singleton->createSemaphore();
         for(VkSemaphore& semaphore: drawSm) semaphore = singleton->createSemaphore();
         singleton->allocateCommandBuffers(COMMANDBUFFER_COUNT, true, cbs);
+        pipelines.resize(this->targets.size() + 1, VK_NULL_HANDLE);
+        pipelineLayouts.resize(this->targets.size() + 1, VK_NULL_HANDLE);
         setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
         setScissor(targets[0]->width, targets[0]->height, 0, 0);
     }
 
     VkMachine::RenderPass2Screen::~RenderPass2Screen(){
-        for(VkFence fence: fences) vkDestroyFence(singleton->device, fence, nullptr);
-        for(VkSemaphore semaphore: acquireSm) vkDestroySemaphore(singleton->device, semaphore, nullptr);
-        for(VkSemaphore semaphore: drawSm) vkDestroySemaphore(singleton->device, semaphore, nullptr);
-        for(VkFramebuffer fb: fbs){ vkDestroyFramebuffer(singleton->device, fb, nullptr); }
+        for(VkFence& fence: fences) { vkDestroyFence(singleton->device, fence, nullptr); fence = nullptr; fence = VK_NULL_HANDLE; }
+        for(VkSemaphore& semaphore: acquireSm) { vkDestroySemaphore(singleton->device, semaphore, nullptr); semaphore = VK_NULL_HANDLE; }
+        for(VkSemaphore& semaphore: drawSm) { vkDestroySemaphore(singleton->device, semaphore, nullptr); semaphore = VK_NULL_HANDLE; }
+        for(VkFramebuffer& fb: fbs){ vkDestroyFramebuffer(singleton->device, fb, nullptr); }
+        for(RenderTarget* target: targets){ delete target; }
         vkDestroyImageView(singleton->device, dsView, nullptr);
         vmaDestroyImage(singleton->allocator, dsImage, dsAlloc);
-        for(RenderTarget* target: targets){ delete target; }
+        vkDestroyRenderPass(singleton->device, rp, nullptr);
+        rp = VK_NULL_HANDLE; // null 초기화의 이유: 해제 이전에 소멸자를 따로 호출하는 데에도 사용하고 있기 때문 (2중 해제 방지)
+        dsView = VK_NULL_HANDLE;
+        dsImage = VK_NULL_HANDLE;
+        dsAlloc = nullptr;
+        fbs.clear();
+        targets.clear();
+    }
+
+    bool VkMachine::RenderPass2Screen::reconstructFB(uint32_t width, uint32_t height){
+        for(VkFramebuffer& fb: fbs) { vkDestroyFramebuffer(singleton->device, fb, nullptr); fb = VK_NULL_HANDLE; }
+        vkDestroyImageView(singleton->device, dsView, nullptr);
+        vmaDestroyImage(singleton->allocator, dsImage, dsAlloc);
+        bool useFinalDepth = dsView != VK_NULL_HANDLE;
+        dsView = VK_NULL_HANDLE;
+        dsImage = VK_NULL_HANDLE;
+        dsAlloc = nullptr;
+
+        // ^^^ 스왑이 있으므로 위 파트는 이론상 없어도 알아서 해제되지만 있는 편이 메모리 때문에 더 좋을 것 같음
+
+        std::vector<RenderTargetType> types(targets.size());
+        struct bool8{bool b;};
+        std::vector<bool8> useDepth(targets.size());
+        for(uint32_t i = 0; i < targets.size(); i++){
+            types[i] = targets[i]->type;
+            useDepth[i].b = bool((int)targets[i]->type & 0b1000);
+            delete targets[i];
+        }
+        targets.clear();
+        RenderPass2Screen* newDat = singleton->createRenderPass2Screen(types.data(), pipelines.size(), "", useFinalDepth, (bool*)useDepth.data());
+        if(!newDat) {
+            this->~RenderPass2Screen();
+            return false;
+        }
+        // 얕은 복사
+        fbs.swap(newDat->fbs);
+        targets.swap(newDat->targets);
+        // 파이프라인과 레이아웃은 유지
+#define SHALLOW_SWAP(a) std::swap(a, newDat->a)
+        SHALLOW_SWAP(dsImage);
+        SHALLOW_SWAP(dsView);
+        SHALLOW_SWAP(dsAlloc);
+        SHALLOW_SWAP(viewport);
+        SHALLOW_SWAP(scissor);
+#undef SHALLOW_SWAP
+        singleton->finalPasses.erase("");
+        delete newDat; // 문제점: 의미없이 펜스, 세마포어 등이 생성되었다 없어짐
+        return true;
     }
 
     void VkMachine::RenderPass2Screen::setViewport(float width, float height, float x, float y, bool applyNow){

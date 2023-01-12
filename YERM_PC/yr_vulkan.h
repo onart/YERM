@@ -110,7 +110,7 @@ namespace onart {
             /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다. 이것을 해제하는 수단은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
             /// @param width 가로 길이(px).
             /// @param height 세로 길이(px).
-            /// @param name 이후 별도로 접근할 수 있는 이름을 지정합니다. 단, 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다. "screen"이라는 이름은 예약되어 있어 사용이 불가능하며, 말 그대로 화면을 뜻합니다.
+            /// @param name 이후 별도로 접근할 수 있는 이름을 지정합니다. 단, 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다. 빈 문자열 이름은 예약되어 있어 사용이 불가능합니다.
             /// @param type @ref RenderTargetType 참고하세요.
             /// @param sampled true면 샘플링 텍스처로 사용되고, false면 입력 첨부물로 사용됩니다. 일단은 화면을 최종 목적지로 간주하기 때문에 그 외의 용도는 없습니다.
             /// @param useDepthInput sampled가 false인 경우, 즉 이 타겟이 입력 첨부물로 사용될 경우에 깊이 버퍼도 입력 첨부물로 사용할지 여부입니다.
@@ -132,12 +132,12 @@ namespace onart {
             /// @brief 주어진 렌더 타겟들을 대상으로 하는 렌더패스를 구성합니다.
             /// @param targets 렌더 타겟 포인터의 배열입니다. 마지막 것을 제외한 모든 타겟은 input attachment로 생성되었어야 하며 그렇지 않은 경우 실패합니다.
             /// @param subpassCount targets 배열의 크기입니다.
-            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
+            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. 빈 문자열 이름은 예약되어 있어 사용이 불가능합니다.
             RenderPass* createRenderPass(RenderTarget** targets, uint32_t subpassCount, const string16& name);
             /// @brief 화면으로 이어지는 렌더패스를 생성합니다. 각 패스의 타겟들은 현재 창의 해상도와 동일하게 맞춰집니다.
             /// @param targets 생성할 렌더 타겟들의 타입 배열입니다. 서브패스의 마지막은 이것을 제외한 스왑체인 이미지입니다.
             /// @param subpassCount 최종 서브패스의 수입니다. 즉 targets 배열 길이 + 1을 입력해야 합니다.
-            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. (RenderPass 객체와 같은 집합을 공유하지 않음) 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
+            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. (RenderPass 객체와 같은 집합을 공유하지 않음) 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. 빈 문자열 이름은 예약되어 있어 사용이 불가능합니다.
             /// @param useDepth subpassCount가 1이고 이 값이 true인 경우 최종 패스에서 깊이/스텐실 이미지를 사용하게 됩니다. subpassCount가 1이 아니면 무시됩니다.
             /// @param useDepthAsInput targets와 일대일 대응하며, 대응하는 성분의 깊이 성분을 다음 서브패스의 입력으로 사용하려면 true를 줍니다. nullptr를 주는 경우 일괄 false로 취급됩니다. 즉 nullptr가 아니라면 반드시 subpassCount - 1 길이의 배열이 주어져야 합니다.
             RenderPass2Screen* createRenderPass2Screen(RenderTargetType* targets, uint32_t subpassCount, const string16& name, bool useDepth = true, bool* useDepthAsInput = nullptr);
@@ -422,11 +422,14 @@ namespace onart {
             /// @param timeout 기다릴 최대 시간(ns), UINT64_MAX (~0) 값이 입력되면 무한정 기다립니다.
             /// @return 렌더패스 동작이 실제로 끝나서 리턴했으면 true입니다.
             bool wait(uint64_t timeout = UINT64_MAX);
+            /// @brief 이 패스가 사용 가능한 상태인지 확인합니다. 사용 불가능하게 된 패스를 다시 사용할 수 있게 만들 방법은 없습니다.
+            inline bool isAvailable() { return rp; }
         private:
             /// @brief 프레임버퍼 이미지를 처음부터 다시 만들어 프레임버퍼를 다시 생성합니다.
             /// @param width 가로 길이
             /// @param height 세로 길이
-            void reconstructFB(uint32_t width, uint32_t height);
+            /// @return 성공 여부 (실패 시 내부의 모든 데이터는 해제됨)
+            bool reconstructFB(uint32_t width, uint32_t height);
             RenderPass2Screen(VkRenderPass rp, std::vector<RenderTarget*>&& targets, std::vector<VkFramebuffer>&& fbs, VkImage dsImage, VkImageView dsView, VmaAllocation dsAlloc);
             ~RenderPass2Screen();
             constexpr static uint32_t COMMANDBUFFER_COUNT = 4; // 트리플버퍼링 상정
