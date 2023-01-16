@@ -652,7 +652,7 @@ namespace onart{
         }
     };
 
-    /// @brief 3x3 행렬입니다. mat3은 9개의 float 변수를 갖지만 16 배수 정렬에 의해 실제로는 48바이트를 차지하니 주의하세요.
+    /// @brief 행 우선 순서의 3x3 행렬입니다. mat3은 9개의 float 변수를 갖지만 16 배수 정렬에 의해 실제로는 48바이트를 차지하니 주의하세요.
     struct alignas(16) mat3{
         union{
             float a[9];
@@ -766,6 +766,122 @@ namespace onart{
         }
     };
 
+    /// @brief 열 우선 순서의 3x3 행렬입니다. mat3은 9개의 float 변수를 갖지만 16 배수 정렬에 의해 실제로는 48바이트를 차지하니 주의하세요.
+    struct alignas(16) cmat3{
+        union{
+            float a[9];
+            struct { float _11,_21,_31,_12,_22,_32,_13,_23,_33; };
+        };
+
+        /// @brief 단위행렬을 생성합니다.
+        inline cmat3() : a{} { _11 = _22 = _33 = 1.0f; }
+        /// @brief 행 우선 순서로 매개변수를 주어 행렬을 생성합니다.
+        inline cmat3(float _11,float _21,float _31,float _12,float _22,float _32,float _13,float _23,float _33):a { _11,_21,_31,_12,_22,_32,_13,_23,_33 } { }
+        /// @brief 복사 생성자입니다.
+        inline cmat3(const cmat3 &m) { memcpy(a, m.a, sizeof(a)); }
+        /// @brief 열 우선 순서로 성분에 접근합니다.
+        inline float &operator[](unsigned i) { assert(i < 9); return a[i]; }
+        /// @brief 열 우선 순서로 성분에 접근합니다.
+        inline const float &operator[](unsigned i) const { assert(i < 9); return a[i]; }
+        /// @brief row행 col열 원소의 참조를 리턴합니다. (0 베이스)
+        inline float &at(unsigned row, unsigned col) { assert(row<3 && col<3); return a[col * 3 + row]; }
+        /// @brief row행 col열 원소의 참조를 리턴합니다. (0 베이스)
+        inline const float &at(unsigned row, unsigned col) const { assert(row<3 && col<3); return a[col * 3 + row]; }
+        /// @brief 단위행렬로 바꿉니다.
+        inline void toI() { memset(a, 0, sizeof(a)); _11=_22=_33=1.0f; }
+        /// @brief 다른 행렬과 연산합니다.
+        inline cmat3 &operator+=(const cmat3 &m) { add4(a, m.a); add4(a+4, m.a+4); a[8]+=m.a[8]; return *this; }
+        /// @brief 다른 행렬과 연산합니다.
+        inline cmat3 &operator-=(const cmat3 &m) { sub4(a, m.a); sub4(a+4, m.a+4); a[8]-=m.a[8]; return *this; }
+        /// @brief 다른 행렬과 연산합니다.
+        inline cmat3 operator+(const cmat3 &m) { return cmat3(*this) += m; }
+        /// @brief 다른 행렬과 연산합니다.
+        inline cmat3 operator-(const cmat3 &m) { return cmat3(*this) -= m; }
+        /// @brief i행 벡터를 리턴합니다. 0~2만 입력 가능합니다. 
+        inline vec3 row(size_t i) const { assert(i <= 2); return vec3(a[i], a[i + 3], a[i + 6]); }
+        /// @brief i열 벡터를 리턴합니다. 0~2만 입력 가능합니다. 
+        inline vec3 col(size_t i) const { assert(i <= 2); return vec3(a + i * 3); }
+        
+        /// @brief 행렬곱을 수행합니다.
+        inline cmat3 operator*(const cmat3& m) const {
+            cmat3 ret;
+            for (int i = 0, ent = 0; i < 3; i++){
+                vec3 c = col(i);
+                for (int j = 0; j < 3; j++,ent++){
+                    vec3 r = m.row(j);
+                    ret[ent] = c.dot(r);
+                }
+            }
+            return ret;
+        }
+        /// @brief 행렬곱을 수행합니다.
+        inline cmat3 &operator*=(const cmat3 &m) { return *this = operator*(m); }
+        /// @brief 벡터에 선형변환을 적용하여 리턴합니다.
+        inline vec3 operator*(const vec3& v) const { return vec3(row(0).dot(v), row(1).dot(v), row(2).dot(v)); }
+        /// @brief 행렬에 실수배를 합니다.
+        inline cmat3 &operator*=(float f) { mul4(a, f); mul4(a + 4, f); a[8] *= f; return *this; }
+        /// @brief 행렬에 실수배를 합니다.
+        inline cmat3 &operator/=(float f) { div4(a, f); div4(a + 4, f); a[8] /= f; return *this; }
+        /// @brief 행렬에 실수배를 합니다.
+        inline cmat3 operator*(float f) const { return cmat3(*this) *= f; }
+        /// @brief 행렬에 실수배를 합니다.
+        inline cmat3 operator/(float f) const { return cmat3(*this) /= f; }
+
+        /// @brief 행렬식을 리턴합니다.
+        inline float det() const { 
+            return _11 * (_22 * _33 - _23 * _32) + _12 * (_23 * _31 - _21 * _33) + _13 * (_21 * _32 - _22 * _31);
+        }
+
+        /// @brief 대각 성분의 합을 리턴합니다.
+        inline float trace() const { return _11 + _22 + _33; }
+
+        /// @brief 수반 행렬을 리턴합니다.
+        inline cmat3 adjugate() const {
+            return cmat3(
+                (_22 * _33 - _32 * _23), (_23 * _31 - _21 * _33), (_21 * _32 - _31 * _22),
+                (_13 * _32 - _12 * _33), (_11 * _33 - _13 * _31), (_31 * _12 - _11 * _32),
+                (_12 * _23 - _13 * _22), (_21 * _13 - _11 * _23), (_11 * _22 - _21 * _12)
+            );
+        }
+
+        /// @brief 역행렬을 리턴합니다.
+        inline cmat3 inverse() const {
+            float d = det();
+            if(d == 0) LOGWITH(this,": no inverse?");
+            return adjugate() / d;
+        }
+
+        /// @brief 전치 행렬을 리턴합니다.
+        inline cmat3 transpose() const { return cmat3(_11, _12, _13, _21, _22, _23, _31, _32, _33); }
+
+        /// @brief 좌측 상단 2x2 행렬로 캐스트합니다.
+        inline operator mat2() { return mat2(_11, _12, _21, _22); }
+
+        /// @brief 2차원 병진 행렬을 계산합니다.
+        inline static cmat3 translate(const vec2 &t) { return cmat3(1, 0, 0, 0, 1, 0, t.x, t.y, 1); }
+        /// @brief 2차원 병진 행렬을 계산합니다.
+        inline static cmat3 translate(float x, float y) { return cmat3(1, 0, 0, 0, 1, 0, x, y, 1); }
+        /// @brief 2차원 크기 변환 행렬을 계산합니다.
+        inline static cmat3 scale(const vec2 &t) { return cmat3(t.x, 0, 0, 0, t.y, 1, 0, 0, 1); }
+        /// @brief 2차원 크기 변환 행렬을 계산합니다.
+        inline static cmat3 scale(float x, float y) { return cmat3(x, 0, 0, 0, y, 1, 0, 0, 1); }
+        /// @brief Z축 기준의 2차원 회전을 리턴합니다. 이와 다른 회전을 원하는 경우 3x3이 아닌 4x4 변환을 사용해야 합니다.
+        inline static cmat3 rotate(float z) { return cmat3(std::cos(z),std::sin(z), 0, -std::sin(z), std::cos(z), 0, 0, 0, 1); }
+        /// @brief 3차원 오일러 회전에 의한 행렬을 리턴합니다. 
+        /// @param roll X축 방향 회전
+        /// @param pitch Y축 방향 회전
+        /// @param yaw Z축 방향 회전
+        inline static cmat3 rotate(float roll, float pitch, float yaw);
+
+        /// @brief 디버그 출력을 위한 스트림 함수입니다. 주의: 이 행렬은 열 우선 순서 행렬이지만, 출력은 행 우선 순서로 됩니다.
+        friend inline std::ostream& operator<<(std::ostream& os, const cmat3& v) {
+            return os << '[' << v._11 << ' ' << v._12 << ' ' << v._13 << "]\n"
+                    << '[' << v._21 << ' ' << v._22 << ' ' << v._23 << "]\n"
+                    << '[' << v._31 << ' ' << v._32 <<  ' ' << v._33 << ']';
+        }
+    };
+
+    /// @brief 열 우선 순서의 4x4 행렬입니다.
     struct alignas(16) mat4{
         union{
             float a[16];
@@ -1035,6 +1151,278 @@ namespace onart{
                     << '[' << v._31 << ' ' << v._32 << ' ' << v._33 << ' ' << v._34 << "]\n"
                     << '[' << v._41 << ' ' << v._42 << ' ' << v._43 << ' ' << v._44 << ']';
         }
+    };
+
+    /// @brief 열 우선 순서의 4x4 행렬입니다.
+    struct alignas(16) cmat4{
+        union{
+            float a[16];
+            struct{ float _11,_21,_31,_41,_12,_22,_32,_42,_13,_23,_33,_43, _14,_24,_34,_44; };
+        };
+        /// @brief 단위행렬을 생성합니다.
+        inline cmat4() { memset(a, 0, sizeof(a)); _11 = _22 = _33 = _44 = 1.0f; }
+        /// @brief 열 우선 순서로 매개변수를 주어 행렬을 생성합니다.
+        inline cmat4(float _11, float _21, float _31, float _41, float _12, float _22, float _32, float _42, float _13, float _23, float _33, float _43, float _14, float _24, float _34, float _44)
+            :a{ _11,_21,_31,_41,_12,_22,_32,_42,_13,_23,_33,_43, _14,_24,_34,_44 } { }
+        /// @brief 행렬의 성분을 복사해서 생성합니다.
+        inline cmat4(const cmat4 &m) { memcpy(a, m.a, sizeof(a)); }
+
+        /// @brief 열 우선 순서로 성분에 접근합니다. 행과 열을 따로 주고자 한다면 at() 함수를 이용해 주세요.
+        inline float &operator[](unsigned i) { assert(i<16); return a[i]; }
+        /// @brief 열 우선 순서로 성분에 접근합니다. 행과 열을 따로 주고자 한다면 at() 함수를 이용해 주세요.
+        inline const float &operator[](unsigned i) const { assert(i<16); return a[i]; }
+
+        /// @brief row행 col열 성분의 참조를 리턴합니다. (0 베이스)
+        inline float &at(unsigned row, unsigned col) { assert(row < 4 && col < 4); return a[col * 4 + row]; }
+        /// @brief row행 col열 성분의 참조를 리턴합니다. (0 베이스)
+        inline const float &at(unsigned row, unsigned col) const { assert(row < 4 && col < 4); return a[col * 4 + row]; }
+        /// @brief 단위행렬로 바꿉니다.
+        inline void toI() { memset(a, 0, sizeof(a)); _11 = _22 = _33 = _44 = 1.0f; }
+        /// @brief 단위행렬이면 true를 리턴합니다.
+        inline bool isI() const { return memcmp(mat4().a, a, sizeof(a)) == 0; }
+
+        /// @brief 다른 행렬과 성분별로 연산합니다.
+        inline cmat4& operator+=(const cmat4& m) { add4(a, m.a); add4(a + 4, m.a + 4); add4(a + 8, m.a + 8); add4(a + 12, m.a + 12); return *this; }
+        /// @brief 다른 행렬과 성분별로 연산합니다.
+        inline cmat4& operator-=(const cmat4& m) { sub4(a, m.a); sub4(a + 4, m.a + 4); sub4(a + 8, m.a + 8); sub4(a + 12, m.a + 12); return *this; }
+        /// @brief 다른 행렬과 성분별로 연산합니다.
+        inline cmat4 operator+(const cmat4& m) const { return cmat4(*this) += m; }
+        /// @brief 다른 행렬과 성분별로 연산합니다.
+        inline cmat4 operator-(const cmat4& m) const { return cmat4(*this) -= m; }
+        /// @brief n행 벡터를 리턴합니다. (0 베이스)
+        inline vec4 row(size_t i) const { assert(i < 4); return vec4(a[i], a[i + 4], a[i + 8], a[i + 12]); }
+        /// @brief n열 벡터를 리턴합니다. (0 베이스)
+        inline vec4 col(size_t i) const { assert(i < 4); return vec4(a + 4 * i); }
+
+        /// @brief 행렬끼리 곱합니다.
+        inline cmat4 operator*(const cmat4& m) const{
+            cmat4 ret;
+            for (int i = 0, ent = 0; i < 4; i++) {
+                vec4 c = col(i);
+                for (int j = 0; j < 4; j++, ent++) {
+                    vec4 r = m.row(j);
+                    ret[ent] = c.dot(r);
+                }
+            }
+            return ret;
+        }
+
+        /// @brief 행렬끼리 곱합니다.
+        inline cmat4& operator*=(const cmat4& m) { return *this = operator*(m); }
+        /// @brief 벡터에 선형변환을 적용하여 리턴합니다.
+        inline vec4 operator*(const vec4& v) const{ return vec4(row(0).dot(v), row(1).dot(v), row(2).dot(v), row(3).dot(v)); }
+
+        /// @brief 행렬에 실수배를 합니다.
+        inline cmat4& operator*=(float f) { mulAll(a, f, 16); return *this; }
+        /// @brief 행렬에 실수배를 합니다.
+        inline cmat4 operator*(float f) const { cmat4 r(*this); r *= f; return r; }
+        /// @brief 행렬에 실수배를 합니다.
+        inline cmat4& operator/=(float f) { divAll(a, f, 16); return *this; }
+        /// @brief 행렬에 실수배를 합니다.
+        inline cmat4 operator/(float f) const { cmat4 r(*this); r /= f; return r; }
+
+        /// @brief 행렬식을 반환합니다.
+        inline float det() const {
+            return 
+                _41 * _32 * _23 * _14 - _31 * _42 * _23 * _14 - _41 * _22 * _33 * _14 + _21 * _42 * _33 * _14 +
+                _31 * _22 * _43 * _14 - _21 * _32 * _43 * _14 - _41 * _32 * _13 * _24 + _31 * _42 * _13 * _24 +
+                _41 * _12 * _33 * _24 - _11 * _42 * _33 * _24 - _31 * _12 * _43 * _24 + _11 * _32 * _43 * _24 +
+                _41 * _22 * _13 * _34 - _21 * _42 * _13 * _34 - _41 * _12 * _23 * _34 + _11 * _42 * _23 * _34 +
+                _21 * _12 * _43 * _34 - _11 * _22 * _43 * _34 - _31 * _22 * _13 * _44 + _21 * _32 * _13 * _44 +
+                _31 * _12 * _23 * _44 - _11 * _32 * _23 * _44 - _21 * _12 * _33 * _44 + _11 * _22 * _33 * _44;
+        }
+        /// @brief 행렬의 대각 성분 합을 리턴합니다.
+        inline float trace() const { return _11 + _22 + _33 + _44; }
+        /// @brief 좌측 상단 3x3 행렬로 캐스트합니다.
+        inline operator cmat3() const { return cmat3(_11, _21, _31, _12, _22, _32, _13, _23, _33); }
+        /// @brief 행렬이 아핀 변환인 경우 역행렬을 조금 더 효율적으로 구합니다.
+        inline cmat4 affineInverse() const {
+            //https://stackoverflow.com/questions/2624422/efficient-4x4-matrix-inverse-affine-transform
+            cmat3 ir(cmat3(*this).inverse());
+            vec3 p = ir * -vec3(col(3).entry);
+            return cmat4(
+                ir[0], ir[3], ir[6], 0,
+                ir[1], ir[4], ir[7], 0,
+                ir[2], ir[5], ir[8], 0,
+                p[0], p[1], p[2], 1
+            );
+        }
+
+        /// @brief 수반 행렬을 리턴합니다.
+        inline cmat4 adjugate() const {
+            return cmat4(
+                (_32 * _43 * _24 - _42 * _33 * _24 + _42 * _23 * _34 - _22 * _43 * _34 - _32 * _23 * _44 + _22 * _33 * _44),
+                (_41 * _33 * _24 - _31 * _43 * _24 - _41 * _23 * _34 + _21 * _43 * _34 + _31 * _23 * _44 - _21 * _33 * _44),
+                (_31 * _42 * _24 - _41 * _32 * _24 + _41 * _22 * _34 - _21 * _42 * _34 - _31 * _22 * _44 + _21 * _32 * _44),
+                (_41 * _32 * _23 - _31 * _42 * _23 - _41 * _22 * _33 + _21 * _42 * _33 + _31 * _22 * _43 - _21 * _32 * _43),
+
+                (_42 * _33 * _14 - _32 * _43 * _14 - _42 * _13 * _34 + _12 * _43 * _34 + _32 * _13 * _44 - _12 * _33 * _44),
+                (_31 * _43 * _14 - _41 * _33 * _14 + _41 * _13 * _34 - _11 * _43 * _34 - _31 * _13 * _44 + _11 * _33 * _44),
+                (_41 * _32 * _14 - _31 * _42 * _14 - _41 * _12 * _34 + _11 * _42 * _34 + _31 * _12 * _44 - _11 * _32 * _44),
+                (_31 * _42 * _13 - _41 * _32 * _13 + _41 * _12 * _33 - _11 * _42 * _33 - _31 * _12 * _43 + _11 * _32 * _43),
+
+                (_22 * _43 * _14 - _42 * _23 * _14 + _42 * _13 * _24 - _12 * _43 * _24 - _22 * _13 * _44 + _12 * _23 * _44),
+                (_41 * _23 * _14 - _21 * _43 * _14 - _41 * _13 * _24 + _11 * _43 * _24 + _21 * _13 * _44 - _11 * _23 * _44),
+                (_21 * _42 * _14 - _41 * _22 * _14 + _41 * _12 * _24 - _11 * _42 * _24 - _21 * _12 * _44 + _11 * _22 * _44),
+                (_41 * _22 * _13 - _21 * _42 * _13 - _41 * _12 * _23 + _11 * _42 * _23 + _21 * _12 * _43 - _11 * _22 * _43),
+
+                (_32 * _23 * _14 - _22 * _33 * _14 - _32 * _13 * _24 + _12 * _33 * _24 + _22 * _13 * _34 - _12 * _23 * _34),
+                (_21 * _33 * _14 - _31 * _23 * _14 + _31 * _13 * _24 - _11 * _33 * _24 - _21 * _13 * _34 + _11 * _23 * _34),
+                (_31 * _22 * _14 - _21 * _32 * _14 - _31 * _12 * _24 + _11 * _32 * _24 + _21 * _12 * _34 - _11 * _22 * _34),
+                (_21 * _32 * _13 - _31 * _22 * _13 + _31 * _12 * _23 - _11 * _32 * _23 - _21 * _12 * _33 + _11 * _22 * _33));
+        }
+
+        /// @brief 역행렬을 리턴합니다.
+        inline cmat4 inverse() const {
+            float d = det();
+            if(d == 0) LOGWITH(this,": no inverse?");
+            return adjugate() / d;
+        }
+        /// @brief 전치 행렬을 리턴합니다.
+        inline cmat4 transpose() const {
+            return cmat4(_11, _12, _13, _14, _21, _22, _23, _24, _31, _32, _33, _34, _41, _42, _43, _44);
+        }
+
+        /// @brief 3차원 병진 행렬을 계산합니다.
+        inline static cmat4 translate(const vec3& t) {
+            return cmat4(
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                t[0], t[1], t[2], 1
+            );
+        }
+        /// @brief 3차원 병진 행렬을 계산합니다.
+        inline static cmat4 translate(float x, float y, float z) {
+            return cmat4(
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                x, y, z, 1
+            );
+        }
+        /// @brief 3차원 크기 변환 행렬을 계산합니다.
+        inline static cmat4 scale(const vec3& t) {
+            return cmat4(
+                t[0], 0, 0, 0,
+                0, t[1], 0, 0,
+                0, 0, t[2], 0,
+                0, 0, 0, 1
+            );
+        }
+
+        /// @brief 3차원 크기 변환 행렬을 계산합니다.
+        inline static cmat4 scale(float x, float y, float z) {
+            return cmat4(
+                x, 0, 0, 0,
+                0, y, 0, 0,
+                0, 0, z, 0,
+                0, 0, 0, 1
+            );
+        }
+        /// @brief 3차원 회전 행렬을 계산합니다.
+        /// @param axis 회전축
+        /// @param angle 회전각
+        inline static cmat4 rotate(const vec3& axis, float angle);
+        /// @brief 3차원 회전 행렬을 계산합니다.
+        /// @param roll X축 방향 회전
+        /// @param pitch Y축 방향 회전
+        /// @param yaw Z축 방향 회전
+        inline static cmat4 rotate(float roll, float pitch, float yaw);
+        /// @brief 3차원 회전 행렬을 계산합니다.
+        /// @param q 회전 사원수
+        inline static cmat4 rotate(const Quaternion &q);
+        /// @brief lookAt 형식의 뷰 행렬을 계산합니다.
+        /// @param eye 카메라 위치
+        /// @param at 피사체 위치
+        /// @param up 위쪽 방향: 화면 상 위쪽 방향이 이 벡터의 방향을 어느 정도 따릅니다.
+        inline static cmat4 lookAt(const vec3& eye, const vec3& at, const vec3& up){
+            vec3 n = (eye - at).normal();
+            vec3 u = cross(up, n).normal();
+            vec3 v = cross(n, u).normal();
+            return cmat4(
+                    u[0], v[0], n[0], 0,
+                    u[1], v[1], n[1], 0,
+                    u[2], v[2], n[2], 0,
+                    -(u.dot(eye)), -(v.dot(eye)), -(n.dot(eye)), 1
+                );
+        }
+
+        /// @brief 병진, 회전, 배율 행렬 T, R, S를 각각 구하여 곱하는 것보다 조금 더 빠르게 계산합니다.
+        /// @param translation 병진
+        /// @param rotation 회전
+        /// @param scale 배율
+        inline static cmat4 TRS(const vec3 &translation, const Quaternion &rotation, const vec3 &scale);
+        /// @brief 주어진 병진, 회전, 배율을 포함하는 아핀 변환의 역변환을 단순계산보다 조금 빠르게 계산합니다. 역변환이 없는 경우(ex: 배율에 영이 있음) 비정상적인 값이 리턴될 것입니다.
+        /// @param translation 병진
+        /// @param rotation 회전
+        /// @param scale 배율
+        inline static cmat4 iTRS(const vec3 &translation, const Quaternion &rotation, const vec3 &scale);
+
+        /// @brief Vulkan 표준 뷰 볼륨 직육면체에 들어갈 공간인 뿔대(절두체, frustum)를 조절하는 투사 행렬을 계산합니다. 이 행렬 적용 이전의 공간은 GL과 같은 것(위쪽: +y, 화면 안쪽: +z, 오른쪽: +x)으로 가정합니다.
+        /// @param fovy 뿔대의 Y축 방향(화면 기준 세로) 라디안 각도입니다.
+        /// @param aspect 표시 뷰포트 비율(가로/세로)입니다.
+        /// @param dnear 뿔대에서 가장 가까운 거리입니다. 이 이전의 거리는 보이지 않습니다.
+        /// @param dfar 뿔대에서 가장 먼 거리입니다. 이 너머의 거리는 보이지 않습니다. 
+        /// TODO: Vulkan 적합성 검사
+        inline static cmat4 perspective(float fovy, float aspect, float dnear, float dfar){
+            return cmat4(
+                1 / (aspect * tanf(fovy * 0.5f)), 0, 0, 0,
+                0, -1 / std::tan(fovy * 0.5f), 0, 0,
+                0, 0, (dnear + dfar) * 0.5f / (dnear - dfar) - 0.5f, -1,
+                0, 0, (dnear * dfar) / (dnear - dfar), 0
+            );
+        }
+
+        /// @brief 한 직사각형을 다른 직사각형으로 매핑하는 행렬을 계산합니다. z 좌표는 동일하다고 가정하여 xy 평면에서만 이동합니다.
+        /// @param r1 변환 전 직사각형 (좌-하-폭-높이)
+        /// @param r2 변환 후 직사각형 (좌-하-폭-높이)
+        /// @param z 직사각형이 위치할 z좌표(0이 가장 겉)
+        /// TODO: Vulkan 적합성 검사
+        inline static cmat4 r2r(const vec4& r1, const vec4& r2, float z=0){
+            vec4 sc = r2 / r1;	vec4 tr = r2 - r1 * vec4(sc[2], sc[3]);
+            return cmat4(
+                sc[2], 0, 0, 0,
+                0, sc[3], 0, 0,
+                0, 0, 1, 0,
+                tr[0], tr[1], z, 1                
+            );
+        }
+
+        /// @brief YERM의 2D 객체를 위한 단위 직사각형 (중심이 0,0이고 한 변의 길이가 1인 정사각형)을 다른 직사각형으로 변환하는 행렬을 계산합니다.
+        /// @param r2 변환 후 직사각형 (좌-하-폭-높이)
+        /// @param z 직사각형이 위치할 z좌표(0이 가장 겉)
+        /// TODO: Vulkan 적합성 검사
+        inline static cmat4 r2r(const vec4& r2, float z = 0) {
+            return r2r(vec4(-0.5f, -0.5f, 1, 1), r2, z);
+        }
+
+        /// @brief 한 직사각형(L-D-W-H 형식)을 다른 직사각형의 안쪽에 맞게 변환합니다. 즉 중심을 공유하며, 원본 직사각형의 종횡비는 유지하면서 가장 큰 직사각형이 되도록 리턴합니다.
+        /// @param r1 변환 전 직사각형
+        /// @param r2 변환 전 직사각형
+        /// @param z 직사각형이 위치할 z좌표(-1이 가장 겉)
+        /// TODO: Vulkan 적합성 검사
+        inline static cmat4 r2r2(const vec4& r1, const vec4& r2, float z = 0) {
+            float r = r1[2] / r1[3];
+            vec4 targ(r2);
+            if (targ[2] < targ[3] * r) {	// 세로선을 맞출 것
+                targ[1] += (targ[3] - targ[2] / r) / 2;
+                targ[3] = targ[2] / r;
+            }
+            else {	// 가로선을 맞출 것
+                targ[0] += (targ[2] - targ[3] * r) / 2;
+                targ[2] = targ[3] * r;
+            }
+            return r2r(r1, targ, z);
+        }
+
+        /// @brief 디버그 출력을 위한 스트림 함수입니다. 주의: 출력은 행 우선 순서로 이루어집니다.
+        friend inline std::ostream& operator<<(std::ostream& os, const cmat4& v) {
+            return os << '[' << v._11 << ' ' << v._12 << ' ' << v._13 << ' ' << v._14 << "]\n"
+                    << '[' << v._21 << ' ' << v._22 << ' ' << v._23 << ' ' << v._24 << "]\n"
+                    << '[' << v._31 << ' ' << v._32 << ' ' << v._33 << ' ' << v._34 << "]\n"
+                    << '[' << v._41 << ' ' << v._42 << ' ' << v._43 << ' ' << v._44 << ']';
+        }
     }; 
 
     /// @brief 3차원 회전 등을 표현하는 사원수입니다. 1, i, j, k 부분에 해당하는 c1, ci, cj, ck 멤버를 가집니다. 각각 순서대로 일반적인 사원수 모듈의 w, x, y, z에 대응합니다.
@@ -1057,7 +1445,7 @@ namespace onart{
         inline bool is1() const { return c1 == 1 && ci == 0 && cj == 0 && ck == 0; }
 
         /// @brief 켤레(공액)사원수를 리턴합니다.
-        inline Quaternion conjugate() const { return -Quaternion(c1, ci, cj, ck); }
+        inline Quaternion conjugate() const { Quaternion ret = operator-(); ret.c1 = c1; return ret; }
 
         /// @brief 이 사원수의 우측에 곱해서 1이 되는 값을 리턴합니다.
         inline Quaternion inverse() const { return conjugate() / abs2(); }
@@ -1126,6 +1514,20 @@ namespace onart{
                 0, 0, 0, 1
             );
         }
+
+        /// @brief 사원수 회전을 4x4 행렬로 표현합니다.
+        inline cmat4 toCMat4() const {
+            Quaternion i = operator*(ci);
+            Quaternion j = operator*(cj);
+            Quaternion k = operator*(ck);
+            return cmat4(
+                1 - 2 * (j.cj + k.ck), 2 * (i.cj + k.c1), 2 * (i.ck - j.c1), 0,
+                2 * (i.cj - k.c1), 1 - 2 * (i.ci + k.ck), 2 * (j.ck + i.c1), 0,
+                2 * (i.ck + j.c1), 2 * (j.ck - i.c1), 1 - 2 * (i.ci + j.cj), 0,
+                0, 0, 0, 1
+            );
+        }
+
         /// @brief 사원수 회전을 3x3 행렬로 표현합니다.
         inline mat3 toMat3() const {
             Quaternion i = operator*(ci);
@@ -1135,6 +1537,18 @@ namespace onart{
                 1 - 2 * (j.cj + k.ck), 2 * (i.cj - k.c1), 2 * (i.ck + j.c1),
                 2 * (i.cj + k.c1), 1 - 2 * (i.ci + k.ck), 2 * (j.ck - i.c1),
                 2 * (i.ck - j.c1), 2 * (j.ck + i.c1), 1 - 2 * (i.ci + j.cj)
+            );
+        }
+
+        /// @brief 사원수 회전을 3x3 행렬로 표현합니다.
+        inline cmat3 toCMat3() const {
+            Quaternion i = operator*(ci);
+            Quaternion j = operator*(cj);
+            Quaternion k = operator*(ck);
+            return cmat3(
+                1 - 2 * (j.cj + k.ck), 2 * (i.cj + k.c1), 2 * (i.ck - j.c1),
+                2 * (i.cj - k.c1), 1 - 2 * (i.ci + k.ck), 2 * (j.ck + i.c1),
+                2 * (i.ck + j.c1), 2 * (j.ck - i.c1), 1 - 2 * (i.ci + j.cj)
             );
         }
 
@@ -1252,6 +1666,12 @@ namespace onart{
     inline mat4 mat4::rotate(const vec3 &axis, float angle) { return Quaternion::rotation(axis, angle).toMat4(); }
     inline mat4 mat4::rotate(float roll, float pitch, float yaw) { return Quaternion::rotation(roll, pitch, yaw).toMat4(); }
     inline mat4 mat4::rotate(const Quaternion &q) { return q.toMat4(); }
+
+    inline cmat3 cmat3::rotate(float roll, float pitch, float yaw) { return Quaternion::rotation(roll, pitch, yaw).toCMat3(); }
+    inline cmat4 cmat4::rotate(const vec3 &axis, float angle) { return Quaternion::rotation(axis, angle).toCMat4(); }
+    inline cmat4 cmat4::rotate(float roll, float pitch, float yaw) { return Quaternion::rotation(roll, pitch, yaw).toCMat4(); }
+    inline cmat4 cmat4::rotate(const Quaternion &q) { return q.toCMat4(); }
+    
     inline mat4 mat4::TRS(const vec3& translation, const Quaternion& rotation, const vec3& scale){
         // SIMD 미적용 시 곱 30회/합 6회, T*R*S 따로 하는 경우 곱 149회/합 102회
         // SIMD 적용 시 곱 15회/합 6회, 따로 하는 경우 곱 44회/합 102회
@@ -1276,6 +1696,31 @@ namespace onart{
         r[3] = itr[0];
         r[7] = itr[1];
         r[11] = itr[2];
+        return r;
+    }
+
+    inline cmat4 cmat4::TRS(const vec3& translation, const Quaternion& rotation, const vec3& scale){
+        // SIMD 미적용 시 곱 30회/합 6회, T*R*S 따로 하는 경우 곱 149회/합 102회
+        // SIMD 적용 시 곱 15회/합 6회, 따로 하는 경우 곱 44회/합 102회
+        cmat4 r = rotation.toCMat4();
+        mul4(r.a, scale[0]);
+        mul4(r.a + 4, scale[1]);
+        mul4(r.a + 8, scale[2]);
+        std::memcpy(&r[12], &translation, sizeof(vec3));
+        r[15] = 1.0f;
+        return r;
+    }
+
+    inline cmat4 cmat4::iTRS(const vec3& translation, const Quaternion& rotation, const vec3& scale) {
+        // SIMD 적용 시 곱 19회/합 18회
+        cmat4 r = rotation.conjugate().toCMat4();	// 공액사원수=역회전
+        vec3 sc(1); sc /= scale;
+        mul4(r.a, sc.entry);
+        mul4(r.a + 4, sc.entry);
+        mul4(r.a + 8, sc.entry);
+        vec4 itr = r * vec4(-translation, 0);
+        std::memcpy(&r[12], &itr, sizeof(vec3));
+        r[15] = 1.0f;
         return r;
     }
 }
