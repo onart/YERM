@@ -47,7 +47,7 @@ namespace onart {
     /// @brief 주어진 기반 형식과 아귀가 맞는, 현재 장치에서 사용 가능한 압축 형식을 리턴합니다.
     static VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, VkFormat base, bool hq = true, VkImageCreateFlagBits flags = VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT);
     /// @brief 파이프라인을 주어진 옵션에 따라 생성합니다.
-    static VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, VkRenderPass pass, uint32_t subpass, uint32_t flags, const uint32_t OPT_COLOR_COUNT, const bool OPT_USE_DEPTHSTENCIL, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkStencilOpState* front, VkStencilOpState* back);
+    static VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, VkRenderPass pass, uint32_t subpass, uint32_t flags, const uint32_t OPT_COLOR_COUNT, const bool OPT_USE_DEPTHSTENCIL, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkStencilOpState* front, VkStencilOpState* back);
 
     /// @brief 활성화할 장치 확장
     constexpr const char* VK_DESIRED_DEVICE_EXT[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
@@ -1393,7 +1393,9 @@ namespace onart {
         return ret;
     }
 
-    VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, RenderPass* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front, VkStencilOpState* back){
+    VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr,
+    VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, RenderPass* pass, uint32_t subpass,
+    uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front, VkStencilOpState* back){
         VkPipeline ret = getPipeline(name);
         if(ret) {
             pass->usePipeline(ret, layout, subpass);
@@ -1407,7 +1409,7 @@ namespace onart {
             0;
         const bool OPT_USE_DEPTHSTENCIL = (int)pass->targets[subpass]->type & 0b1000;
 
-        ret = onart::createPipeline(singleton->device, vinfo, size, vattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, front, back);
+        ret = onart::createPipeline(singleton->device, vinfo, vsize, vattr, iinfo, isize, iattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, front, back);
         if(!ret){
             LOGHERE;
             return VK_NULL_HANDLE;
@@ -1416,7 +1418,10 @@ namespace onart {
         return singleton->pipelines[name] = ret;
     }
 
-    VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front, VkStencilOpState* back) {
+    VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr,
+    VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr,
+    RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout,
+    VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front, VkStencilOpState* back) {
         VkPipeline ret = getPipeline(name);
         if(ret) {
             pass->usePipeline(ret, layout, subpass);
@@ -1437,7 +1442,7 @@ namespace onart {
             OPT_USE_DEPTHSTENCIL = (int)pass->targets[subpass]->type & 0b1000;
         }
 
-        ret = onart::createPipeline(singleton->device, vinfo, size, vattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, front, back);
+        ret = onart::createPipeline(singleton->device, vinfo, size, vattr, iinfo, isize, iattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, front, back);
         if(!ret){
             LOGHERE;
             return VK_NULL_HANDLE;
@@ -2470,6 +2475,7 @@ namespace onart {
     }
 
     VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr,
+    VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr,
     VkRenderPass pass, uint32_t subpass, uint32_t flags, const uint32_t OPT_COLOR_COUNT, const bool OPT_USE_DEPTHSTENCIL,
     VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkStencilOpState* front, VkStencilOpState* back) {
         VkPipelineShaderStageCreateInfo shaderStagesInfo[2] = {};
@@ -2483,17 +2489,25 @@ namespace onart {
         shaderStagesInfo[1].module = fs;
         shaderStagesInfo[1].pName = "main";
 
-        VkVertexInputBindingDescription vbind{};
-        vbind.binding = 0;
-        vbind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        vbind.stride = size;
+        VkVertexInputBindingDescription vbind[2]{};
+        vbind[0].binding = 0;
+        vbind[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        vbind[0].stride = size;
+
+        vbind[1].binding = 1;
+        vbind[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+        vbind[1].stride = isize;
+        
+        std::vector<VkVertexInputAttributeDescription> attrs(vattr + iattr);
+        std::copy(vinfo, vinfo + vattr, attrs.data());
+        if(iattr) std::copy(iinfo, iinfo + iattr, attrs.data() + vattr);
 
         VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
         vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertexInputInfo.vertexBindingDescriptionCount = 1; // TODO: 인스턴싱을 위한 인터페이스
-        vertexInputInfo.pVertexBindingDescriptions = &vbind;
-        vertexInputInfo.vertexAttributeDescriptionCount = vattr;
-        vertexInputInfo.pVertexAttributeDescriptions = vinfo;
+        vertexInputInfo.vertexBindingDescriptionCount = iattr ? 2 : 1;
+        vertexInputInfo.pVertexBindingDescriptions = vbind;
+        vertexInputInfo.vertexAttributeDescriptionCount = attrs.size();
+        vertexInputInfo.pVertexAttributeDescriptions = attrs.data();
 
         VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo{};
         inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;

@@ -152,6 +152,9 @@ namespace onart {
             /// @param vinfo 정점 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다.
             /// @param vsize 개별 정점의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
             /// @param vattr vinfo 배열의 길이, 즉 정점 속성의 수입니다.
+            /// @param iinfo 인스턴스 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다. 인스턴싱이 들어가지 않는 파이프라인인 경우 nullptr를 주면 됩니다.
+            /// @param isize 개별 인스턴스 속성 집합의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
+            /// @param iattr iinfo 배열의 길이, 즉 인스턴스 속성의 수입니다. 인스턴싱이 들어가지 않는 파이프라인인 경우 반드시 0을 주어야 합니다.
             /// @param pass 이 파이프라인을 사용할 렌더패스입니다. 이걸 명시했다고 꼭 여기에만 사용할 수 있는 것은 아닙니다. 입/출력 첨부물의 사양이 맞기만 하면 됩니다.
             /// @param subpass 이 파이프라인을 사용할, 주어진 렌더패스의 서브패스 번호입니다. 이걸 명시했다고 꼭 여기에만 사용할 수 있는 것은 아닙니다. 입/출력 첨부물의 사양이 맞기만 하면 됩니다.
             /// @param flags 파이프라인 고정 옵션의 플래그입니다. @ref PipelineOptions
@@ -160,11 +163,14 @@ namespace onart {
             /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
             /// @param front 앞면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
             /// @param back 뒷면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
-            static VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, RenderPass* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr);
+            static VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, RenderPass* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr);
             /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 사용할 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
             /// @param vinfo 정점 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다.
             /// @param vsize 개별 정점의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
             /// @param vattr vinfo 배열의 길이, 즉 정점 속성의 수입니다.
+            /// @param iinfo 인스턴스 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다. 인스턴싱이 들어가지 않는 파이프라인인 경우 nullptr를 주면 됩니다.
+            /// @param isize 개별 인스턴스 속성 집합의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
+            /// @param iattr iinfo 배열의 길이, 즉 인스턴스 속성의 수입니다. 인스턴싱이 들어가지 않는 파이프라인인 경우 반드시 0을 주어야 합니다.
             /// @param pass 이 파이프라인을 사용할 렌더패스입니다. 이걸 명시했다고 꼭 여기에만 사용할 수 있는 것은 아닙니다. 입/출력 첨부물의 사양이 맞기만 하면 됩니다.
             /// @param subpass 이 파이프라인을 사용할, 주어진 렌더패스의 서브패스 번호입니다. 이걸 명시했다고 꼭 여기에만 사용할 수 있는 것은 아닙니다. 입/출력 첨부물의 사양이 맞기만 하면 됩니다.
             /// @param flags 파이프라인 고정 옵션의 플래그입니다. @ref PipelineOptions
@@ -173,7 +179,7 @@ namespace onart {
             /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
             /// @param front 앞면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
             /// @param back 뒷면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
-            static VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr);
+            static VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr);
             /// @brief 정점 버퍼(모델) 객체를 생성합니다.
             /// @param vdata 정점 데이터
             /// @param vsize 정점 하나의 크기(바이트)
@@ -206,6 +212,14 @@ namespace onart {
             static pTexture getTexture(const string128& name);
             /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pMesh getMesh(const string16& name);
+            /// @brief Vulkan 인스턴스를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
+            inline static VkInstance getInstance() { return singleton->instance; }
+            /// @brief Vulkan 물리 장치를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
+            inline static VkPhysicalDevice getPhysicalDevice() { return singleton->physicalDevice.card; }
+            /// @brief Vulkan 논리 장치를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
+            inline static VkDevice getDevice() { return singleton->device; }
+            /// @brief Vma 할당기를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
+            inline static VmaAllocator getAllocator() { return singleton->allocator; }
         private:
             /// @brief 기본 Vulkan 컨텍스트를 생성합니다. 이 객체를 생성하면 기본적으로 인스턴스, 물리 장치, 가상 장치, 창 표면이 생성됩니다.
             VkMachine(Window*);
@@ -564,18 +578,9 @@ namespace onart {
     template<class FATTR, class... ATTR>
     struct VkMachine::Vertex{
         friend class VkMachine;
-        inline static constexpr bool CHECK_TYPE = is_one_of<FATTR, VERTEX_ATTR_TYPES> || (sizeof...(ATTR) == 0 ? true : Vertex<ATTR...>::CHECK_TYPE);
+        inline static constexpr bool CHECK_TYPE = is_one_of<FATTR, VERTEX_ATTR_TYPES> && (sizeof...(ATTR) == 0 ? true : Vertex<ATTR...>::CHECK_TYPE);
     private:
         ftuple<FATTR, ATTR...> member;
-        template<unsigned LOCATION = 0>
-        inline static constexpr void info(VkVertexInputAttributeDescription* vattrs){
-            using A_TYPE = std::remove_reference_t<decltype(Vertex().get<LOCATION>())>;
-            vattrs->binding = 0;
-            vattrs->location = LOCATION;
-            vattrs->format = getFormat<A_TYPE>();
-            vattrs->offset = ftuple<FATTR, ATTR...>::template offset<LOCATION>();
-            if constexpr(LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(vattrs + 1);
-        }
         template<class F>
         inline static constexpr VkFormat getFormat(){
             if constexpr(is_one_of<F, VERTEX_FLOAT_TYPES>) {
@@ -629,6 +634,18 @@ namespace onart {
             return VK_FORMAT_UNDEFINED; // UNREACHABLE
         }
     public:
+        /// @brief 정점 속성 바인딩을 받아옵니다.
+        /// @param vattrs 출력 위치
+        /// @param binding 바인딩 번호
+        template<unsigned LOCATION = 0>
+        inline static constexpr void info(VkVertexInputAttributeDescription* vattrs, uint32_t binding = 0){
+            using A_TYPE = std::remove_reference_t<decltype(Vertex().get<LOCATION>())>;
+            vattrs->binding = binding;
+            vattrs->location = LOCATION;
+            vattrs->format = getFormat<A_TYPE>();
+            vattrs->offset = ftuple<FATTR, ATTR...>::template offset<LOCATION>();
+            if constexpr(LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(vattrs + 1, binding);
+        }
         inline Vertex() {static_assert(CHECK_TYPE, "One or more of attribute types are inavailable");}
         inline Vertex(const FATTR& first, const ATTR&... rest):member(first, rest...) { static_assert(CHECK_TYPE, "One or more of attribute types are inavailable"); }
         /// @brief 주어진 번호의 참조를 리턴합니다. 인덱스 초과 시 컴파일되지 않습니다.
