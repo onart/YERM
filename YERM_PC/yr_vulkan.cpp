@@ -73,7 +73,7 @@ namespace onart {
         }
 
         bool isCpu;
-        if(!(physicalDevice.card = findPhysicalDevice(instance, surface.handle, &isCpu, &physicalDevice.gq, &physicalDevice.pq, &physicalDevice.minUBOffsetAlignment))) {
+        if(!(physicalDevice.card = findPhysicalDevice(instance, surface.handle, &isCpu, &physicalDevice.gq, &physicalDevice.pq, &physicalDevice.minUBOffsetAlignment))) { // TODO: 모든 가용 graphics/transfer 큐 정보를 저장해 두고 버퍼/텍스처 등 자원 세팅은 다른 큐를 사용하게 만들자
             LOGWITH("Couldn\'t find any appropriate graphics device");
             free();
             return;
@@ -149,38 +149,44 @@ namespace onart {
     }
 
     VkPipeline VkMachine::getPipeline(const string16& name){
-        auto it = pipelines.find(name);
-        if(it != pipelines.end()) return it->second;
+        auto it = singleton->pipelines.find(name);
+        if(it != singleton->pipelines.end()) return it->second;
         else return VK_NULL_HANDLE;
     }
 
     VkPipelineLayout VkMachine::getPipelineLayout(const string16& name){
-        auto it = pipelineLayouts.find(name);
-        if(it != pipelineLayouts.end()) return it->second;
+        auto it = singleton->pipelineLayouts.find(name);
+        if(it != singleton->pipelineLayouts.end()) return it->second;
         else return VK_NULL_HANDLE;
     }
 
+    VkMachine::pMesh VkMachine::getMesh(const string16& name) {
+        auto it = singleton->meshes.find(name);
+        if(it != singleton->meshes.end()) return it->second;
+        else return pMesh();
+    }
+
     VkMachine::RenderTarget* VkMachine::getRenderTarget(const string16& name){
-        auto it = renderTargets.find(name);
-        if(it != renderTargets.end()) return it->second;
+        auto it = singleton->renderTargets.find(name);
+        if(it != singleton->renderTargets.end()) return it->second;
         else return nullptr;
     }
 
     VkMachine::UniformBuffer* VkMachine::getUniformBuffer(const string16& name){
-        auto it = uniformBuffers.find(name);
-        if(it != uniformBuffers.end()) return it->second;
+        auto it = singleton->uniformBuffers.find(name);
+        if(it != singleton->uniformBuffers.end()) return it->second;
         else return nullptr;
     }
 
     VkShaderModule VkMachine::getShader(const string16& name){
-        auto it = shaders.find(name);
-        if(it != shaders.end()) return it->second;
+        auto it = singleton->shaders.find(name);
+        if(it != singleton->shaders.end()) return it->second;
         else return VK_NULL_HANDLE;
     }
 
     VkMachine::pTexture VkMachine::getTexture(const string128& name){
-        auto it = textures.find(name);
-        if(it != textures.end()) return it->second;
+        auto it = singleton->textures.find(name);
+        if(it != singleton->textures.end()) return it->second;
         else return pTexture();
     }
 
@@ -387,13 +393,125 @@ namespace onart {
         vmaDestroyImage(singleton->allocator, img, alloc);
     }
 
+    VkMachine::pMesh VkMachine::createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, const string16& name, bool stage) {
+        if(icount != 0 && isize != 2 && isize != 4){
+            LOGWITH("Invalid isize");
+            return pMesh();
+        }
+        pMesh m = getMesh(name);
+        if(m) { return m; }
+
+        VkBuffer vib, sb;
+        VmaAllocation viba, sba;
+        VkResult result;
+
+        const size_t VBSIZE = vsize*vcount, IBSIZE = isize * icount;
+
+        VkBufferCreateInfo vbInfo{};
+        vbInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        vbInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        vbInfo.size = VBSIZE + IBSIZE;
+        
+        VmaAllocationCreateInfo vbaInfo{};
+        vbaInfo.usage = VMA_MEMORY_USAGE_AUTO;
+
+        struct publicmesh:public Mesh{publicmesh(VkBuffer _1, VmaAllocation _2, size_t _3, size_t _4,size_t _5,void* _6,bool _7):Mesh(_1,_2,_3,_4,_5,_6,_7){}};
+
+        if(stage) {
+            vbInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT; // vma 목적지 버퍼 생성 시 HOST_VISIBLE이 있으면 스테이징을 할 필요가 없음, 그러면 재생성 필요 없이 그대로 리턴하도록
+            vbaInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        }
+        else {
+            vbInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        }
+        VmaAllocationInfo mapInfoV;
+        result = vmaCreateBuffer(singleton->allocator, &vbInfo, &vbaInfo, &sb, &sba, &mapInfoV);
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create stage buffer for vertex:",result);
+            return pMesh();
+        }
+        if(vdata) std::memcpy(mapInfoV.pMappedData, vdata, VBSIZE);
+        if(idata) std::memcpy((uint8_t*)mapInfoV.pMappedData + VBSIZE, idata, IBSIZE);
+        vmaInvalidateAllocation(singleton->allocator, sba, 0, VK_WHOLE_SIZE);
+        vmaFlushAllocation(singleton->allocator, sba, 0, VK_WHOLE_SIZE);
+        
+        if(!stage){
+            return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
+        }
+
+        vbInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        vbInfo.size = VBSIZE + IBSIZE;
+        vbaInfo.flags = 0;
+        result = vmaCreateBuffer(singleton->allocator, &vbInfo, &vbaInfo, &vib, &viba, &mapInfoV);
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create vertex buffer:",result);
+            vmaDestroyBuffer(singleton->allocator, sb, sba);
+            return pMesh();
+        }
+
+        if(mapInfoV.memoryType & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+            vmaDestroyBuffer(singleton->allocator, vib, viba);
+            return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
+        }
+
+        VkCommandBuffer copycb;
+        singleton->allocateCommandBuffers(1, true, &copycb);
+        if(!copycb) {
+            LOGHERE;
+            vmaDestroyBuffer(singleton->allocator, vib, viba);
+            return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
+        }
+        VkCommandBufferBeginInfo cbInfo{};
+        cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        cbInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        VkBufferCopy copyRegion{};
+        copyRegion.srcOffset=0;
+        copyRegion.dstOffset=0;
+        copyRegion.size = VBSIZE + IBSIZE;
+        if((result = vkBeginCommandBuffer(copycb, &cbInfo)) != VK_SUCCESS){
+            LOGWITH("Failed to begin command buffer:",result);
+            vmaDestroyBuffer(singleton->allocator, vib, viba);
+            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &copycb);
+            return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
+        }
+        vkCmdCopyBuffer(copycb, sb, vib, 1, &copyRegion);
+        if((result = vkEndCommandBuffer(copycb)) != VK_SUCCESS){
+            LOGWITH("Failed to end command buffer:",result);
+            vmaDestroyBuffer(singleton->allocator, vib, viba);
+            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &copycb);
+            return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
+        }
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &copycb;
+        VkFence fence = singleton->createFence(); // TODO: 생성 시 쓰는 이런 자잘한 펜스를 매번 만들었다 없애지 말고 하나 생성해 두고 쓰는 걸로 통일
+        if(!fence) {
+            LOGHERE;
+            vmaDestroyBuffer(singleton->allocator, vib, viba);
+            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &copycb);
+            return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
+        }
+        if((result = vkQueueSubmit(singleton->graphicsQueue, 1, &submitInfo, fence)) != VK_SUCCESS){
+            LOGWITH("Failed to submit copy command");
+            vmaDestroyBuffer(singleton->allocator, vib, viba);
+            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &copycb);
+            return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
+        }
+        vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, UINT64_MAX);
+        vkDestroyFence(singleton->device, fence, nullptr);
+        vmaDestroyBuffer(singleton->allocator, vib, viba);
+        vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &copycb);
+        return singleton->meshes[name] = std::make_shared<publicmesh>(vib,viba,vcount,icount,VBSIZE,nullptr,isize==4);
+    }
+
     VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, const string16& name, RenderTargetType type, bool sampled, bool useDepthInput, bool mmap){
-        if(!allocator) {
+        if(!singleton->allocator) {
             LOGWITH("Warning: Tried to create image before initialization");
             return nullptr;
         }
-        auto it = renderTargets.find(name);
-        if(it != renderTargets.end()) {return it->second;}
+        auto it = singleton->renderTargets.find(name);
+        if(it != singleton->renderTargets.end()) {return it->second;}
         ImageSet *color1 = nullptr, *color2 = nullptr, *color3 = nullptr, *ds = nullptr;
         VkImageCreateInfo imgInfo{};
         imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -420,13 +538,13 @@ namespace onart {
             imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
             imgInfo.format = VkFormat::VK_FORMAT_B8G8R8A8_SRGB;
             //imgInfo.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            result = vmaCreateImage(allocator, &imgInfo, &allocInfo, &color1->img, &color1->alloc, nullptr);
+            result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color1->img, &color1->alloc, nullptr);
             if(!result) {
                 LOGWITH("Failed to create image:", result);
                 delete color1;
                 return nullptr;
             }
-            color1->view = createImageView(device, color1->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
+            color1->view = createImageView(singleton->device, color1->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
             if(!color1->view) {
                 color1->free();
                 delete color1;
@@ -434,7 +552,7 @@ namespace onart {
             }
             if((int)type & 0b10){
                 color2 = new ImageSet;
-                result = vmaCreateImage(allocator, &imgInfo, &allocInfo, &color2->img, &color2->alloc, nullptr);
+                result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color2->img, &color2->alloc, nullptr);
                 if(!result) {
                     LOGWITH("Failed to create image:", result);
                     color1->free();
@@ -442,7 +560,7 @@ namespace onart {
                     delete color2;
                     return nullptr;
                 }
-                color2->view = createImageView(device, color2->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
+                color2->view = createImageView(singleton->device, color2->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
                 if(!color2->view) {
                     color1->free();
                     color2->free();
@@ -452,7 +570,7 @@ namespace onart {
                 }
                 if((int)type & 0b100){
                     color3 = new ImageSet;
-                    result = vmaCreateImage(allocator, &imgInfo, &allocInfo, &color3->img, &color3->alloc, nullptr);
+                    result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color3->img, &color3->alloc, nullptr);
                     if(!result) {
                         LOGWITH("Failed to create image:", result);
                         color1->free();
@@ -461,9 +579,9 @@ namespace onart {
                         delete color2;
                         return nullptr;
                     }
-                    color3->view = createImageView(device, color3->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
+                    color3->view = createImageView(singleton->device, color3->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
                     if(!color3->view) {
-                        vmaDestroyImage(allocator, color1->img, color1->alloc);
+                        vmaDestroyImage(singleton->allocator, color1->img, color1->alloc);
                         color1->free();
                         color2->free();
                         color3->free();
@@ -480,7 +598,7 @@ namespace onart {
             imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : (useDepthInput ? VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT : 0));
             imgInfo.format = VkFormat::VK_FORMAT_D24_UNORM_S8_UINT;
             //imgInfo.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            result = vmaCreateImage(allocator, &imgInfo, &allocInfo, &ds->img, &ds->alloc, nullptr);
+            result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &ds->img, &ds->alloc, nullptr);
             if(!result) {
                 LOGWITH("Failed to create image: ", result);
                 if(color1) {color1->free(); delete color1;}
@@ -489,7 +607,7 @@ namespace onart {
                 delete ds;
                 return nullptr;
             }
-            ds->view = createImageView(device, color3->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT | VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT);
+            ds->view = createImageView(singleton->device, color3->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT | VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT);
             if(!ds->view){
                 if(color1) {color1->free(); delete color1;}
                 if(color2) {color2->free(); delete color2;}
@@ -499,16 +617,16 @@ namespace onart {
             }
         }
         int nim = 0;
-        if(color1) {images.insert(color1); nim++;}
-        if(color2) {images.insert(color2); nim++;}
-        if(color3) {images.insert(color3); nim++;}
-        if(ds) {images.insert(ds); if(useDepthInput) nim++;}
+        if(color1) {singleton->images.insert(color1); nim++;}
+        if(color2) {singleton->images.insert(color2); nim++;}
+        if(color3) {singleton->images.insert(color3); nim++;}
+        if(ds) {singleton->images.insert(ds); if(useDepthInput) nim++;}
 
-        VkDescriptorSetLayout layout = sampled ? textureLayout[0] : inputAttachmentLayout[0];
+        VkDescriptorSetLayout layout = sampled ? singleton->textureLayout[0] : singleton->inputAttachmentLayout[0];
         VkDescriptorSetLayout layouts[4] = {layout, layout, layout, layout};
         VkDescriptorSet dsets[4]{};
 
-        allocateDescriptorSets(layouts, nim, dsets);
+        singleton->allocateDescriptorSets(layouts, nim, dsets);
         if(!dsets[0]){
             LOGHERE;
             if(color1) {color1->free(); delete color1;}
@@ -526,7 +644,7 @@ namespace onart {
         wr.descriptorCount = 1;
         wr.pImageInfo = &imageInfo;
         if(sampled) {
-            imageInfo.sampler = textureSampler[0];
+            imageInfo.sampler = singleton->textureSampler[0];
             wr.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         }
         else {
@@ -536,25 +654,25 @@ namespace onart {
         if(color1){
             imageInfo.imageView = color1->view;
             wr.dstSet = dsets[nim++];
-            vkUpdateDescriptorSets(device, 1, &wr, 0, nullptr);
+            vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
             if(color2){
                 imageInfo.imageView = color2->view;
                 wr.dstSet = dsets[nim++];
-                vkUpdateDescriptorSets(device, 1, &wr, 0, nullptr);
+                vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
                 if(color3){
                     imageInfo.imageView = color3->view;
                     wr.dstSet = dsets[nim++];
-                    vkUpdateDescriptorSets(device, 1, &wr, 0, nullptr);
+                    vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
                 }
             }
         }
         if(ds && useDepthInput){
             imageInfo.imageView = ds->view;
             wr.dstSet = dsets[nim];
-            vkUpdateDescriptorSets(device, 1, &wr, 0, nullptr);
+            vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
         }
 
-        return renderTargets.emplace(name, new RenderTarget(type, width, height, color1, color2, color3, ds, sampled, mmap, dsets)).first->second;
+        return singleton->renderTargets.emplace(name, new RenderTarget(type, width, height, color1, color2, color3, ds, sampled, mmap, dsets)).first->second;
     }
 
     void VkMachine::removeImageSet(VkMachine::ImageSet* set) {
@@ -574,12 +692,12 @@ namespace onart {
         smInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         smInfo.codeSize = size;
         smInfo.pCode = spv;
-        VkResult result = vkCreateShaderModule(device, &smInfo, nullptr, &ret);
+        VkResult result = vkCreateShaderModule(singleton->device, &smInfo, nullptr, &ret);
         if(result != VK_SUCCESS) {
             LOGWITH("Failed to create shader moudle:", result);
             return VK_NULL_HANDLE;
         }
-        return shaders[name] = ret;
+        return singleton->shaders[name] = ret;
     }
 
     VkMachine::pTexture VkMachine::createTexture(void* ktxObj, const string128& name){
@@ -804,7 +922,7 @@ namespace onart {
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }
-        return createTexture(texture, _name);
+        return singleton->createTexture(texture, _name);
     }
 
     VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, const string128& name){
@@ -817,7 +935,7 @@ namespace onart {
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }
-        return createTexture(texture, name);
+        return singleton->createTexture(texture, name);
     }
 
     VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding):img(img), view(view), alloc(alloc), dset(dset), binding(binding){ }
@@ -883,8 +1001,8 @@ namespace onart {
         void* mmap;
 
         if(length > 1){
-            individual = (size + physicalDevice.minUBOffsetAlignment - 1);
-            individual -= individual % physicalDevice.minUBOffsetAlignment;
+            individual = (size + singleton->physicalDevice.minUBOffsetAlignment - 1);
+            individual -= individual % singleton->physicalDevice.minUBOffsetAlignment;
         }
         else{
             individual = size;
@@ -899,15 +1017,15 @@ namespace onart {
 
         VkResult result;
 
-        if((result = vkCreateDescriptorSetLayout(device, &uboInfo, nullptr, &layout)) != VK_SUCCESS){
+        if((result = vkCreateDescriptorSetLayout(singleton->device, &uboInfo, nullptr, &layout)) != VK_SUCCESS){
             LOGWITH("Failed to create descriptor set layout:",result);
             return nullptr;
         }
 
-        allocateDescriptorSets(&layout, 1, &dset);
+        singleton->allocateDescriptorSets(&layout, 1, &dset);
         if(!dset){
             LOGHERE;
-            vkDestroyDescriptorSetLayout(device, layout, nullptr);
+            vkDestroyDescriptorSetLayout(singleton->device, layout, nullptr);
             return nullptr;
         }
 
@@ -922,17 +1040,17 @@ namespace onart {
         bainfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 
         if(length > 1){
-            result = vmaCreateBufferWithAlignment(allocator, &bufferInfo, &bainfo, physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
+            result = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
         }
         else{
-            result = vmaCreateBuffer(allocator, &bufferInfo, &bainfo, &buffer, &alloc, nullptr);
+            result = vmaCreateBuffer(singleton->allocator, &bufferInfo, &bainfo, &buffer, &alloc, nullptr);
         }
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create buffer:", result);
             return nullptr;
         }
 
-        if((result = vmaMapMemory(allocator, alloc, &mmap)) != VK_SUCCESS){
+        if((result = vmaMapMemory(singleton->allocator, alloc, &mmap)) != VK_SUCCESS){
             LOGWITH("Failed to map memory:", result);
             return nullptr;
         }
@@ -951,7 +1069,7 @@ namespace onart {
         wr.dstSet = dset;
         vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
 
-        return uniformBuffers[name] = new UniformBuffer(length, individual, buffer, layout, dset, alloc, mmap, binding);
+        return singleton->uniformBuffers[name] = new UniformBuffer(length, individual, buffer, layout, dset, alloc, mmap, binding);
     }
 
     uint32_t VkMachine::RenderTarget::attachmentRefs(VkAttachmentDescription* arr){
@@ -997,18 +1115,18 @@ namespace onart {
     }
 
     VkMachine::RenderPass2Screen* VkMachine::createRenderPass2Screen(RenderTargetType* tgs, uint32_t subpassCount, const string16& name, bool useDepth, bool* useDepthAsInput){
-        auto it = finalPasses.find(name);
-        if(it != finalPasses.end()) return it->second;
+        auto it = singleton->finalPasses.find(name);
+        if(it != singleton->finalPasses.end()) return it->second;
         if(subpassCount == 0) return nullptr;
         std::vector<RenderTarget*> targets(subpassCount - 1);
         for(uint32_t i = 0; i < subpassCount - 1; i++){
-            targets[i] = createRenderTarget2D(swapchain.extent.width, swapchain.extent.height, "", tgs[i], false, useDepthAsInput ? useDepthAsInput[i] : false);
+            targets[i] = createRenderTarget2D(singleton->swapchain.extent.width, singleton->swapchain.extent.height, "", tgs[i], false, useDepthAsInput ? useDepthAsInput[i] : false);
             if(!targets[i]){
                 LOGHERE;
                 for(RenderTarget* t:targets) delete t;
                 return nullptr;
             }
-            renderTargets.erase("");
+            singleton->renderTargets.erase("");
         }
 
         VkImage dsImage = VK_NULL_HANDLE;
@@ -1020,8 +1138,8 @@ namespace onart {
             imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
             imgInfo.arrayLayers = 1;
             imgInfo.extent.depth = 1;
-            imgInfo.extent.width = swapchain.extent.width;
-            imgInfo.extent.height = swapchain.extent.height;
+            imgInfo.extent.width = singleton->swapchain.extent.width;
+            imgInfo.extent.height = singleton->swapchain.extent.height;
             imgInfo.format = VK_FORMAT_D24_UNORM_S8_UINT;
             imgInfo.mipLevels = 1;
             imgInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -1033,16 +1151,16 @@ namespace onart {
             VmaAllocationCreateInfo allocInfo{};
             allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
             
-            if((result = vmaCreateImage(allocator, &imgInfo, &allocInfo, &dsImage, &dsAlloc, nullptr)) != VK_SUCCESS){
+            if((result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &dsImage, &dsAlloc, nullptr)) != VK_SUCCESS){
                 LOGWITH("Failed to create depth/stencil image for last one");
                 for(RenderTarget* t:targets) delete t;
                 return nullptr;
             }
 
-            dsImageView = createImageView(device, dsImage, VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
+            dsImageView = createImageView(singleton->device, dsImage, VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
             if(!dsImageView){
                 LOGHERE;
-                vmaDestroyImage(allocator, dsImage, dsAlloc);
+                vmaDestroyImage(singleton->allocator, dsImage, dsAlloc);
                 for(RenderTarget* t:targets) delete t;
                 return nullptr;
             }
@@ -1153,14 +1271,14 @@ namespace onart {
         rpInfo.pDependencies = &dependencies[0];
         VkRenderPass newPass;
 
-        if((result = vkCreateRenderPass(device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
+        if((result = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
             LOGWITH("Failed to create renderpass:",result);
             for(RenderTarget* t:targets) delete t;
-            vmaDestroyImage(allocator, dsImage, dsAlloc);
+            vmaDestroyImage(singleton->allocator, dsImage, dsAlloc);
             return nullptr;
         }
 
-        std::vector<VkFramebuffer> fbs(swapchain.imageView.size());
+        std::vector<VkFramebuffer> fbs(singleton->swapchain.imageView.size());
         VkFramebufferCreateInfo fbInfo{};
         fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         fbInfo.attachmentCount = totalAttachments;
@@ -1171,24 +1289,24 @@ namespace onart {
         fbInfo.layers = 1;
         uint32_t i = 0;
         for(VkFramebuffer& fb: fbs){
-            swapchainImageViewPlace = swapchain.imageView[i++];
-            if((result = vkCreateFramebuffer(device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
+            swapchainImageViewPlace = singleton->swapchain.imageView[i++];
+            if((result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
                 LOGWITH("Failed to create framebuffer:",result);
-                for(VkFramebuffer d: fbs) vkDestroyFramebuffer(device, d, nullptr);
-                vkDestroyRenderPass(device, newPass, nullptr);
-                vkDestroyImageView(device, dsImageView, nullptr);
+                for(VkFramebuffer d: fbs) vkDestroyFramebuffer(singleton->device, d, nullptr);
+                vkDestroyRenderPass(singleton->device, newPass, nullptr);
+                vkDestroyImageView(singleton->device, dsImageView, nullptr);
                 for(RenderTarget* t:targets) delete t;
-                vmaDestroyImage(allocator, dsImage, dsAlloc);
+                vmaDestroyImage(singleton->allocator, dsImage, dsAlloc);
                 return nullptr;
             }
         }
-        RenderPass2Screen* ret = finalPasses[name] = new RenderPass2Screen(newPass, std::move(targets), std::move(fbs), dsImage, dsImageView, dsAlloc);
+        RenderPass2Screen* ret = singleton->finalPasses[name] = new RenderPass2Screen(newPass, std::move(targets), std::move(fbs), dsImage, dsImageView, dsAlloc);
         return ret;
     }
 
     VkMachine::RenderPass* VkMachine::createRenderPass(RenderTarget** targets, uint32_t subpassCount, const string16& name){
-        auto it = renderPasses.find(name);
-        if(it != renderPasses.end()) return it->second;
+        auto it = singleton->renderPasses.find(name);
+        if(it != singleton->renderPasses.end()) return it->second;
         if(subpassCount == 0) return nullptr;
 
         std::vector<VkSubpassDescription> subpasses(subpassCount);
@@ -1252,7 +1370,7 @@ namespace onart {
         rpInfo.pDependencies = &dependencies[1];
         VkRenderPass newPass;
         VkResult result;
-        if((result = vkCreateRenderPass(device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
+        if((result = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
             LOGWITH("Failed to create renderpass:",result);
             return nullptr;
         }
@@ -1266,11 +1384,11 @@ namespace onart {
         fbInfo.width = targets[0]->width;
         fbInfo.height = targets[0]->height;
         fbInfo.layers = 1; // 큐브맵이면 6인데 일단 그건 다른 함수로 한다고 침
-        if((result = vkCreateFramebuffer(device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
+        if((result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
             LOGWITH("Failed to create framebuffer:",result);
             return nullptr;
         }
-        RenderPass* ret = renderPasses[name] = new RenderPass(newPass, fb, subpassCount);
+        RenderPass* ret = singleton->renderPasses[name] = new RenderPass(newPass, fb, subpassCount);
         for(uint32_t i = 0; i < subpassCount; i++){ ret->targets[i] = targets[i]; }
         return ret;
     }
@@ -1289,13 +1407,13 @@ namespace onart {
             0;
         const bool OPT_USE_DEPTHSTENCIL = (int)pass->targets[subpass]->type & 0b1000;
 
-        ret = onart::createPipeline(device, vinfo, size, vattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, front, back);
+        ret = onart::createPipeline(singleton->device, vinfo, size, vattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, front, back);
         if(!ret){
             LOGHERE;
             return VK_NULL_HANDLE;
         }
         pass->usePipeline(ret, layout, subpass);
-        return pipelines[name] = ret;
+        return singleton->pipelines[name] = ret;
     }
 
     VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front, VkStencilOpState* back) {
@@ -1319,13 +1437,13 @@ namespace onart {
             OPT_USE_DEPTHSTENCIL = (int)pass->targets[subpass]->type & 0b1000;
         }
 
-        ret = onart::createPipeline(device, vinfo, size, vattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, front, back);
+        ret = onart::createPipeline(singleton->device, vinfo, size, vattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, front, back);
         if(!ret){
             LOGHERE;
             return VK_NULL_HANDLE;
         }
         pass->usePipeline(ret, layout, subpass);
-        return pipelines[name] = ret;
+        return singleton->pipelines[name] = ret;
     }
 
     VkPipelineLayout VkMachine::createPipelineLayout(VkDescriptorSetLayout* layouts, uint32_t count,  VkShaderStageFlags stages, const string16& name){
@@ -1346,12 +1464,25 @@ namespace onart {
             layoutInfo.pPushConstantRanges = &pushRange;
         }
 
-        VkResult result = vkCreatePipelineLayout(device, &layoutInfo, nullptr, &ret);
+        VkResult result = vkCreatePipelineLayout(singleton->device, &layoutInfo, nullptr, &ret);
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create pipeline layout:",result);
             return VK_NULL_HANDLE;
         }
-        return pipelineLayouts[name] = ret;
+        return singleton->pipelineLayouts[name] = ret;
+    }
+
+    VkMachine::Mesh::Mesh(VkBuffer vb, VmaAllocation vba, size_t vcount, size_t icount, size_t ioff, void *vmap, bool use32):vb(vb),vba(vba),vcount(vcount),icount(icount),ioff(ioff),vmap(vmap),idxType(use32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16){ }
+    VkMachine::Mesh::~Mesh(){ vmaDestroyBuffer(singleton->allocator, vb, vba); }
+
+    void VkMachine::Mesh::update(const void* input, uint32_t offset, uint32_t size){
+        if(!vmap) return;
+        std::memcpy((uint8_t*)vmap + offset, input, size);
+    }
+
+    void VkMachine::Mesh::updateIndex(const void* input, uint32_t offset, uint32_t size){
+        if(!vmap || icount == 0) return;
+        std::memcpy((uint8_t*)vmap + ioff + offset, input, size);
     }
 
     VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount): rp(rp), fb(fb), stageCount(stageCount), pipelines(stageCount), targets(stageCount){
@@ -1508,6 +1639,39 @@ namespace onart {
         vkCmdPushConstants(cb, pipelineLayouts[currentPass], VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
     }
 
+    void VkMachine::RenderPass::invoke(const pMesh& mesh){
+         if(currentPass == -1){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        if(bound != mesh.get()) {
+            VkDeviceSize offs = 0;
+            vkCmdBindVertexBuffers(cb, 0, 1, &mesh->vb, &offs);
+            if(mesh->icount) vkCmdBindIndexBuffer(cb, mesh->vb, mesh->ioff, mesh->idxType);
+        }
+        if(mesh->icount) vkCmdDrawIndexed(cb, mesh->icount, 1, 0, 0, 0);
+        else vkCmdDraw(cb, mesh->vcount, 1, 0, 0);
+        bound = mesh.get();
+    }
+
+    void VkMachine::RenderPass::invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount){
+         if(currentPass == -1){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        VkDeviceSize offs[2] = {0, 0};
+        VkBuffer buffs[2] = {mesh->vb, instanceInfo->vb};
+        vkCmdBindVertexBuffers(cb, 0, 2, buffs, offs);
+        if(mesh->icount) {
+            vkCmdBindIndexBuffer(cb, mesh->vb, mesh->ioff, mesh->idxType);
+            vkCmdDrawIndexed(cb, mesh->icount, instanceCount, 0, 0, 0);
+        }
+        else{
+            vkCmdDraw(cb, mesh->vcount, instanceCount, 0, 0);
+        }
+        bound = nullptr;
+    }
+
     void VkMachine::RenderPass::execute(RenderPass* other){
         vkCmdEndRenderPass(cb);
         VkResult result;
@@ -1550,6 +1714,7 @@ namespace onart {
             LOGWITH("Invalid call. The last subpass already started");
             return;
         }
+        bound = nullptr;
         currentPass++;
         VkResult result;
         if(currentPass == 0){
@@ -1727,6 +1892,39 @@ namespace onart {
             return;
         }
         vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &dset, 0, nullptr);
+    }
+
+     void VkMachine::RenderPass2Screen::invoke(const pMesh& mesh){
+         if(currentPass == -1){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        if(bound != mesh.get()) {
+            VkDeviceSize offs = 0;
+            vkCmdBindVertexBuffers(cbs[currentCB], 0, 1, &mesh->vb, &offs);
+            if(mesh->icount) vkCmdBindIndexBuffer(cbs[currentCB], mesh->vb, mesh->ioff, mesh->idxType);
+        }
+        if(mesh->icount) vkCmdDrawIndexed(cbs[currentCB], mesh->icount, 1, 0, 0, 0);
+        else vkCmdDraw(cbs[currentCB], mesh->vcount, 1, 0, 0);
+        bound = mesh.get();
+    }
+
+    void VkMachine::RenderPass2Screen::invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount){
+         if(currentPass == -1){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        VkDeviceSize offs[2] = {0, 0};
+        VkBuffer buffs[2] = {mesh->vb, instanceInfo->vb};
+        vkCmdBindVertexBuffers(cbs[currentCB], 0, 2, buffs, offs);
+        if(mesh->icount) {
+            vkCmdBindIndexBuffer(cbs[currentCB], mesh->vb, mesh->ioff, mesh->idxType);
+            vkCmdDrawIndexed(cbs[currentCB], mesh->icount, instanceCount, 0, 0, 0);
+        }
+        else{
+            vkCmdDraw(cbs[currentCB], mesh->vcount, instanceCount, 0, 0);
+        }
+        bound = nullptr;
     }
 
     void VkMachine::RenderPass2Screen::start(uint32_t pos){
@@ -2271,7 +2469,7 @@ namespace onart {
     #undef CHECK_N_RETURN
     }
 
-    static VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr,
+    VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr,
     VkRenderPass pass, uint32_t subpass, uint32_t flags, const uint32_t OPT_COLOR_COUNT, const bool OPT_USE_DEPTHSTENCIL,
     VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkStencilOpState* front, VkStencilOpState* back) {
         VkPipelineShaderStageCreateInfo shaderStagesInfo[2] = {};
