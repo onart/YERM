@@ -31,7 +31,7 @@
 #include <map>
 
 #define VERTEX_FLOAT_TYPES float, vec2, vec3, vec4, float[1], float[2], float[3], float[4]
-#define VERTEX_DOUBLE_TYPES double, dvec2, dvec3, dvec4, double[1], double[2], double[3], double[4]
+#define VERTEX_DOUBLE_TYPES double, double[1], double[2], double[3], double[4]
 #define VERTEX_INT8_TYPES int8_t, int8_t[1], int8_t[2], int8_t[3], int8_t[4]
 #define VERTEX_UINT8_TYPES uint8_t, uint8_t[1], uint8_t[2], uint8_t[3], uint8_t[4]
 #define VERTEX_INT16_TYPES int16_t, int16_t[1], int16_t[2], int16_t[3], int16_t[4]

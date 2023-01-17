@@ -12,7 +12,6 @@ int main(int argc, char* argv[]){
     system("chcp 65001");
 #endif
     std::filesystem::current_path(std::filesystem::path(argv[0]).parent_path());
-    LOGWITH(u16string255(u"한글abcd"), string255(u8"한글abcd"), convert(string255(u8"한글abcd")));
     Game game;
     game.start();
 }

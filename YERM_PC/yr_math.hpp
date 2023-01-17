@@ -25,37 +25,45 @@
 namespace onart{
 
     struct Quaternion;
+    template<class T> struct v128 { using RG_T = T[16 / sizeof(T)]; };
+    template<> struct v128<float> { using RG_T = float128; };
+    template<> struct v128<double> { using RG_T = double128; };
+    template<> struct v128<int32_t> { using RG_T = int128; };
+    template<> struct v128<uint32_t> { using RG_T = uint128; };
 
     template<class T, std::enable_if_t<std::is_floating_point_v<T>,bool> = true> constexpr inline T PI = 3.14159265358979323846;
-
-    /// @brief 2~4차원 벡터입니다. 길이에 관계없이 상호 변환이 가능합니다.
+    /// @brief 2~4차원 벡터입니다. 길이에 관계없이 상호 변환이 가능합니다. 타입은 float, int32_t, uint32_t만 사용할 수 있습니다. double은 준비중입니다.
     /// @tparam T 성분의 타입입니다. 사칙연산 및 부호 반전이 가능해야 합니다.
     /// @tparam D 벡터의 차원수입니다. 2~4차원만 사용할 수 있습니다.
     template<class T, unsigned D>
     struct alignas(16) nvec{
+        using RG_T = typename v128<T>::RG_T;
         union{
+            RG_T rg;
             T entry[4];
             struct { T x, y, z, w; };
             struct { T s, t, p, q; };
             struct { T r, g, b, a; };
         };
         /// @brief 영벡터를 초기화합니다.
-        inline nvec():entry{}{}
+        inline nvec() :rg(load(T{})) {}
+        /// @brief SSE2 또는 그렇게 보이는 NEON 벡터를 이용해 초기화합니다.
+        inline nvec(RG_T rg) : rg(rg) {}
         /// @brief 벡터의 모든 성분을 하나의 값으로 초기화합니다.
-        explicit inline nvec(T a) { static_assert(D >= 2 && D <= 4, "nvec은 2~4차원만 생성할 수 있습니다."); set4(entry,a); }
+        explicit inline nvec(T a):rg(load(a)) { static_assert(D >= 2 && D <= 4, "nvec은 2~4차원만 생성할 수 있습니다."); }
         /// @brief 벡터의 값 중 앞 2~4개를 초기화합니다.
-        inline nvec(T x, T y, T z = 0, T w = 0) : entry{x, y, z, w} { static_assert(D >= 2 && D <= 4, "nvec은 2~4차원만 생성할 수 있습니다."); }
+        inline nvec(T x, T y, T z = 0, T w = 0): rg(load(w,z,y,x)) { static_assert(D >= 2 && D <= 4, "nvec은 2~4차원만 생성할 수 있습니다."); }
         /// @brief 벡터를 복사합니다.
-        inline nvec(const nvec &v) { memcpy(entry, v.entry, sizeof(entry)); }
+        inline nvec(const nvec &v): rg(v.rg) { }
         /// @brief 배열을 이용하여 벡터를 생성합니다.
-        explicit inline nvec(const T* v) { static_assert(D >= 2 && D <= 4, "nvec은 2~4차원만 생성할 수 있습니다."); set4(entry,v);}
+        explicit inline nvec(const T* v): rg(load(v)) { static_assert(D >= 2 && D <= 4, "nvec은 2~4차원만 생성할 수 있습니다."); }
         /// @brief 한 차원 낮은 벡터와 나머지 한 성분을 이어붙여 벡터를 생성합니다.
-        inline nvec(const nvec<T,D-1>& v, T a){ static_assert(D >= 2 && D <= 4, "nvec은 2~4차원만 생성할 수 있습니다."); set4(entry, v.entry); entry[D-1] = a; }
+        inline nvec(const nvec<T,D-1>& v, T a): rg(v.rg) { static_assert(D >= 2 && D <= 4, "nvec은 2~4차원만 생성할 수 있습니다."); entry[D-1] = a; }
 
         /// @brief 벡터의 모든 성분을 하나의 값으로 초기화합니다.
-        inline void set(T a) { set4(entry, a); }
+        inline void set(T a) { rg = v.rg; }
         /// @brief 다른 벡터의 값을 복사해 옵니다. 차원수는 달라도 됩니다.
-        template <unsigned E> inline void set(const nvec<T, E> &v) { set4(entry, v.entry); }
+        template <unsigned E> inline void set(const nvec<T, E>& v) { rg = v.rg; }
 
         /// @brief 벡터의 모든 성분을 하나의 값으로 초기화합니다.
         inline nvec &operator=(T a) { set(a); return *this; }
@@ -63,13 +71,13 @@ namespace onart{
         template<unsigned E> inline nvec &operator=(const nvec<T, E>& v) { set(v); return *this; }
 
         /// @brief 다른 벡터와 성분별 연산을 합니다.
-        inline nvec &operator+=(const nvec &v) { add4(entry, v.entry); return *this; }
+        inline nvec& operator+=(const nvec& v) { rg += v.rg; return *this; }
         /// @brief 다른 벡터와 성분별 연산을 합니다.
-        inline nvec &operator-=(const nvec &v) { sub4(entry, v.entry); return *this; }
+        inline nvec& operator-=(const nvec& v) { rg -= v.rg; return *this; }
         /// @brief 다른 벡터와 성분별 연산을 합니다.
-        inline nvec &operator*=(const nvec &v) { mul4(entry, v.entry); return *this; }
+        inline nvec& operator*=(const nvec& v) { rg *= v.rg; return *this; }
         /// @brief 다른 벡터와 성분별 연산을 합니다.
-        inline nvec &operator/=(const nvec &v) { div4(entry, v.entry); return *this; }
+        inline nvec& operator/=(const nvec& v) { rg /= v.rg; return *this; }
         /// @brief 다른 벡터와 성분별 연산을 합니다.
         inline nvec operator+(const nvec &v) const { return nvec(*this) += v; }
         /// @brief 다른 벡터와 성분별 연산을 합니다.
@@ -80,13 +88,13 @@ namespace onart{
         inline nvec operator/(const nvec &v) const { return nvec(*this) /= v; }
 
         /// @brief 다른 스칼라와 성분별 연산을 합니다.
-        inline nvec &operator+=(T a) { add4(entry, a); return *this; }
+        inline nvec& operator+=(T a) { rg += load(a); return *this; }
         /// @brief 다른 스칼라와 성분별 연산을 합니다.
-        inline nvec &operator-=(T a) { sub4(entry, a); return *this; }
+        inline nvec& operator-=(T a) { rg -= load(a); return *this; }
         /// @brief 다른 스칼라와 성분별 연산을 합니다.
-        inline nvec &operator*=(T a) { mul4(entry, a); return *this; }
+        inline nvec& operator*=(T a) { rg *= load(a); return *this; }
         /// @brief 다른 스칼라와 성분별 연산을 합니다.
-        inline nvec &operator/=(T a) { div4(entry, a); return *this; }
+        inline nvec& operator/=(T a) { rg /= load(a); return *this; }
         /// @brief 다른 스칼라와 성분별 연산을 합니다.
         inline nvec operator+(T a) const { return nvec(*this) += a; }
         /// @brief 다른 스칼라와 성분별 연산을 합니다.
@@ -102,11 +110,13 @@ namespace onart{
                 return memcmp(entry, v.entry, sizeof(T) * D) == 0;
             }
             else {
-                nvec z = operator-(v);
-                abs4(z.entry);
-                bool b2 = z.x <= std::numeric_limits<T>::epsilon() && z.y <= std::numeric_limits<T>::epsilon();
-                if constexpr(D > 2) b2 = b2 && z.z <= std::numeric_limits<T>::epsilon();
-                if constexpr(D > 3) b2 = b2 && z.w <= std::numeric_limits<T>::epsilon();
+                RG_T rtemp = mabs(rg - v.rg);
+                alignas(16) T atemp[4]; store(rtemp, atemp);
+                constexpr T NEG_EPSILON = -std::numeric_limits<T>::epsilon();
+
+                bool b2 = atemp[0] >= NEG_EPSILON && atemp[1] >= NEG_EPSILON;
+                if constexpr(D > 2) b2 = b2 && atemp[2] >= NEG_EPSILON;
+                if constexpr(D > 3) b2 = b2 && atemp[3] >= NEG_EPSILON;
                 return b2;
             }
         }
@@ -115,7 +125,7 @@ namespace onart{
         inline bool operator!=(const nvec &v) const { return !operator==(v); }
 
         /// @brief 부호를 반전시켜 리턴합니다.
-        inline nvec operator-() const { nvec r(*this); neg4(r.entry); return r; }
+        inline nvec operator-() const { return nvec(-rg); }
         /// @brief 배열과 같은 용도의 인덱스 연산자입니다.        
         inline T &operator[](unsigned i) { assert(i < D); return entry[i]; }
         /// @brief 배열과 같은 용도의 인덱스 연산자입니다.        
@@ -131,13 +141,7 @@ namespace onart{
         }
 
         /// @brief 벡터 간의 내적을 리턴합니다.
-        friend inline T dot(const nvec& v1, const nvec& v2) {
-            nvec nv(v1 * v2);
-            if constexpr(D == 2) return nv[0] + nv[1];
-            else if constexpr(D == 3) return nv[0] + nv[1] + nv[2];
-            else if constexpr(D == 4) return (nv[0] + nv[1]) + (nv[2] + nv[3]);
-            else return T();
-        }
+        friend inline T dot(const nvec& v1, const nvec& v2) { return v1.dot(v2); }
 
         /// @brief 벡터 길이의 제곱을 리턴합니다.
         inline T length2() const { return dot(*this); }
@@ -183,347 +187,347 @@ namespace onart{
 
 #define DIM_LOWER_BOUND(N) template <unsigned U=D, std::enable_if_t<U >= N,bool> = true>
         /// @brief GLSL식의 swizzle 인터페이스입니다.
-        DIM_LOWER_BOUND(1) inline nvec<T, 2> xx() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 2> xy() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 2> xz() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 2> xw() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 2> yx() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 2> yy() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 2> yz() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 2> yw() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 2> zx() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 2> zy() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 2> zz() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 2> zw() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 2> wx() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 2> wy() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 2> wz() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 2> ww() const { nvec<T, 2> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
+        DIM_LOWER_BOUND(1) inline nvec<T, 2> xx() const { return nvec<T, 2>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 2> xy() const { return nvec<T, 2>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 2> xz() const { return nvec<T, 2>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 2> xw() const { return nvec<T, 2>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 2> yx() const { return nvec<T, 2>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 2> yy() const { return nvec<T, 2>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 2> yz() const { return nvec<T, 2>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 2> yw() const { return nvec<T, 2>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 2> zx() const { return nvec<T, 2>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 2> zy() const { return nvec<T, 2>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 2> zz() const { return nvec<T, 2>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 2> zw() const { return nvec<T, 2>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 2> wx() const { return nvec<T, 2>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 2> wy() const { return nvec<T, 2>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 2> wz() const { return nvec<T, 2>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 2> ww() const { return nvec<T, 2>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(rg)); }
 
-        DIM_LOWER_BOUND(1) inline nvec<T, 3> xxx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 3> xxy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> xxz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> xxw() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 3> yxx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 3> yxy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> yxz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> yxw() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> zxx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> zxy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> zxz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> zxw() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wxx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wxy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wxz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wxw() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 3> xyx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 3> xyy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> xyz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> xyw() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 3> yyx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 3> yyy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> yyz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> yyw() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> zyx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> zyy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> zyz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> zyw() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wyx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wyy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wyz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wyw() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> xzx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> xzy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> xzz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> xzw() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> yzx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> yzy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> yzz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> yzw() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> zzx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> zzy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 3> zzz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> zzw() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wzx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wzy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wzz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wzw() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> xwx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> xwy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> xwz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> xww() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> ywx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> ywy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> ywz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> yww() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> zwx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> zwy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> zwz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> zww() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wwx() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wwy() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> wwz() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 3> www() const { nvec<T, 3> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
+        DIM_LOWER_BOUND(1) inline nvec<T, 3> xxx() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 3> xxy() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> xxz() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> xxw() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 3> yxx() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 3> yxy() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> yxz() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> yxw() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> zxx() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> zxy() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> zxz() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> zxw() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wxx() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wxy() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wxz() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wxw() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 3> xyx() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 3> xyy() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> xyz() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> xyw() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 3> yyx() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 3> yyy() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> yyz() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> yyw() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> zyx() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> zyy() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> zyz() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> zyw() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wyx() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wyy() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wyz() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wyw() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> xzx() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> xzy() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> xzz() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> xzw() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> yzx() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> yzy() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> yzz() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> yzw() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> zzx() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> zzy() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 3> zzz() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> zzw() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wzx() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wzy() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wzz() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wzw() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> xwx() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> xwy() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> xwz() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> xww() const { return nvec<T, 3>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> ywx() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> ywy() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> ywz() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> yww() const { return nvec<T, 3>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> zwx() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> zwy() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> zwz() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> zww() const { return nvec<T, 3>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wwx() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wwy() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> wwz() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 3> www() const { return nvec<T, 3>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(rg)); }
 
-        DIM_LOWER_BOUND(1) inline nvec<T, 4> xxxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> xxxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xxxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xxxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> xyxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> xyxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xyxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xyxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xzxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> xxyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> xxyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xxyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xxyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> xyyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> xyyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xyyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xyyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xzyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xxzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xxzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xxzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xxzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xyzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xyzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xyzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xyzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xzzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xxwx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xxwy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xxwz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xxww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_X, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xywx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xywy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xywz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xyww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xzwx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xzwy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xzwz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xzww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwwx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwwy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwwz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_X, SWIZZLE_W, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
+        DIM_LOWER_BOUND(1) inline nvec<T, 4> xxxx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> xxxy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xxxz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xxxw() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> xyxx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> xyxy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xyxz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xyxw() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzxx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzxy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzxz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xzxw() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwxx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwxy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwxz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwxw() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> xxyx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> xxyy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xxyz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xxyw() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> xyyx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> xyyy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xyyz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xyyw() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzyx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzyy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzyz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xzyw() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwyx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwyy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwyz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwyw() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xxzx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xxzy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xxzz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xxzw() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xyzx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xyzy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xyzz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xyzw() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzzx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzzy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> xzzz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xzzw() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwzx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwzy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwzz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwzw() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xxwx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xxwy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xxwz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xxww() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_X, SWIZZLE_W, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xywx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xywy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xywz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xyww() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xzwx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xzwy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xzwz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xzww() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwwx() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwwy() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwwz() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> xwww() const { return nvec<T, 4>(swizzle<SWIZZLE_X, SWIZZLE_W, SWIZZLE_W, SWIZZLE_W>(rg)); }
 
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> yxxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> yxxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yxxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yxxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> yyxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> yyxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yyxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yyxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yzxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> yxyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> yxyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yxyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yxyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> yyyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(2) inline nvec<T, 4> yyyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yyyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yyyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yzyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yxzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yxzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yxzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yxzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yyzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yyzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yyzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yyzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yzzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yxwx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yxwy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yxwz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yxww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yywx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yywy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yywz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yyww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yzwx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yzwy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yzwz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> yzww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywwx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywwy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywwz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> yxxx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> yxxy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yxxz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yxxw() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> yyxx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> yyxy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yyxz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yyxw() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzxx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzxy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzxz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yzxw() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywxx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywxy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywxz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywxw() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> yxyx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> yxyy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yxyz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yxyw() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> yyyx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(2) inline nvec<T, 4> yyyy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yyyz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yyyw() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzyx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzyy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzyz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yzyw() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywyx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywyy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywyz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywyw() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yxzx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yxzy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yxzz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yxzw() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yyzx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yyzy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yyzz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yyzw() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzzx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzzy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> yzzz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yzzw() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywzx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywzy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywzz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywzw() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yxwx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yxwy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yxwz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yxww() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yywx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yywy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yywz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yyww() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yzwx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yzwy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yzwz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> yzww() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywwx() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywwy() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywwz() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> ywww() const { return nvec<T, 4>(swizzle<SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W, SWIZZLE_W>(rg)); }
 
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zxxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zyxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zzxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zxyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zyyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zzyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zxzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zyzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zzzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zxwx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zxwy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zxwz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zxww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zywx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zywy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zywz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zyww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zzwx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zzwy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zzwz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zzww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwwx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwwy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwwz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxxx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxxy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxxz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zxxw() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyxx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyxy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyxz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zyxw() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzxx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzxy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzxz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zzxw() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwxx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwxy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwxz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwxw() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxyx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxyy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxyz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zxyw() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyyx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyyy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyyz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zyyw() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzyx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzyy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzyz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zzyw() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwyx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwyy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwyz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwyw() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxzx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxzy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zxzz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zxzw() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyzx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyzy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zyzz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zyzw() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzzx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzzy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(3) inline nvec<T, 4> zzzz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zzzw() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwzx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwzy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwzz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwzw() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zxwx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zxwy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zxwz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zxww() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zywx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zywy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zywz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zyww() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zzwx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zzwy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zzwz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zzww() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwwx() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwwy() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwwz() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> zwww() const { return nvec<T, 4>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W, SWIZZLE_W>(rg)); }
 
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwxx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwxy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwxz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwxw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_X, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwyx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwyy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwyz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwyw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwzx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwzy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwzz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwzw() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxwx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxwy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxwz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_X, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wywx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wywy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wywz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzwx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzwy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzwz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwwx() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwwy() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwwz() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z>(v.entry); return v; }
-        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwww() const { nvec<T, 4> v(entry); swizzle4<SWIZZLE_W, SWIZZLE_W, SWIZZLE_W, SWIZZLE_W>(v.entry); return v; }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxxx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxxy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxxz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxxw() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyxx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyxy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyxz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyxw() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzxx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzxy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzxz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzxw() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwxx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_X, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwxy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwxz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwxw() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_X, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxyx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxyy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxyz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxyw() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyyx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyyy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyyz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyyw() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzyx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzyy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzyz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzyw() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwyx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwyy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwyz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwyw() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxzx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxzy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxzz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxzw() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyzx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyzy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyzz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyzw() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzzx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzzy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzzz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzzw() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwzx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwzy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwzz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwzw() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxwx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxwy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxwz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wxww() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_X, SWIZZLE_W, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wywx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wywy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wywz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wyww() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Y, SWIZZLE_W, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzwx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzwy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzwz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wzww() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_W>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwwx() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_W, SWIZZLE_X>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwwy() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Y>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwwz() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_W, SWIZZLE_Z>(rg)); }
+        DIM_LOWER_BOUND(4) inline nvec<T, 4> wwww() const { return nvec<T, 4>(swizzle<SWIZZLE_W, SWIZZLE_W, SWIZZLE_W, SWIZZLE_W>(rg)); }
 
 #undef DIM_LOWER_BOUND
     };
@@ -537,7 +541,7 @@ namespace onart{
     template<unsigned D> nvec<int, D> f2i(const nvec<float, D>& iv) { nvec<int, D> ret; float2int32(iv.entry, ret.entry); return ret; }
 
     /// @brief 2개의 2차원 실수 벡터 외적의 z축 성분을 계산합니다.
-    inline float cross2(const vec2 &a, const vec2 &b) { return a[0] * b[1] - a[1] * b[0]; }
+    inline float cross2(const vec2& a, const vec2& b) { vec2 temp = a * b.yx(); return temp[0] - temp[1]; }
     /// @brief 2개의 2차원 실수 벡터 외적의 z축 성분을 계산합니다.
     inline double cross2(const dvec2 &a, const dvec2 &b) { return a[0] * b[1] - a[1] * b[0]; }
 
@@ -548,10 +552,10 @@ namespace onart{
     }
 
     /// @brief 2개의 3차원 실수 벡터의 외적을 계산합니다.
-    inline dvec3 cross(const dvec3& a, const dvec3& b){
-        dvec3 mul = a * b.yzx() - b * a.yzx();
-        return mul.yzx();
-    }
+    //inline dvec3 cross(const dvec3& a, const dvec3& b){
+        //dvec3 mul = a * b.yzx() - b * a.yzx();
+        //return mul.yzx();
+    //}
 
     /// @brief 2개 단위벡터의 구면선형보간을 리턴합니다.
     /// @param a 구면 선형 보간 대상 1(t=0에 가까울수록 이 벡터에 가깝습니다.)
@@ -568,12 +572,12 @@ namespace onart{
     /// @param a 구면 선형 보간 대상 1(t=0에 가까울수록 이 벡터에 가깝습니다.)
     /// @param b 구면 선형 보간 대상 2(t=1에 가까울수록 이 벡터에 가깝습니다.)
     /// @param t 구면 선형 보간 값
-    inline dvec3 slerp(const dvec3 a, const dvec3& b, double t){
-        double sinx = cross(a, b).length();
-        double theta = std::asin(sinx);
-        if (theta <= std::numeric_limits<double>::epsilon()) return a;
-        return a * std::sin(theta * (1 - t)) + b * std::sin(theta * t);
-    }
+    //inline dvec3 slerp(const dvec3 a, const dvec3& b, double t){
+        //double sinx = cross(a, b).length();
+        //double theta = std::asin(sinx);
+        //if (theta <= std::numeric_limits<double>::epsilon()) return a;
+        //return a * std::sin(theta * (1 - t)) + b * std::sin(theta * t);
+    //}
 
     /// @brief 행 우선 순서로 구성된 2x2 행렬입니다.
     struct alignas(16) mat2 {
@@ -1427,13 +1431,17 @@ namespace onart{
 
     /// @brief 3차원 회전 등을 표현하는 사원수입니다. 1, i, j, k 부분에 해당하는 c1, ci, cj, ck 멤버를 가집니다. 각각 순서대로 일반적인 사원수 모듈의 w, x, y, z에 대응합니다.
     struct alignas(16) Quaternion{
-        float c1, ci, cj, ck;
+        union {
+            float128 rg;
+            struct { float c1, ci, cj, ck; };
+        };
         /// @brief 사원수를 생성합니다.
-        inline Quaternion(float o = 1, float i = 0, float j = 0, float k = 0) : c1(0), ci(i), cj(j), ck(k) { }        
+        inline Quaternion(float o = 1, float i = 0, float j = 0, float k = 0) : rg(load(k, j, i, o)) {  }
+        explicit inline Quaternion(float128 rg):rg(rg){}
         /// @brief 각속도 벡터(초당 회전각(float) * 회전축(vec3))에 대응하는 사원수를 생성합니다.
-        inline Quaternion(const vec3 &av) : c1(0) { memcpy(&ci, av.entry, sizeof(float) * 3); }
+        inline Quaternion(const vec3& av) :rg(swizzle<SWIZZLE_X,SWIZZLE_X,SWIZZLE_Y,SWIZZLE_Z>(av.rg)) { c1 = 0; }
         /// @brief 복사 생성자입니다.
-        inline Quaternion(const Quaternion &q) { memcpy(this, &q, sizeof(*this)); }
+        inline Quaternion(const Quaternion &q):rg(q.rg) { }
 
         /// @brief 사원수 크기의 제곱을 리턴합니다.
         inline float abs2() const { return reinterpret_cast<const vec4 *>(this)->length2(); }
@@ -1445,7 +1453,7 @@ namespace onart{
         inline bool is1() const { return c1 == 1 && ci == 0 && cj == 0 && ck == 0; }
 
         /// @brief 켤레(공액)사원수를 리턴합니다.
-        inline Quaternion conjugate() const { Quaternion ret = operator-(); ret.c1 = c1; return ret; }
+        inline Quaternion conjugate() const { return toggleSigns<false, true, true, true>(rg); }
 
         /// @brief 이 사원수의 우측에 곱해서 1이 되는 값을 리턴합니다.
         inline Quaternion inverse() const { return conjugate() / abs2(); }
@@ -1455,46 +1463,48 @@ namespace onart{
 
         /// @brief 사원수끼리 곱합니다. 교환 법칙이 성립하지 않는 점(순서를 바꾸면 방향이 반대가 됨)에 유의하세요.
         inline Quaternion operator*(const Quaternion& q) const {
-            Quaternion q_c1 = q * c1;
-            Quaternion q_ci = Quaternion(-q.ci, q.c1, -q.ck, q.cj) * ci;
-            Quaternion q_cj = Quaternion(-q.cj, q.ck, q.c1, -q.ci) * cj;
-            Quaternion q_ck = Quaternion(-q.ck, -q.cj, q.ci, q.c1) * ck;
-            return q_c1 + q_ci + q_cj + q_ck;
+            float128 q_c1 = rg * load(c1);
+            float128 q_ci = toggleSigns<true, false, true, false>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z>(rg)) * load(ci);
+            float128 q_cj = toggleSigns<true, false, false, true>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y>(rg)) * load(cj);
+            float128 q_ck = toggleSigns<true, true, false, false>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(rg)) * load(ck);
+            float128 res = (q_c1 + q_ci) + (q_cj + q_ck);
+            
+            return Quaternion(res);
         }
 
         /// @brief 사원수 간의 사칙 연산입니다.
-        inline Quaternion& operator+=(const Quaternion& q) { add4(&c1, &(q.c1)); return *this; }
+        inline Quaternion& operator+=(const Quaternion& q) { rg += q.rg; return *this; }
         /// @brief 사원수 간의 사칙 연산입니다.
-        inline Quaternion& operator-=(const Quaternion& q) { sub4(&c1, &(q.c1)); return *this; }
+        inline Quaternion& operator-=(const Quaternion& q) { rg -= q.rg; return *this; }
         /// @brief 사원수 간의 사칙 연산입니다.
         inline Quaternion& operator*=(const Quaternion& q) { *this = *this * q; return *this; }	// multiplying on the left is more commonly used operation
         /// @brief 사원수 간의 사칙 연산입니다. / 연산자는 우측 피연산자에 대한 곱셈 역원을 곱합니다.
         inline Quaternion& operator/=(const Quaternion& q) { *this = *this * q.inverse(); return *this; }
         /// @brief 사원수에 실수배를 합니다.
-        inline Quaternion operator*(float f) const { Quaternion ret(*this); mul4(&(ret.c1), f); return ret; }
+        inline Quaternion operator*(float f) const { return rg * load(f); }
         /// @brief 사원수에 실수배를 합니다.
-        inline Quaternion operator/(float f) const { Quaternion ret(*this); div4(&(ret.c1), f); return ret; }
+        inline Quaternion operator/(float f) const { return rg / load(f); }
         /// @brief 사원수에 실수배를 합니다.
-        inline Quaternion& operator*=(float f) { *this = *this * f; return *this; }
+        inline Quaternion& operator*=(float f) { rg *= load(f); return *this; }
         /// @brief 사원수에 실수배를 합니다.
-        inline Quaternion& operator/=(float f) { *this = *this / f; return *this; }
+        inline Quaternion& operator/=(float f) { rg /= load(f); return *this; }
         /// @brief 사원수 간의 사칙 연산입니다.
-        inline Quaternion operator+(const Quaternion& q) const { Quaternion r(*this); r += q; return r; }
+        inline Quaternion operator+(const Quaternion& q) const { return rg + q.rg; }
         /// @brief 사원수 간의 사칙 연산입니다.
-        inline Quaternion operator-(const Quaternion& q) const { Quaternion r(*this); r -= q; return r; }
+        inline Quaternion operator-(const Quaternion& q) const { return rg - q.rg; }
         /// @brief 사원수 간의 사칙 연산입니다. / 연산자는 우측 피연산자에 대한 곱셈 역원을 곱합니다.
         inline Quaternion operator/(const Quaternion& q) const { Quaternion r(*this); r /= q; return r; }
 
         /// @brief 단위사원수(회전 사원수)를 리턴합니다.
-        inline Quaternion normal() const { return operator*(1 / abs()); }
+        inline Quaternion normal() const { return operator*(1.0f / abs()); }
         /// @brief 단위사원수(회전 사원수)를 리턴합니다.
-        inline void normalize() { operator*=(1 / abs()); }
+        inline void normalize() { operator*=(1.0f / abs()); }
         /// @brief 단위사원수(회전 사원수)를 리턴합니다. 더 빠르지만 오차가 있을 수 있습니다.
         inline Quaternion fastNormal() const { return operator*(rsqrt(abs2())); }
         /// @brief 단위사원수(회전 사원수)를 리턴합니다. 더 빠르지만 오차가 있을 수 있습니다.
         inline void fastNormalize() { operator*=(rsqrt(abs2())); }
         /// @brief 부호를 반대로 합니다.
-        inline Quaternion operator-() const { Quaternion ret(*this); neg4(&ret.c1); return ret; }
+        inline Quaternion operator-() const { return -rg; }
         /// @brief 사원수 회전을 합칩니다. 기존 사원수 회전에 다른 회전을 추가로 가한 것과 같으며, 매개변수로 주어진 사원수를 왼쪽에 곱한 것과 같습니다.
         /// @param q 이것이 왼쪽에 곱해집니다.
         inline void compound(const Quaternion &q) { assert(std::abs(q.abs2() - 1.0f) <= std::numeric_limits<float>::epsilon()); *this = q * (*this); }
