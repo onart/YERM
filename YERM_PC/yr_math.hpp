@@ -61,7 +61,7 @@ namespace onart{
         inline nvec(const nvec<T,D-1>& v, T a): rg(v.rg) { static_assert(D >= 2 && D <= 4, "nvec은 2~4차원만 생성할 수 있습니다."); entry[D-1] = a; }
 
         /// @brief 벡터의 모든 성분을 하나의 값으로 초기화합니다.
-        inline void set(T a) { rg = v.rg; }
+        inline void set(T a) { rg = load(a); }
         /// @brief 다른 벡터의 값을 복사해 옵니다. 차원수는 달라도 됩니다.
         template <unsigned E> inline void set(const nvec<T, E>& v) { rg = v.rg; }
 
@@ -71,13 +71,13 @@ namespace onart{
         template<unsigned E> inline nvec &operator=(const nvec<T, E>& v) { set(v); return *this; }
 
         /// @brief 다른 벡터와 성분별 연산을 합니다.
-        inline nvec& operator+=(const nvec& v) { rg += v.rg; return *this; }
+        inline nvec& operator+=(const nvec& v) { rg = add(rg, v.rg); return *this; }
         /// @brief 다른 벡터와 성분별 연산을 합니다.
-        inline nvec& operator-=(const nvec& v) { rg -= v.rg; return *this; }
+        inline nvec& operator-=(const nvec& v) { rg = sub(rg, v.rg); return *this; }
         /// @brief 다른 벡터와 성분별 연산을 합니다.
-        inline nvec& operator*=(const nvec& v) { rg *= v.rg; return *this; }
+        inline nvec& operator*=(const nvec& v) { rg = mul(rg, v.rg); return *this; }
         /// @brief 다른 벡터와 성분별 연산을 합니다.
-        inline nvec& operator/=(const nvec& v) { rg /= v.rg; return *this; }
+        inline nvec& operator/=(const nvec& v) { rg = div(rg, v.rg); return *this; }
         /// @brief 다른 벡터와 성분별 연산을 합니다.
         inline nvec operator+(const nvec &v) const { return nvec(*this) += v; }
         /// @brief 다른 벡터와 성분별 연산을 합니다.
@@ -88,13 +88,13 @@ namespace onart{
         inline nvec operator/(const nvec &v) const { return nvec(*this) /= v; }
 
         /// @brief 다른 스칼라와 성분별 연산을 합니다.
-        inline nvec& operator+=(T a) { rg += load(a); return *this; }
+        inline nvec& operator+=(T a) { rg = add(rg,load(a)); return *this; }
         /// @brief 다른 스칼라와 성분별 연산을 합니다.
-        inline nvec& operator-=(T a) { rg -= load(a); return *this; }
+        inline nvec& operator-=(T a) { rg = sub(rg,load(a)); return *this; }
         /// @brief 다른 스칼라와 성분별 연산을 합니다.
-        inline nvec& operator*=(T a) { rg *= load(a); return *this; }
+        inline nvec& operator*=(T a) { rg = mul(rg,load(a)); return *this; }
         /// @brief 다른 스칼라와 성분별 연산을 합니다.
-        inline nvec& operator/=(T a) { rg /= load(a); return *this; }
+        inline nvec& operator/=(T a) { rg = div(rg,load(a)); return *this; }
         /// @brief 다른 스칼라와 성분별 연산을 합니다.
         inline nvec operator+(T a) const { return nvec(*this) += a; }
         /// @brief 다른 스칼라와 성분별 연산을 합니다.
@@ -110,7 +110,7 @@ namespace onart{
                 return memcmp(entry, v.entry, sizeof(T) * D) == 0;
             }
             else {
-                RG_T rtemp = mabs(rg - v.rg);
+                RG_T rtemp = mabs(sub(rg, v.rg));
                 alignas(16) T atemp[4]; store(rtemp, atemp);
                 constexpr T NEG_EPSILON = -std::numeric_limits<T>::epsilon();
 
@@ -125,7 +125,7 @@ namespace onart{
         inline bool operator!=(const nvec &v) const { return !operator==(v); }
 
         /// @brief 부호를 반전시켜 리턴합니다.
-        inline nvec operator-() const { return nvec(-rg); }
+        inline nvec operator-() const { return nvec(neg(rg)); }
         /// @brief 배열과 같은 용도의 인덱스 연산자입니다.        
         inline T &operator[](unsigned i) { assert(i < D); return entry[i]; }
         /// @brief 배열과 같은 용도의 인덱스 연산자입니다.        
@@ -1453,7 +1453,7 @@ namespace onart{
         inline bool is1() const { return c1 == 1 && ci == 0 && cj == 0 && ck == 0; }
 
         /// @brief 켤레(공액)사원수를 리턴합니다.
-        inline Quaternion conjugate() const { return toggleSigns<false, true, true, true>(rg); }
+        inline Quaternion conjugate() const { return Quaternion(toggleSigns<false, true, true, true>(rg)); }
 
         /// @brief 이 사원수의 우측에 곱해서 1이 되는 값을 리턴합니다.
         inline Quaternion inverse() const { return conjugate() / abs2(); }
@@ -1463,35 +1463,35 @@ namespace onart{
 
         /// @brief 사원수끼리 곱합니다. 교환 법칙이 성립하지 않는 점(순서를 바꾸면 방향이 반대가 됨)에 유의하세요.
         inline Quaternion operator*(const Quaternion& q) const {
-            float128 q_c1 = rg * load(c1);
-            float128 q_ci = toggleSigns<true, false, true, false>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z>(rg)) * load(ci);
-            float128 q_cj = toggleSigns<true, false, false, true>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y>(rg)) * load(cj);
-            float128 q_ck = toggleSigns<true, true, false, false>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(rg)) * load(ck);
-            float128 res = (q_c1 + q_ci) + (q_cj + q_ck);
+            float128 q_c1 = mul(rg, load(c1));
+            float128 q_ci = mul(toggleSigns<true, false, true, false>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z>(rg)), load(ci));
+            float128 q_cj = mul(toggleSigns<true, false, false, true>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y>(rg)), load(cj));
+            float128 q_ck = mul(toggleSigns<true, true, false, false>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(rg)), load(ck));
+            float128 res = add(add(q_c1, q_ci), add(q_cj, q_ck));
             
             return Quaternion(res);
         }
 
         /// @brief 사원수 간의 사칙 연산입니다.
-        inline Quaternion& operator+=(const Quaternion& q) { rg += q.rg; return *this; }
+        inline Quaternion& operator+=(const Quaternion& q) { rg = add(rg,q.rg); return *this; }
         /// @brief 사원수 간의 사칙 연산입니다.
-        inline Quaternion& operator-=(const Quaternion& q) { rg -= q.rg; return *this; }
+        inline Quaternion& operator-=(const Quaternion& q) { rg = sub(rg,q.rg); return *this; }
         /// @brief 사원수 간의 사칙 연산입니다.
         inline Quaternion& operator*=(const Quaternion& q) { *this = *this * q; return *this; }	// multiplying on the left is more commonly used operation
         /// @brief 사원수 간의 사칙 연산입니다. / 연산자는 우측 피연산자에 대한 곱셈 역원을 곱합니다.
         inline Quaternion& operator/=(const Quaternion& q) { *this = *this * q.inverse(); return *this; }
         /// @brief 사원수에 실수배를 합니다.
-        inline Quaternion operator*(float f) const { return rg * load(f); }
+        inline Quaternion operator*(float f) const { return Quaternion(mul(rg, load(f))); }
         /// @brief 사원수에 실수배를 합니다.
-        inline Quaternion operator/(float f) const { return rg / load(f); }
+        inline Quaternion operator/(float f) const { return Quaternion(div(rg, load(f))); }
         /// @brief 사원수에 실수배를 합니다.
-        inline Quaternion& operator*=(float f) { rg *= load(f); return *this; }
+        inline Quaternion& operator*=(float f) { rg = mul(rg,load(f)); return *this; }
         /// @brief 사원수에 실수배를 합니다.
-        inline Quaternion& operator/=(float f) { rg /= load(f); return *this; }
+        inline Quaternion& operator/=(float f) { rg = div(rg,load(f)); return *this; }
         /// @brief 사원수 간의 사칙 연산입니다.
-        inline Quaternion operator+(const Quaternion& q) const { return rg + q.rg; }
+        inline Quaternion operator+(const Quaternion& q) const { return Quaternion(add(rg, q.rg)); }
         /// @brief 사원수 간의 사칙 연산입니다.
-        inline Quaternion operator-(const Quaternion& q) const { return rg - q.rg; }
+        inline Quaternion operator-(const Quaternion& q) const { return Quaternion(sub(rg, q.rg)); }
         /// @brief 사원수 간의 사칙 연산입니다. / 연산자는 우측 피연산자에 대한 곱셈 역원을 곱합니다.
         inline Quaternion operator/(const Quaternion& q) const { Quaternion r(*this); r /= q; return r; }
 
@@ -1504,7 +1504,7 @@ namespace onart{
         /// @brief 단위사원수(회전 사원수)를 리턴합니다. 더 빠르지만 오차가 있을 수 있습니다.
         inline void fastNormalize() { operator*=(rsqrt(abs2())); }
         /// @brief 부호를 반대로 합니다.
-        inline Quaternion operator-() const { return -rg; }
+        inline Quaternion operator-() const { return Quaternion(neg(rg)); }
         /// @brief 사원수 회전을 합칩니다. 기존 사원수 회전에 다른 회전을 추가로 가한 것과 같으며, 매개변수로 주어진 사원수를 왼쪽에 곱한 것과 같습니다.
         /// @param q 이것이 왼쪽에 곱해집니다.
         inline void compound(const Quaternion &q) { assert(std::abs(q.abs2() - 1.0f) <= std::numeric_limits<float>::epsilon()); *this = q * (*this); }

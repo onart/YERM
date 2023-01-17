@@ -319,8 +319,9 @@ namespace onart{
 #define YR_USING_SIMD
 #if BOOST_HW_SIMD_ARM >= BOOST_HW_SIMD_ARM_NEON_VERSION
 #include "../externals/single_header/sse2neon.h"
-#endif
+#else
 #include <emmintrin.h>
+#endif
 
     using float128 = __m128;
     using double128 = __m128d;
@@ -357,73 +358,56 @@ namespace onart{
     inline void storeu(uint128 vec, uint32_t* output) { _mm_storeu_si128((__m128i*)output, vec); }
     inline void store(uint128 vec, uint32_t* output) { _mm_store_si128((__m128i*)output, vec); }
 
-    inline float128 operator+(float128 a, float128 b) { return _mm_add_ps(a,b); }
-    inline float128 operator-(float128 a, float128 b) { return _mm_sub_ps(a,b); }
-    inline float128 operator*(float128 a, float128 b) { return _mm_mul_ps(a,b); }
-    inline float128 operator/(float128 a, float128 b) { return _mm_div_ps(a,b); }
-    inline float128 operator&(float128 a, float128 b) { return _mm_and_ps(a,b); }
-    inline float128 operator|(float128 a, float128 b) { return _mm_or_ps(a,b); }
-    inline float128 operator^(float128 a, float128 b) { return _mm_xor_ps(a,b); }
-    inline float128& operator+=(float128& a, float128 b) { return a = a + b; }
-    inline float128& operator-=(float128& a, float128 b) { return a = a - b; }
-    inline float128& operator*=(float128& a, float128 b) { return a = a * b; }
-    inline float128& operator/=(float128& a, float128 b) { return a = a / b; }
-    inline float128& operator&=(float128& a, float128 b) { return a = a & b; }
-    inline float128& operator|=(float128& a, float128 b) { return a = a | b; }
-    inline float128& operator^=(float128& a, float128 b) { return a = a ^ b; }
+    inline float128 add(float128 a, float128 b) { return _mm_add_ps(a,b); }
+    inline float128 sub(float128 a, float128 b) { return _mm_sub_ps(a,b); }
+    inline float128 mul(float128 a, float128 b) { return _mm_mul_ps(a,b); }
+    inline float128 div(float128 a, float128 b) { return _mm_div_ps(a,b); }
+    inline float128 b_and(float128 a, float128 b) { return _mm_and_ps(a,b); }
+    inline float128 b_or(float128 a, float128 b) { return _mm_or_ps(a,b); }
+    inline float128 b_xor(float128 a, float128 b) { return _mm_xor_ps(a,b); }
 
-    inline float128 mabs(float128 a) { return _mm_set_ps1(-0.0f) | a; }
-    inline float128 abs(float128 a) { return _mm_set_ps1(-0.0f) ^ mabs(a); }
+    inline float128 mabs(float128 a) { return b_or(_mm_set_ps1(-0.0f), a); }
+    inline float128 abs(float128 a) { return b_xor(_mm_set_ps1(-0.0f), mabs(a)); }
     inline float128 sqrt(float128 a) { return _mm_sqrt_ps(a); }
     inline float128 rsqrt(float128 a) { return _mm_rsqrt_ps(a); }
     inline float128 rcp(float128 a) { return _mm_rcp_ps(a); }
 
-    inline double128 operator+(double128 a, double128 b) { return _mm_add_pd(a,b); }
-    inline double128 operator-(double128 a, double128 b) { return _mm_sub_pd(a,b); }
-    inline double128 operator*(double128 a, double128 b) { return _mm_mul_pd(a,b); }
-    inline double128 operator/(double128 a, double128 b) { return _mm_div_pd(a,b); }
-    inline double128 operator&(double128 a, double128 b) { return _mm_and_pd(a,b); }
-    inline double128 operator|(double128 a, double128 b) { return _mm_or_pd(a,b); }
-    inline double128 operator^(double128 a, double128 b) { return _mm_xor_pd(a,b); }
-    inline double128& operator+=(double128& a, double128 b) { return a = a + b; }
-    inline double128& operator-=(double128& a, double128 b) { return a = a - b; }
-    inline double128& operator*=(double128& a, double128 b) { return a = a * b; }
-    inline double128& operator/=(double128& a, double128 b) { return a = a / b; }
-    inline double128& operator&=(double128& a, double128 b) { return a = a & b; }
-    inline double128& operator|=(double128& a, double128 b) { return a = a | b; }
-    inline double128& operator^=(double128& a, double128 b) { return a = a ^ b; }
+    inline double128 add(double128 a, double128 b) { return _mm_add_pd(a,b); }
+    inline double128 sub(double128 a, double128 b) { return _mm_sub_pd(a,b); }
+    inline double128 mul(double128 a, double128 b) { return _mm_mul_pd(a,b); }
+    inline double128 div(double128 a, double128 b) { return _mm_div_pd(a,b); }
+    inline double128 b_and(double128 a, double128 b) { return _mm_and_pd(a,b); }
+    inline double128 b_or(double128 a, double128 b) { return _mm_or_pd(a,b); }
+    inline double128 b_xor(double128 a, double128 b) { return _mm_xor_pd(a,b); }
 
-    inline double128 mabs(double128 a) { return _mm_set_pd1(-0.0) | a; }
-    inline double128 abs(double128 a) { return _mm_set_pd1(-0.0) ^ mabs(a); }
+    inline double128 mabs(double128 a) { return b_or(_mm_set_pd1(-0.0), a); }
+    inline double128 abs(double128 a) { return b_xor(_mm_set_pd1(-0.0), mabs(a)); }
     inline double128 sqrt(double128 a) { return _mm_sqrt_pd(a); }
 
-    inline int128 operator+(int128 a, int128 b) { return _mm_add_epi32(a,b); }
-    inline int128 operator-(int128 a, int128 b) { return _mm_sub_epi32(a,b); }
-    inline int128 operator*(int128 a, int128 b) { return _mm_mullo_epi16(a,b); }
-    inline int128 operator&(int128 a, int128 b) { return _mm_and_si128(a,b); }
-    inline int128 operator|(int128 a, int128 b) { return _mm_or_si128(a,b); }
-    inline int128 operator^(int128 a, int128 b) { return _mm_xor_si128(a,b); }
+    inline int128 add(int128 a, int128 b) { return _mm_add_epi32(a,b); }
+    inline int128 sub(int128 a, int128 b) { return _mm_sub_epi32(a,b); }
+    inline int128 mul(int128 a, int128 b) { return _mm_mullo_epi16(a,b); }
+    inline int128 b_and(int128 a, int128 b) { return _mm_and_si128(a,b); }
+    inline int128 b_or(int128 a, int128 b) { return _mm_or_si128(a,b); }
+    inline int128 b_xor(int128 a, int128 b) { return _mm_xor_si128(a,b); }
     template<uint8_t A> inline int128 shiftLeft(int128 a) { return _mm_slli_epi32(a,A); }
     template<uint8_t A> inline int128 shiftRight(int128 a) { return _mm_srai_epi32(a,A); }
-    inline int128& operator+=(int128& a, int128 b) { return a = a + b; }
-    inline int128& operator-=(int128& a, int128 b) { return a = a - b; }
-    inline int128& operator*=(int128& a, int128 b) { return a = a * b; }
-    inline int128 operator-(int128 a){ return zeroi128() - a; }
+    inline int128 neg(int128 a){ return zeroi128() - a; }
 
     template<bool a, bool b, bool c, bool d>
     inline float128 toggleSigns(float128 x) { 
         constexpr float SA = a ? -0.0f : 0.0f, SB = b ? -0.0f : 0.0f, SC = c ? -0.0f : 0.0f, SD = d ? -0.0f : 0.0f;
-        return _mm_set_ps(SA,SB,SC,SD) ^ x;
+        return b_xor(_mm_set_ps(SA,SB,SC,SD), x);
     }
 
     template<bool a, bool b>
     inline double128 toggleSigns(double128 x) { 
         constexpr double SA = a ? -0.0 : 0.0, SB = b ? -0.0 : 0.0;
-        return _mm_set_pd(SA,SB) ^ x;
+        return b_xor(_mm_set_pd(SA,SB), x);
     }
 
-    inline float128 operator-(float128 a) { return toggleSigns<true,true,true,true>(a); }
-    inline double128 operator-(double128 a) { return toggleSigns<true,true>(a); }
+    inline float128 neg(float128 a) { return toggleSigns<true,true,true,true>(a); }
+    inline double128 neg(double128 a) { return toggleSigns<true,true>(a); }
 
     /// @brief float 배열 앞 4개를 원하는 대로 섞습니다.
     template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
@@ -990,62 +974,42 @@ namespace onart{
     inline void storeu(uint128 vec, uint32_t* output) { std::memcpy(output, &vec, sizeof(vec)); }
     inline void store(uint128 vec, uint32_t* output) { storeu(vec, output); }
 
-    inline float128 operator+(float128 a, float128 b) { return { a._[0] + b._[0], a._[1] + b._[1], a._[2] + b._[2], a._[3] + b._[3] }; }
-    inline float128 operator-(float128 a, float128 b) { return { a._[0] - b._[0], a._[1] - b._[1], a._[2] - b._[2], a._[3] - b._[3] }; }
-    inline float128 operator*(float128 a, float128 b) { return { a._[0] * b._[0], a._[1] * b._[1], a._[2] * b._[2], a._[3] * b._[3] }; }
-    inline float128 operator/(float128 a, float128 b) { return { a._[0] / b._[0], a._[1] / b._[1], a._[2] / b._[2], a._[3] / b._[3] }; }
+    inline float128 add(float128 a, float128 b) { return { a._[0] + b._[0], a._[1] + b._[1], a._[2] + b._[2], a._[3] + b._[3] }; }
+    inline float128 sub(float128 a, float128 b) { return { a._[0] - b._[0], a._[1] - b._[1], a._[2] - b._[2], a._[3] - b._[3] }; }
+    inline float128 mul(float128 a, float128 b) { return { a._[0] * b._[0], a._[1] * b._[1], a._[2] * b._[2], a._[3] * b._[3] }; }
+    inline float128 div(float128 a, float128 b) { return { a._[0] / b._[0], a._[1] / b._[1], a._[2] / b._[2], a._[3] / b._[3] }; }
 #define CAST_AND_OP(op) uint64_t* ua = reinterpret_cast<uint64_t*>(&a); uint64_t* ub = reinterpret_cast<uint64_t*>(&b); union{decltype(a) ret; uint64_t pads[2];}; pads[0] = ua[0] op ub[0]; pads[1] = ua[1] op ub[1]
-    inline float128 operator&(float128 a, float128 b) { CAST_AND_OP(&); return ret; }
-    inline float128 operator|(float128 a, float128 b) { CAST_AND_OP(| ); return ret; }
-    inline float128 operator^(float128 a, float128 b) { CAST_AND_OP(^); return ret; }
-    inline float128& operator+=(float128& a, float128 b) { return a = a + b; }
-    inline float128& operator-=(float128& a, float128 b) { return a = a - b; }
-    inline float128& operator*=(float128& a, float128 b) { return a = a * b; }
-    inline float128& operator/=(float128& a, float128 b) { return a = a / b; }
-    inline float128& operator&=(float128& a, float128 b) { return a = a & b; }
-    inline float128& operator|=(float128& a, float128 b) { return a = a | b; }
-    inline float128& operator^=(float128& a, float128 b) { return a = a ^ b; }
+    inline float128 b_and(float128 a, float128 b) { CAST_AND_OP(&); return ret; }
+    inline float128 b_or(float128 a, float128 b) { CAST_AND_OP(|); return ret; }
+    inline float128 b_xor(float128 a, float128 b) { CAST_AND_OP(^); return ret; }
 
-    inline double128 operator+(double128 a, double128 b) { return { a._[0] + b._[0], a._[1] + b._[1] }; }
-    inline double128 operator-(double128 a, double128 b) { return { a._[0] - b._[0], a._[1] - b._[1] }; }
-    inline double128 operator*(double128 a, double128 b) { return { a._[0] * b._[0], a._[1] * b._[1] }; }
-    inline double128 operator/(double128 a, double128 b) { return { a._[0] / b._[0], a._[1] / b._[1] }; }
-    inline double128 operator&(double128 a, double128 b) { CAST_AND_OP(&); return ret; }
-    inline double128 operator|(double128 a, double128 b) { CAST_AND_OP(| ); return ret; }
-    inline double128 operator^(double128 a, double128 b) { CAST_AND_OP(^); return ret; }
-    inline double128& operator+=(double128& a, double128 b) { return a = a + b; }
-    inline double128& operator-=(double128& a, double128 b) { return a = a - b; }
-    inline double128& operator*=(double128& a, double128 b) { return a = a * b; }
-    inline double128& operator/=(double128& a, double128 b) { return a = a / b; }
-    inline double128& operator&=(double128& a, double128 b) { return a = a & b; }
-    inline double128& operator|=(double128& a, double128 b) { return a = a | b; }
-    inline double128& operator^=(double128& a, double128 b) { return a = a ^ b; }
+    inline double128 add(double128 a, double128 b) { return { a._[0] + b._[0], a._[1] + b._[1] }; }
+    inline double128 sub(double128 a, double128 b) { return { a._[0] - b._[0], a._[1] - b._[1] }; }
+    inline double128 mul(double128 a, double128 b) { return { a._[0] * b._[0], a._[1] * b._[1] }; }
+    inline double128 div(double128 a, double128 b) { return { a._[0] / b._[0], a._[1] / b._[1] }; }
+    inline double128 b_and(double128 a, double128 b) { CAST_AND_OP(&); return ret; }
+    inline double128 b_or(double128 a, double128 b) { CAST_AND_OP(|); return ret; }
+    inline double128 b_xor(double128 a, double128 b) { CAST_AND_OP(^); return ret; }
 
-    inline int128 operator+(int128 a, int128 b) { return { a._[0] + b._[0], a._[1] + b._[1], a._[2] + b._[2], a._[3] + b._[3] }; }
-    inline int128 operator-(int128 a, int128 b) { return { a._[0] - b._[0], a._[1] - b._[1], a._[2] - b._[2], a._[3] - b._[3] }; }
-    inline int128 operator*(int128 a, int128 b) { return { a._[0] * b._[0], a._[1] * b._[1], a._[2] * b._[2], a._[3] * b._[3] }; }
-    inline int128 operator&(int128 a, int128 b) { CAST_AND_OP(&); return ret; }
-    inline int128 operator|(int128 a, int128 b) { CAST_AND_OP(| ); return ret; }
-    inline int128 operator^(int128 a, int128 b) { CAST_AND_OP(^); return ret; }
+    inline int128 add(int128 a, int128 b) { return { a._[0] + b._[0], a._[1] + b._[1], a._[2] + b._[2], a._[3] + b._[3] }; }
+    inline int128 sub(int128 a, int128 b) { return { a._[0] - b._[0], a._[1] - b._[1], a._[2] - b._[2], a._[3] - b._[3] }; }
+    inline int128 mul(int128 a, int128 b) { return { a._[0] * b._[0], a._[1] * b._[1], a._[2] * b._[2], a._[3] * b._[3] }; }
+    inline int128 b_and(int128 a, int128 b) { CAST_AND_OP(&); return ret; }
+    inline int128 b_or(int128 a, int128 b) { CAST_AND_OP(|); return ret; }
+    inline int128 b_xor(int128 a, int128 b) { CAST_AND_OP(^); return ret; }
     template<uint8_t A> inline int128 shiftLeft(int128 a) { return { a._[0] << A, a._[1] << A, a._[2] << A, a._[3] << A }; }
     template<uint8_t A> inline int128 shiftRight(int128 a) { return { a._[0] >> A, a._[1] >> A, a._[2] >> A, a._[3] >> A }; }
-    inline int128& operator+=(int128& a, int128 b) { return a = a + b; }
-    inline int128& operator-=(int128& a, int128 b) { return a = a - b; }
-    inline int128& operator*=(int128& a, int128 b) { return a = a * b; }
-    inline int128 operator-(int128 a) { return { -a._[0], -a._[1], -a._[2], -a._[3] }; }
+    inline int128 neg(int128 a) { return { -a._[0], -a._[1], -a._[2], -a._[3] }; }
 
-    inline uint128 operator+(uint128 a, uint128 b) { return { a._[0] + b._[0], a._[1] + b._[1], a._[2] + b._[2], a._[3] + b._[3] }; }
-    inline uint128 operator-(uint128 a, uint128 b) { return { a._[0] - b._[0], a._[1] - b._[1], a._[2] - b._[2], a._[3] - b._[3] }; }
-    inline uint128 operator*(uint128 a, uint128 b) { return { a._[0] * b._[0], a._[1] * b._[1], a._[2] * b._[2], a._[3] * b._[3] }; }
-    inline uint128 operator&(uint128 a, uint128 b) { CAST_AND_OP(&); return ret; }
-    inline uint128 operator|(uint128 a, uint128 b) { CAST_AND_OP(|); return ret; }
-    inline uint128 operator^(uint128 a, uint128 b) { CAST_AND_OP(^); return ret; }
+    inline uint128 add(uint128 a, uint128 b) { return { a._[0] + b._[0], a._[1] + b._[1], a._[2] + b._[2], a._[3] + b._[3] }; }
+    inline uint128 sub(uint128 a, uint128 b) { return { a._[0] - b._[0], a._[1] - b._[1], a._[2] - b._[2], a._[3] - b._[3] }; }
+    inline uint128 mul(uint128 a, uint128 b) { return { a._[0] * b._[0], a._[1] * b._[1], a._[2] * b._[2], a._[3] * b._[3] }; }
+    inline uint128 b_and(uint128 a, uint128 b) { CAST_AND_OP(&); return ret; }
+    inline uint128 b_or(uint128 a, uint128 b) { CAST_AND_OP(|); return ret; }
+    inline uint128 b_xor(uint128 a, uint128 b) { CAST_AND_OP(^); return ret; }
     template<uint8_t A> inline uint128 shiftLeft(uint128 a) { return { a._[0] << A, a._[1] << A, a._[2] << A, a._[3] << A }; }
     template<uint8_t A> inline uint128 shiftRight(uint128 a) { return { a._[0] >> A, a._[1] >> A, a._[2] >> A, a._[3] >> A }; }
-    inline uint128& operator+=(uint128& a, uint128 b) { return a = a + b; }
-    inline uint128& operator-=(uint128& a, uint128 b) { return a = a - b; }
-    inline uint128& operator*=(uint128& a, uint128 b) { return a = a * b; }
-    inline uint128 operator-(uint128 a) { return { -a._[0], -a._[1], -a._[2], -a._[3] }; }
+    inline uint128 neg(uint128 a) { return { -a._[0], -a._[1], -a._[2], -a._[3] }; }
 
     template<bool a, bool b, bool c, bool d>
     inline float128 toggleSigns(float128 x) {
@@ -1057,8 +1021,17 @@ namespace onart{
         return { a ? -x._[0] : x._[0], b ? -x._[1] : x._[1] };
     }
 
-    inline float128 operator-(float128 a) { return toggleSigns<true, true, true, true>(a); }
-    inline double128 operator-(double128 a) { return toggleSigns<true, true>(a); }
+    inline float128 mabs(float128 a) { return {-std::abs(a._[0]),-std::abs(a._[1]),-std::abs(a._[2]),-std::abs(a._[3])}; }
+    inline float128 abs(float128 a) { return {std::abs(a._[0]),std::abs(a._[1]),std::abs(a._[2]),std::abs(a._[3])}; }
+    inline float128 sqrt(float128 a) { return {std::sqrt(a._[0]),std::sqrt(a._[1]),std::sqrt(a._[2]),std::sqrt(a._[3])}; }
+    inline float128 rsqrt(float128 a) { return _mm_rsqrt_ps(a); }
+    inline float128 rcp(float128 a) { return { 1/a._[0], 1/a._[1], 1/a._[2], 1/a._[3]}; }
+    inline double128 mabs(double128 a) { return {-std::abs(a._[0]), -std::abs(a._[1])}; }
+    inline double128 abs(double128 a) { return {std::abs(a._[0]), std::abs(a._[1])}; }
+    inline double128 sqrt(double128 a) { return {std::sqrt(a._[0]), std::sqrt(a._[1])}; }
+
+    inline float128 neg(float128 a) { return toggleSigns<true, true, true, true>(a); }
+    inline double128 neg(double128 a) { return toggleSigns<true, true>(a); }
 
     template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL2 P1, SWIZZLE_SYMBOL2 P2, SWIZZLE_SYMBOL2 P3>
     inline float128 swizzle(float128 a) { return { a._[(int)P0], a._[(int)P1], a._[(int)P2], a._[(int)P3] }; }
@@ -1067,7 +1040,7 @@ namespace onart{
     inline int128 swizzle(int128 a) { return { a._[(int)P0], a._[(int)P1], a._[(int)P2], a._[(int)P3] }; }
 
     template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL2 P1, SWIZZLE_SYMBOL2 P2, SWIZZLE_SYMBOL2 P3>
-    inline uint128 swizzle(uint128 a) { return ret{ a._[(int)P0], a._[(int)P1], a._[(int)P2], a._[(int)P3] }; }
+    inline uint128 swizzle(uint128 a) { return { a._[(int)P0], a._[(int)P1], a._[(int)P2], a._[(int)P3] }; }
 
 #undef CAST_AND_OP
     /// @brief 배열의 앞 4개를 제곱근값으로 바꿉니다.
