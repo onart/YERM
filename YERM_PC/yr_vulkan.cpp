@@ -48,6 +48,8 @@ namespace onart {
     static VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, VkFormat base, bool hq = true, VkImageCreateFlagBits flags = VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT);
     /// @brief 파이프라인을 주어진 옵션에 따라 생성합니다.
     static VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, VkRenderPass pass, uint32_t subpass, uint32_t flags, const uint32_t OPT_COLOR_COUNT, const bool OPT_USE_DEPTHSTENCIL, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkStencilOpState* front, VkStencilOpState* back);
+    /// @brief VkResult를 스트링으로 표현합니다. 리턴되는 문자열은 텍스트(코드) 영역에 존재합니다.
+    inline static const char* resultAsString(VkResult);
 
     /// @brief 활성화할 장치 확장
     constexpr const char* VK_DESIRED_DEVICE_EXT[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
@@ -67,7 +69,7 @@ namespace onart {
 
         VkResult result;
         if((result = window->createWindowSurface(instance, &surface.handle)) != VK_SUCCESS){
-            LOGWITH("Failed to create Window surface:", result);
+            LOGWITH("Failed to create Window surface:", result,resultAsString(result));
             free();
             return;
         }
@@ -130,7 +132,7 @@ namespace onart {
         VkFence ret;
         VkResult result = vkCreateFence(device, &fenceInfo, VK_NULL_HANDLE, &ret);
         if(result != VK_SUCCESS){
-            LOGWITH("Failed to create fence:",result);
+            LOGWITH("Failed to create fence:",result,resultAsString(result));
             return VK_NULL_HANDLE;
         }
         return ret;
@@ -142,7 +144,7 @@ namespace onart {
         VkSemaphore ret;
         VkResult result = vkCreateSemaphore(device, &smInfo, VK_NULL_HANDLE, &ret);
         if(result != VK_SUCCESS){
-            LOGWITH("Failed to create fence:",result);
+            LOGWITH("Failed to create fence:",result,resultAsString(result));
             return VK_NULL_HANDLE;
         }
         return ret;
@@ -178,6 +180,18 @@ namespace onart {
         else return nullptr;
     }
 
+    VkMachine::RenderPass2Screen* VkMachine::getRenderPass2Screen(const string16& name){
+        auto it = singleton->finalPasses.find(name);
+        if(it != singleton->finalPasses.end()) return it->second;
+        else return nullptr;
+    }
+
+    VkMachine::RenderPass* VkMachine::getRenderPass(const string16& name){
+        auto it = singleton->renderPasses.find(name);
+        if(it != singleton->renderPasses.end()) return it->second;
+        else return nullptr;
+    }
+
     VkShaderModule VkMachine::getShader(const string16& name){
         auto it = singleton->shaders.find(name);
         if(it != singleton->shaders.end()) return it->second;
@@ -198,7 +212,7 @@ namespace onart {
         bufferInfo.commandBufferCount = count;
         VkResult result;
         if((result = vkAllocateCommandBuffers(device, &bufferInfo, buffers))!=VK_SUCCESS){
-            LOGWITH("Failed to allocate command buffers:", result);
+            LOGWITH("Failed to allocate command buffers:", result,resultAsString(result));
             buffers[0] = VK_NULL_HANDLE;
         }
     }
@@ -251,7 +265,7 @@ namespace onart {
 
         VkResult result;
         if((result = vkCreateSwapchainKHR(device, &scInfo, nullptr, &swapchain.handle))!=VK_SUCCESS){
-            LOGWITH("Failed to create swapchain:",result);
+            LOGWITH("Failed to create swapchain:",result,resultAsString(result));
             return;
         }
         swapchain.extent = scInfo.imageExtent;
@@ -296,7 +310,7 @@ namespace onart {
         for(txBinding.binding = 0; txBinding.binding < 4; txBinding.binding++){
             VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &textureLayout[txBinding.binding]);
             if(result != VK_SUCCESS){
-                LOGWITH("Failed to create texture descriptor set layout binding ",txBinding.binding,':', result);
+                LOGWITH("Failed to create texture descriptor set layout binding ",txBinding.binding,':', result,resultAsString(result));
                 return false;
             }
         }
@@ -306,7 +320,7 @@ namespace onart {
         for(txBinding.binding = 0; txBinding.binding < 4; txBinding.binding++){
             VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &inputAttachmentLayout[txBinding.binding]);
             if(result != VK_SUCCESS){
-                LOGWITH("Failed to create input attachment descriptor set layout binding ",txBinding.binding,':', result);
+                LOGWITH("Failed to create input attachment descriptor set layout binding ",txBinding.binding,':', result,resultAsString(result));
                 return false;
             }
         }
@@ -318,6 +332,7 @@ namespace onart {
         for(VkDescriptorSetLayout& layout: textureLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = VK_NULL_HANDLE; }
         for(VkDescriptorSetLayout& layout: inputAttachmentLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = VK_NULL_HANDLE; }
         for(VkSampler& sampler: textureSampler) { vkDestroySampler(device, sampler, nullptr); sampler = VK_NULL_HANDLE; }
+        for(auto& fp: finalPasses) { delete fp.second; }
         for(auto& rp: renderPasses) { delete rp.second; }
         for(auto& rt: renderTargets){ delete rt.second; }
         for(auto& sh: shaders) { vkDestroyShaderModule(device, sh.second, nullptr); }
@@ -326,6 +341,7 @@ namespace onart {
 
         pipelines.clear();
         pipelineLayouts.clear();
+        finalPasses.clear();
         renderPasses.clear();
         renderTargets.clear();
         shaders.clear();
@@ -355,7 +371,7 @@ namespace onart {
 
         VkResult result = vkAllocateDescriptorSets(device, &dsAllocInfo, output);
         if(result != VK_SUCCESS){
-            LOGWITH("Failed to allocate descriptor sets:",result);
+            LOGWITH("Failed to allocate descriptor sets:",result,resultAsString(result));
             output[0] = VK_NULL_HANDLE;
         }
     }
@@ -377,7 +393,7 @@ namespace onart {
         for(int i = 0; i < sizeof(textureSampler)/sizeof(textureSampler[0]);i++, samplerInfo.maxLod++){
             result = vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler[i]);
             if(result != VK_SUCCESS){
-                LOGWITH("Failed to create texture sampler:", result);
+                LOGWITH("Failed to create texture sampler:", result,resultAsString(result));
                 return false;
             }
         }
@@ -427,7 +443,7 @@ namespace onart {
         VmaAllocationInfo mapInfoV;
         result = vmaCreateBuffer(singleton->allocator, &vbInfo, &vbaInfo, &sb, &sba, &mapInfoV);
         if(result != VK_SUCCESS){
-            LOGWITH("Failed to create stage buffer for vertex:",result);
+            LOGWITH("Failed to create stage buffer for vertex:",result,resultAsString(result));
             return pMesh();
         }
         if(vdata) std::memcpy(mapInfoV.pMappedData, vdata, VBSIZE);
@@ -444,7 +460,7 @@ namespace onart {
         vbaInfo.flags = 0;
         result = vmaCreateBuffer(singleton->allocator, &vbInfo, &vbaInfo, &vib, &viba, &mapInfoV);
         if(result != VK_SUCCESS){
-            LOGWITH("Failed to create vertex buffer:",result);
+            LOGWITH("Failed to create vertex buffer:",result,resultAsString(result));
             vmaDestroyBuffer(singleton->allocator, sb, sba);
             return pMesh();
         }
@@ -469,14 +485,14 @@ namespace onart {
         copyRegion.dstOffset=0;
         copyRegion.size = VBSIZE + IBSIZE;
         if((result = vkBeginCommandBuffer(copycb, &cbInfo)) != VK_SUCCESS){
-            LOGWITH("Failed to begin command buffer:",result);
+            LOGWITH("Failed to begin command buffer:",result,resultAsString(result));
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &copycb);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
         }
         vkCmdCopyBuffer(copycb, sb, vib, 1, &copyRegion);
         if((result = vkEndCommandBuffer(copycb)) != VK_SUCCESS){
-            LOGWITH("Failed to end command buffer:",result);
+            LOGWITH("Failed to end command buffer:",result,resultAsString(result));
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &copycb);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
@@ -505,11 +521,16 @@ namespace onart {
         return singleton->meshes[name] = std::make_shared<publicmesh>(vib,viba,vcount,icount,VBSIZE,nullptr,isize==4);
     }
 
-    VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, const string16& name, RenderTargetType type, bool sampled, bool useDepthInput, bool mmap){
+    VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, const string16& name, RenderTargetType type, bool sampled, bool useDepthInput, bool useStencil, bool mmap){
         if(!singleton->allocator) {
             LOGWITH("Warning: Tried to create image before initialization");
             return nullptr;
         }
+        if(useDepthInput && useStencil) {
+            LOGWITH("Warning: Can\'t use stencil buffer while using depth buffer as sampled image or input attachment"); // TODO? 엄밀히 말하면 스텐실만 입력첨부물로 쓸 수는 있는데 이걸 꼭 해야 할지
+            return nullptr;
+        }
+
         auto it = singleton->renderTargets.find(name);
         if(it != singleton->renderTargets.end()) {return it->second;}
         ImageSet *color1 = nullptr, *color2 = nullptr, *color3 = nullptr, *ds = nullptr;
@@ -537,10 +558,9 @@ namespace onart {
             color1 = new ImageSet;
             imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
             imgInfo.format = VkFormat::VK_FORMAT_B8G8R8A8_SRGB;
-            //imgInfo.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color1->img, &color1->alloc, nullptr);
-            if(!result) {
-                LOGWITH("Failed to create image:", result);
+            if(result != VK_SUCCESS) {
+                LOGWITH("Failed to create image:", result,resultAsString(result));
                 delete color1;
                 return nullptr;
             }
@@ -553,8 +573,8 @@ namespace onart {
             if((int)type & 0b10){
                 color2 = new ImageSet;
                 result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color2->img, &color2->alloc, nullptr);
-                if(!result) {
-                    LOGWITH("Failed to create image:", result);
+                if(result != VK_SUCCESS) {
+                    LOGWITH("Failed to create image:", result,resultAsString(result));
                     color1->free();
                     delete color1;
                     delete color2;
@@ -571,8 +591,8 @@ namespace onart {
                 if((int)type & 0b100){
                     color3 = new ImageSet;
                     result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color3->img, &color3->alloc, nullptr);
-                    if(!result) {
-                        LOGWITH("Failed to create image:", result);
+                    if(result != VK_SUCCESS) {
+                        LOGWITH("Failed to create image:", result,resultAsString(result));
                         color1->free();
                         color2->free();
                         delete color1;
@@ -597,17 +617,18 @@ namespace onart {
             ds = new ImageSet;
             imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : (useDepthInput ? VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT : 0));
             imgInfo.format = VkFormat::VK_FORMAT_D24_UNORM_S8_UINT;
-            //imgInfo.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &ds->img, &ds->alloc, nullptr);
-            if(!result) {
-                LOGWITH("Failed to create image: ", result);
+            if(result != VK_SUCCESS) {
+                LOGWITH("Failed to create image: ", result,resultAsString(result));
                 if(color1) {color1->free(); delete color1;}
                 if(color2) {color2->free(); delete color2;}
                 if(color3) {color3->free(); delete color3;}
                 delete ds;
                 return nullptr;
             }
-            ds->view = createImageView(singleton->device, color3->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT | VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT);
+            VkImageAspectFlags dsFlags = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT;
+            if(useStencil) dsFlags |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
+            ds->view = createImageView(singleton->device, ds->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, dsFlags);
             if(!ds->view){
                 if(color1) {color1->free(); delete color1;}
                 if(color2) {color2->free(); delete color2;}
@@ -669,10 +690,9 @@ namespace onart {
         if(ds && useDepthInput){
             imageInfo.imageView = ds->view;
             wr.dstSet = dsets[nim];
-            vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
+            vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr); // 입력 첨부물 기술자를 위한 이미지 뷰에서는 DEPTH, STENCIL을 동시에 명시할 수 없음. 솔직히 깊이를 입력첨부물로는 안 쓸 것 같긴 한데 
         }
-
-        return singleton->renderTargets.emplace(name, new RenderTarget(type, width, height, color1, color2, color3, ds, sampled, mmap, dsets)).first->second;
+        return singleton->renderTargets[name] = new RenderTarget(type, width, height, color1, color2, color3, ds, sampled, mmap, dsets);
     }
 
     void VkMachine::removeImageSet(VkMachine::ImageSet* set) {
@@ -694,7 +714,7 @@ namespace onart {
         smInfo.pCode = spv;
         VkResult result = vkCreateShaderModule(singleton->device, &smInfo, nullptr, &ret);
         if(result != VK_SUCCESS) {
-            LOGWITH("Failed to create shader moudle:", result);
+            LOGWITH("Failed to create shader moudle:", result,resultAsString(result));
             return VK_NULL_HANDLE;
         }
         return singleton->shaders[name] = ret;
@@ -749,14 +769,14 @@ namespace onart {
         VkResult result;
         result = vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &newBuffer, &newAlloc, nullptr);
         if(result != VK_SUCCESS) {
-            LOGWITH("Failed to create buffer:",result);
+            LOGWITH("Failed to create buffer:",result,resultAsString(result));
             ktxTexture_Destroy(ktxTexture(texture));
             return pTexture();
         }
         void* mmap;
         result = vmaMapMemory(allocator, newAlloc, &mmap);
         if(result != VK_SUCCESS){
-            LOGWITH("Failed to map memory to buffer:",result);
+            LOGWITH("Failed to map memory to buffer:",result,resultAsString(result));
             vmaDestroyBuffer(allocator, newBuffer, newAlloc);
             ktxTexture_Destroy(ktxTexture(texture));
             return pTexture();
@@ -820,7 +840,7 @@ namespace onart {
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
         if((result = vkBeginCommandBuffer(copyCmd, &beginInfo)) != VK_SUCCESS){
-            LOGWITH("Failed to begin command buffer:",result);
+            LOGWITH("Failed to begin command buffer:",result,resultAsString(result));
             ktxTexture_Destroy(ktxTexture(texture));
             vkFreeCommandBuffers(device, gCommandPool, 1, &copyCmd);
             vmaDestroyImage(allocator, newImg, newAlloc2);
@@ -836,7 +856,7 @@ namespace onart {
         vkCmdPipelineBarrier(copyCmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imgBarrier);
 
         if((result = vkEndCommandBuffer(copyCmd)) != VK_SUCCESS){
-            LOGWITH("Failed to end command buffer:",result);
+            LOGWITH("Failed to end command buffer:",result,resultAsString(result));
             ktxTexture_Destroy(ktxTexture(texture));
             vkFreeCommandBuffers(device, gCommandPool, 1, &copyCmd);
             vmaDestroyImage(allocator, newImg, newAlloc2);
@@ -848,7 +868,7 @@ namespace onart {
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &copyCmd;
         if((result = vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE)) != VK_SUCCESS){ // TODO: 큐 전체대기 -> 펜스대기
-            LOGWITH("Failed to submit copy command:",result);
+            LOGWITH("Failed to submit copy command:",result,resultAsString(result));
             ktxTexture_Destroy(ktxTexture(texture));
             vkFreeCommandBuffers(device, gCommandPool, 1, &copyCmd);
             vmaDestroyImage(allocator, newImg, newAlloc2);
@@ -868,7 +888,7 @@ namespace onart {
 
         result = vkCreateImageView(device, &viewInfo, nullptr, &newView);
         if((result = vkCreateImageView(device, &viewInfo, nullptr, &newView)) != VK_SUCCESS){
-            LOGWITH("Failed to create image view:",result);
+            LOGWITH("Failed to create image view:",result,resultAsString(result));
             return pTexture();
         }
 
@@ -877,7 +897,7 @@ namespace onart {
         vmaDestroyBuffer(allocator, newBuffer, newAlloc);
 
         if(result != VK_SUCCESS){
-            LOGWITH("Failed to create image view:",result);
+            LOGWITH("Failed to create image view:",result,resultAsString(result));
             vmaDestroyImage(allocator, newImg, newAlloc2);
             return pTexture();
         }
@@ -940,7 +960,7 @@ namespace onart {
 
     VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding):img(img), view(view), alloc(alloc), dset(dset), binding(binding){ }
     VkMachine::Texture::~Texture(){
-        vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
+        //vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
         vkDestroyImageView(singleton->device, view, nullptr);
         vmaDestroyImage(singleton->allocator, img, alloc);
     }
@@ -1018,7 +1038,7 @@ namespace onart {
         VkResult result;
 
         if((result = vkCreateDescriptorSetLayout(singleton->device, &uboInfo, nullptr, &layout)) != VK_SUCCESS){
-            LOGWITH("Failed to create descriptor set layout:",result);
+            LOGWITH("Failed to create descriptor set layout:",result,resultAsString(result));
             return nullptr;
         }
 
@@ -1046,12 +1066,12 @@ namespace onart {
             result = vmaCreateBuffer(singleton->allocator, &bufferInfo, &bainfo, &buffer, &alloc, nullptr);
         }
         if(result != VK_SUCCESS){
-            LOGWITH("Failed to create buffer:", result);
+            LOGWITH("Failed to create buffer:", result,resultAsString(result));
             return nullptr;
         }
 
         if((result = vmaMapMemory(singleton->allocator, alloc, &mmap)) != VK_SUCCESS){
-            LOGWITH("Failed to map memory:", result);
+            LOGWITH("Failed to map memory:", result,resultAsString(result));
             return nullptr;
         }
 
@@ -1086,9 +1106,11 @@ namespace onart {
             colorCount = 1;
             if(color2){
                 std::memcpy(arr + 1, arr, sizeof(arr[0]));
+                arr[1].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                 colorCount = 2;
                 if(color3) {
                     std::memcpy(arr + 2, arr, sizeof(arr[0]));
+                    arr[2].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                     colorCount = 3;
                 }
             }
@@ -1108,15 +1130,16 @@ namespace onart {
     }
 
     VkMachine::RenderTarget::~RenderTarget(){
-        if(color1) { singleton->removeImageSet(color1); if(dset1) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset1); }
-        if(color2) { singleton->removeImageSet(color2); if(dset2) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset2); }
-        if(color3) { singleton->removeImageSet(color3); if(dset3) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset3); }
-        if(depthstencil) { singleton->removeImageSet(depthstencil); if(dsetDS) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dsetDS); }
+        if(color1) { singleton->removeImageSet(color1); /*if(dset1) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset1);*/ }
+        if(color2) { singleton->removeImageSet(color2); /*if(dset2) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset2);*/ }
+        if(color3) { singleton->removeImageSet(color3); /*if(dset3) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset3);*/ }
+        if(depthstencil) { singleton->removeImageSet(depthstencil); /*if (dsetDS) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dsetDS);*/ }
     }
 
     VkMachine::RenderPass2Screen* VkMachine::createRenderPass2Screen(RenderTargetType* tgs, uint32_t subpassCount, const string16& name, bool useDepth, bool* useDepthAsInput){
-        auto it = singleton->finalPasses.find(name);
-        if(it != singleton->finalPasses.end()) return it->second;
+        RenderPass2Screen* r = getRenderPass2Screen(name);
+        if(r) return r;
+
         if(subpassCount == 0) return nullptr;
         std::vector<RenderTarget*> targets(subpassCount - 1);
         for(uint32_t i = 0; i < subpassCount - 1; i++){
@@ -1165,7 +1188,7 @@ namespace onart {
                 return nullptr;
             }
         }
-        
+
         std::vector<VkSubpassDescription> subpasses(subpassCount);
         std::vector<VkAttachmentDescription> attachments(subpassCount * 4);
         std::vector<VkAttachmentReference> colorRefs(subpassCount * 4);
@@ -1176,16 +1199,21 @@ namespace onart {
         uint32_t totalAttachments = 0;
         uint32_t totalInputAttachments = 0;
         uint32_t inputAttachmentCount = 0;
-
+    
         for(uint32_t i = 0; i < subpassCount - 1; i++){
             uint32_t colorCount = targets[i]->attachmentRefs(&attachments[totalAttachments]);
             subpasses[i].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
             subpasses[i].colorAttachmentCount = colorCount;
             subpasses[i].pColorAttachments = &colorRefs[totalAttachments];
             subpasses[i].inputAttachmentCount = inputAttachmentCount;
-            subpasses[i].pInputAttachments = &inputRefs[totalInputAttachments];
+            subpasses[i].pInputAttachments = &inputRefs[totalInputAttachments - inputAttachmentCount];
             if(targets[i]->depthstencil) subpasses[i].pDepthStencilAttachment = &colorRefs[totalAttachments + colorCount];
-            VkImageView views[4] = {targets[i]->color1->view, targets[i]->color2->view, targets[i]->color3->view, targets[i]->depthstencil->view};
+            VkImageView views[4] = {
+                targets[i]->color1 ? targets[i]->color1->view : VK_NULL_HANDLE,
+                targets[i]->color2 ? targets[i]->color2->view : VK_NULL_HANDLE,
+                targets[i]->color3 ? targets[i]->color3->view : VK_NULL_HANDLE,
+                targets[i]->depthstencil ? targets[i]->depthstencil->view : VK_NULL_HANDLE
+            };
             for(uint32_t j = 0; j < colorCount; j++) {
                 colorRefs[totalAttachments].attachment = totalAttachments;
                 colorRefs[totalAttachments].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -1206,14 +1234,13 @@ namespace onart {
                 ivs[totalAttachments] = views[3];
                 totalAttachments++;
             }
-            dependencies[i].srcSubpass = i - 1;
-            dependencies[i].srcSubpass = i - 1;
-            dependencies[i].dstSubpass = i;
-            dependencies[i].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-            dependencies[i].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            dependencies[i].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            dependencies[i].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-            dependencies[i].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+            dependencies[i+1].srcSubpass = i;
+            dependencies[i+1].dstSubpass = i + 1;
+            dependencies[i+1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dependencies[i+1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            dependencies[i+1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            dependencies[i+1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            dependencies[i+1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
             inputAttachmentCount = colorCount; if(targets[i]->dsetDS) inputAttachmentCount++;
         }
 
@@ -1224,9 +1251,10 @@ namespace onart {
         attachments[totalAttachments].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         attachments[totalAttachments].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         attachments[totalAttachments].format = VK_FORMAT_B8G8R8A8_SRGB;
+        attachments[totalAttachments].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
 
         subpasses[subpassCount - 1].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpasses[subpassCount - 1].pInputAttachments = &inputRefs[totalInputAttachments];
+        subpasses[subpassCount - 1].pInputAttachments = &inputRefs[totalInputAttachments - inputAttachmentCount];
         subpasses[subpassCount - 1].inputAttachmentCount = inputAttachmentCount;
         subpasses[subpassCount - 1].colorAttachmentCount = 1;
         subpasses[subpassCount - 1].pColorAttachments = &colorRefs[totalAttachments];
@@ -1246,8 +1274,9 @@ namespace onart {
             attachments[totalAttachments].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
             attachments[totalAttachments].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             attachments[totalAttachments].format = VK_FORMAT_D24_UNORM_S8_UINT;
+            attachments[totalAttachments].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
             colorRefs[totalAttachments].attachment = totalAttachments;
-            colorRefs[totalAttachments].attachment = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            colorRefs[totalAttachments].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             subpasses[subpassCount - 1].pDepthStencilAttachment = &colorRefs[totalAttachments];
             ivs[totalAttachments] = dsImageView;
             totalAttachments++;
@@ -1272,7 +1301,7 @@ namespace onart {
         VkRenderPass newPass;
 
         if((result = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
-            LOGWITH("Failed to create renderpass:",result);
+            LOGWITH("Failed to create renderpass:",result,resultAsString(result));
             for(RenderTarget* t:targets) delete t;
             vmaDestroyImage(singleton->allocator, dsImage, dsAlloc);
             return nullptr;
@@ -1284,14 +1313,14 @@ namespace onart {
         fbInfo.attachmentCount = totalAttachments;
         fbInfo.pAttachments = ivs.data();
         fbInfo.renderPass = newPass;
-        fbInfo.width = targets[0]->width;
-        fbInfo.height = targets[0]->height;
+        fbInfo.width = singleton->swapchain.extent.width;
+        fbInfo.height = singleton->swapchain.extent.height;
         fbInfo.layers = 1;
         uint32_t i = 0;
         for(VkFramebuffer& fb: fbs){
             swapchainImageViewPlace = singleton->swapchain.imageView[i++];
             if((result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
-                LOGWITH("Failed to create framebuffer:",result);
+                LOGWITH("Failed to create framebuffer:",result,resultAsString(result));
                 for(VkFramebuffer d: fbs) vkDestroyFramebuffer(singleton->device, d, nullptr);
                 vkDestroyRenderPass(singleton->device, newPass, nullptr);
                 vkDestroyImageView(singleton->device, dsImageView, nullptr);
@@ -1305,9 +1334,19 @@ namespace onart {
     }
 
     VkMachine::RenderPass* VkMachine::createRenderPass(RenderTarget** targets, uint32_t subpassCount, const string16& name){
-        auto it = singleton->renderPasses.find(name);
-        if(it != singleton->renderPasses.end()) return it->second;
+        RenderPass* r = getRenderPass(name);
+        if(r) return r;
         if(subpassCount == 0) return nullptr;
+        for(uint32_t i = 0; i < subpassCount - 1; i++) {
+            if(targets[i]->sampled) {
+                LOGWITH("Warning: the given target",i,"was not made to be an input attachment(sampled = true)");
+                return nullptr;
+            }
+        }
+        if(!targets[subpassCount - 1]->sampled){
+            LOGWITH("Warning: the last given target was made to be an input attachment(sampled = false)");
+            return nullptr;
+        }
 
         std::vector<VkSubpassDescription> subpasses(subpassCount);
         std::vector<VkAttachmentDescription> attachments(subpassCount * 4);
@@ -1326,9 +1365,14 @@ namespace onart {
             subpasses[i].colorAttachmentCount = colorCount;
             subpasses[i].pColorAttachments = &colorRefs[totalAttachments];
             subpasses[i].inputAttachmentCount = inputAttachmentCount;
-            subpasses[i].pInputAttachments = &inputRefs[totalInputAttachments];
+            subpasses[i].pInputAttachments = &inputRefs[totalInputAttachments - inputAttachmentCount];
             if(targets[i]->depthstencil) subpasses[i].pDepthStencilAttachment = &colorRefs[totalAttachments + colorCount];
-            VkImageView views[4] = {targets[i]->color1->view, targets[i]->color2->view, targets[i]->color3->view, targets[i]->depthstencil->view};
+            VkImageView views[4] = {
+                targets[i]->color1 ? targets[i]->color1->view : VK_NULL_HANDLE,
+                targets[i]->color2 ? targets[i]->color2->view : VK_NULL_HANDLE,
+                targets[i]->color3 ? targets[i]->color3->view : VK_NULL_HANDLE,
+                targets[i]->depthstencil ? targets[i]->depthstencil->view : VK_NULL_HANDLE
+            };
             for(uint32_t j = 0; j < colorCount; j++) {
                 colorRefs[totalAttachments].attachment = totalAttachments;
                 colorRefs[totalAttachments].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -1350,12 +1394,11 @@ namespace onart {
                 totalAttachments++;
             }
             dependencies[i].srcSubpass = i - 1;
-            dependencies[i].srcSubpass = i - 1;
             dependencies[i].dstSubpass = i;
             dependencies[i].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             dependencies[i].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             dependencies[i].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            dependencies[i].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+            dependencies[i].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
             dependencies[i].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
             inputAttachmentCount = colorCount; if(targets[i]->depthstencil) inputAttachmentCount++;
         }
@@ -1371,7 +1414,7 @@ namespace onart {
         VkRenderPass newPass;
         VkResult result;
         if((result = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
-            LOGWITH("Failed to create renderpass:",result);
+            LOGWITH("Failed to create renderpass:",result,resultAsString(result));
             return nullptr;
         }
 
@@ -1385,11 +1428,14 @@ namespace onart {
         fbInfo.height = targets[0]->height;
         fbInfo.layers = 1; // 큐브맵이면 6인데 일단 그건 다른 함수로 한다고 침
         if((result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
-            LOGWITH("Failed to create framebuffer:",result);
+            LOGWITH("Failed to create framebuffer:",result,resultAsString(result));
             return nullptr;
         }
+
         RenderPass* ret = singleton->renderPasses[name] = new RenderPass(newPass, fb, subpassCount);
         for(uint32_t i = 0; i < subpassCount; i++){ ret->targets[i] = targets[i]; }
+        ret->setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
+        ret->setScissor(targets[0]->width, targets[0]->height, 0, 0);
         return ret;
     }
 
@@ -1471,7 +1517,7 @@ namespace onart {
 
         VkResult result = vkCreatePipelineLayout(singleton->device, &layoutInfo, nullptr, &ret);
         if(result != VK_SUCCESS){
-            LOGWITH("Failed to create pipeline layout:",result);
+            LOGWITH("Failed to create pipeline layout:",result,resultAsString(result));
             return VK_NULL_HANDLE;
         }
         return singleton->pipelineLayouts[name] = ret;
@@ -1494,8 +1540,6 @@ namespace onart {
         fence = singleton->createFence(true);
         semaphore = singleton->createSemaphore();
         singleton->allocateCommandBuffers(1, true, &cb);
-        setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
-        setScissor(targets[0]->width, targets[0]->height, 0, 0);
     }
 
     VkMachine::RenderPass::~RenderPass(){
@@ -1557,7 +1601,7 @@ namespace onart {
         fbInfo.attachmentCount = ivs.size();
         VkResult result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb);
         if(result != VK_SUCCESS){
-            LOGWITH("Failed to create framebuffer:", result);
+            LOGWITH("Failed to create framebuffer:", result,resultAsString(result));
         }
         setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
         setScissor(targets[0]->width, targets[0]->height, 0, 0);
@@ -1730,16 +1774,32 @@ namespace onart {
             cbInfo.flags = VkCommandBufferUsageFlagBits::VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
             result = vkBeginCommandBuffer(cb, &cbInfo);
             if(result != VK_SUCCESS){
-                LOGWITH("Failed to begin command buffer:",result);
+                LOGWITH("Failed to begin command buffer:",result,resultAsString(result));
                 currentPass = -1;
                 return;
             }
             VkRenderPassBeginInfo rpInfo{};
+            std::vector<VkClearValue> clearValues; // TODO: 이건 렌더타겟이 갖고 있는 게 자유도 면에서 나을 것 같음
+            clearValues.reserve(stageCount * 4);
+            for(RenderTarget* targ: targets){
+                if((int)targ->type & 0b1) {
+                    clearValues.push_back({0.03f, 0.03f, 0.03f, 1.0f});
+                    if((int)targ->type & 0b10){
+                        clearValues.push_back({0.03f, 0.03f, 0.03f, 1.0f});
+                        if((int)targ->type & 0b100){
+                            clearValues.push_back({0.03f, 0.03f, 0.03f, 1.0f});
+                        }
+                    }
+                }
+                if((int)targ->type & 0b1000){
+                    clearValues.push_back({1.0f, 0u});
+                }
+            }
             VkClearValue iColor{0.03f,0.03f,0.03f,1.0f};
             rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
             rpInfo.framebuffer = fb;
-            rpInfo.pClearValues = &iColor; // TODO: 렌더패스 첨부물 인덱스에 대응하게 준비해야 함
-            rpInfo.clearValueCount = 1;
+            rpInfo.pClearValues = clearValues.data();
+            rpInfo.clearValueCount = clearValues.size();
             rpInfo.renderArea.offset = {0,0};
             rpInfo.renderArea.extent = {targets[0]->width, targets[0]->height};
 
@@ -1757,15 +1817,15 @@ namespace onart {
     }
 
     VkMachine::RenderPass2Screen::RenderPass2Screen(VkRenderPass rp, std::vector<RenderTarget*>&& targets, std::vector<VkFramebuffer>&& fbs, VkImage dsImage, VkImageView dsView, VmaAllocation dsAlloc)
-    : targets(targets), fbs(fbs), dsImage(dsImage), dsView(dsView), dsAlloc(dsAlloc){
+    : targets(targets), fbs(fbs), dsImage(dsImage), dsView(dsView), dsAlloc(dsAlloc), rp(rp){
         for(VkFence& fence: fences) fence = singleton->createFence(true);
         for(VkSemaphore& semaphore: acquireSm) semaphore = singleton->createSemaphore();
         for(VkSemaphore& semaphore: drawSm) semaphore = singleton->createSemaphore();
         singleton->allocateCommandBuffers(COMMANDBUFFER_COUNT, true, cbs);
         pipelines.resize(this->targets.size() + 1, VK_NULL_HANDLE);
         pipelineLayouts.resize(this->targets.size() + 1, VK_NULL_HANDLE);
-        setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
-        setScissor(targets[0]->width, targets[0]->height, 0, 0);
+        setViewport(singleton->swapchain.extent.width, singleton->swapchain.extent.height, 0.0f, 0.0f);
+        setScissor(singleton->swapchain.extent.width, singleton->swapchain.extent.height, 0, 0);
     }
 
     VkMachine::RenderPass2Screen::~RenderPass2Screen(){
@@ -1947,7 +2007,7 @@ namespace onart {
             uint32_t index;
             result = vkAcquireNextImageKHR(singleton->device, singleton->swapchain.handle, UINT64_MAX, acquireSm[currentCB], VK_NULL_HANDLE, &index);
             if(result != VK_SUCCESS) {
-                LOGWITH("Failed to acquire swapchain image:",result,"\nThis message can be ignored safely if the rendering goes fine after now");
+                LOGWITH("Failed to acquire swapchain image:",result,resultAsString(result),"\nThis message can be ignored safely if the rendering goes fine after now");
                 currentPass = -1;
                 return;
             }
@@ -1959,7 +2019,7 @@ namespace onart {
             cbInfo.flags = VkCommandBufferUsageFlagBits::VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
             result = vkBeginCommandBuffer(cbs[currentCB], &cbInfo);
             if(result != VK_SUCCESS){
-                LOGWITH("Failed to begin command buffer:",result);
+                LOGWITH("Failed to begin command buffer:",result,resultAsString(result));
                 currentPass = -1;
                 return;
             }
@@ -1989,7 +2049,7 @@ namespace onart {
         vkCmdEndRenderPass(cbs[currentCB]);
         VkResult result;
         if((result = vkEndCommandBuffer(cbs[currentCB])) != VK_SUCCESS){
-            LOGWITH("Failed to end command buffer:",result);
+            LOGWITH("Failed to end command buffer:",result,resultAsString(result));
             return;
         }
 
@@ -2125,7 +2185,7 @@ namespace onart {
 
         result = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
         if(result != VK_SUCCESS){
-            LOGWITH("Failed to create VkBuffer:", result);
+            LOGWITH("Failed to create VkBuffer:", result,resultAsString(result));
             return;
         }
 
@@ -2143,13 +2203,13 @@ namespace onart {
         vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
 
         if((result = vmaMapMemory(singleton->allocator, alloc, &mmap)) != VK_SUCCESS){
-            LOGWITH("Failed to map memory:", result);
+            LOGWITH("Failed to map memory:", result,resultAsString(result));
             return;
         }
     }
 
     VkMachine::UniformBuffer::~UniformBuffer(){
-        vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
+        //vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
         vkDestroyDescriptorSetLayout(singleton->device, layout, nullptr);
         vmaDestroyBuffer(singleton->allocator, buffer, alloc);
     }
@@ -2184,7 +2244,7 @@ namespace onart {
         }
 
         if((result = vkCreateInstance(&instInfo, nullptr, &instance)) != VK_SUCCESS){
-            LOGWITH("Failed to create vulkan instance:", result);
+            LOGWITH("Failed to create vulkan instance:", result,resultAsString(result));
             return VK_NULL_HANDLE;
         }
         return instance;
@@ -2312,7 +2372,7 @@ namespace onart {
         VkDevice ret;
         VkResult result;
         if((result = vkCreateDevice(card, &deviceInfo, nullptr, &ret)) != VK_SUCCESS){
-            LOGWITH("Failed to create Vulkan device:", result);
+            LOGWITH("Failed to create Vulkan device:", result,resultAsString(result));
             return VK_NULL_HANDLE;
         }
         return ret;
@@ -2328,7 +2388,7 @@ namespace onart {
         allocInfo.vulkanApiVersion = VK_API_VERSION_1_0;
         VkResult result;
         if((result = vmaCreateAllocator(&allocInfo, &ret)) != VK_SUCCESS){
-            LOGWITH("Failed to create VMA object:",result);
+            LOGWITH("Failed to create VMA object:",result,resultAsString(result));
             return nullptr;
         }
         return ret;
@@ -2342,7 +2402,7 @@ namespace onart {
         poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         VkResult result;
         if((result = vkCreateCommandPool(device, &poolInfo, nullptr, &ret)) != VK_SUCCESS){
-            LOGWITH("Failed to create command pool:", result);
+            LOGWITH("Failed to create command pool:", result,resultAsString(result));
             return 0;
         }
         return ret;
@@ -2362,7 +2422,7 @@ namespace onart {
         VkImageView ret;
         VkResult result;
         if((result = vkCreateImageView(device, &ivInfo, nullptr, &ret)) != VK_SUCCESS){
-            LOGWITH("Failed to create image view:",result);
+            LOGWITH("Failed to create image view:",result,resultAsString(result));
             return 0;
         }
         return ret;
@@ -2387,7 +2447,7 @@ namespace onart {
         VkDescriptorPool ret;
         VkResult result;
         if((result = vkCreateDescriptorPool(device, &dPoolInfo, nullptr, &ret)) != VK_SUCCESS){
-            LOGWITH("Failed to create descriptor pool:",result);
+            LOGWITH("Failed to create descriptor pool:",result,resultAsString(result));
             return VK_NULL_HANDLE;
         }
         return ret;
@@ -2572,10 +2632,97 @@ namespace onart {
         VkPipeline ret;
         VkResult result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pInfo, nullptr, &ret);
         if(result != VK_SUCCESS){
-            LOGWITH("Failed to create pipeline:",result);
+            LOGWITH("Failed to create pipeline:",result,resultAsString(result));
             return VK_NULL_HANDLE;
         }
         return ret;
+    }
+
+    static const char* resultAsString(VkResult result) {
+        switch (result)
+        {
+        case VK_SUCCESS:
+            return "success";
+        case VK_NOT_READY:
+            return "not ready";
+        case VK_TIMEOUT:
+            return "timeout";
+        case VK_EVENT_SET:
+            return "event set";
+        case VK_EVENT_RESET:
+            return "event reset";
+        case VK_INCOMPLETE:
+            return "incomplete";
+        case VK_ERROR_OUT_OF_HOST_MEMORY:
+            return "out of host memory";
+        case VK_ERROR_OUT_OF_DEVICE_MEMORY:
+            return "out of device memory";
+        case VK_ERROR_INITIALIZATION_FAILED:
+            return "initialization failed";
+        case VK_ERROR_DEVICE_LOST:
+            return "device lost";
+        case VK_ERROR_MEMORY_MAP_FAILED:
+            return "memory map failed";
+        case VK_ERROR_LAYER_NOT_PRESENT:
+            return "layer not present";
+        case VK_ERROR_EXTENSION_NOT_PRESENT:
+            return "extension not present";
+        case VK_ERROR_FEATURE_NOT_PRESENT:
+            return "feature not present";
+        case VK_ERROR_INCOMPATIBLE_DRIVER:
+            return "incompatible driver";
+        case VK_ERROR_TOO_MANY_OBJECTS:
+            return "too many objects";
+        case VK_ERROR_FORMAT_NOT_SUPPORTED:
+            return "format not supported";
+        case VK_ERROR_FRAGMENTED_POOL:
+            return "fragmented pool";
+        case VK_ERROR_UNKNOWN:
+            return "unknown";
+        case VK_ERROR_OUT_OF_POOL_MEMORY:
+            return "out of pool memory";
+        case VK_ERROR_INVALID_EXTERNAL_HANDLE:
+            return "invalid external handle";
+        case VK_ERROR_FRAGMENTATION:
+            return "fragmentation";
+        case VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS:
+            return "invalid opaque capture address";
+        case VK_PIPELINE_COMPILE_REQUIRED:
+            return "pipeline compile required";
+        case VK_ERROR_SURFACE_LOST_KHR:
+            return "surface lost";
+        case VK_ERROR_NATIVE_WINDOW_IN_USE_KHR:
+            return "native window in use";
+        case VK_SUBOPTIMAL_KHR:
+            return "swapchain suboptimal";
+        case VK_ERROR_OUT_OF_DATE_KHR:
+            return "swapchain outof date";
+        case VK_ERROR_INCOMPATIBLE_DISPLAY_KHR:
+            return "incompatible display";
+        case VK_ERROR_VALIDATION_FAILED_EXT:
+            return "validation failed";
+        case VK_ERROR_INVALID_SHADER_NV:
+            return "invalid shader";
+        case VK_ERROR_INVALID_DRM_FORMAT_MODIFIER_PLANE_LAYOUT_EXT:
+            return "invalid DRM format modifier plane layout";
+        case VK_ERROR_NOT_PERMITTED_KHR:
+            return "not permitted";
+        case VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT:
+            return "full screen exclusive mode lost";
+        case VK_THREAD_IDLE_KHR:
+            return "thread idle";
+        case VK_THREAD_DONE_KHR:
+            return "thread done";
+        case VK_OPERATION_DEFERRED_KHR:
+            return "operation deferred";
+        case VK_OPERATION_NOT_DEFERRED_KHR:
+            return "operation not deferred";
+        case VK_RESULT_MAX_ENUM:
+            return "VK_RESULT_MAX_ENUM";
+        default:
+            return "not a VkResult code";
+        }
+        return "not a VkResult code";
     }
 
 }

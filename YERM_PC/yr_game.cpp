@@ -91,6 +91,15 @@ namespace onart{
         window->posCallback = Input::moveCursor;
         window->touchCallback = Input::touch;
         window->windowSizeCallback = windowResized;
+        /* 테스트 당시 코드:
+        VkMachine::RenderTargetType type[] = {VkMachine::RenderTargetType::COLOR1DEPTH, VkMachine::RenderTargetType::COLOR3};
+        VkMachine::createRenderPass2Screen(type, 3, "main");
+        auto tg = VkMachine::createRenderTarget2D(1024,1024,"temp",VkMachine::RenderTargetType::COLOR1DEPTH);
+        auto tg2 = VkMachine::createRenderTarget2D(1024,1024,"temp2",VkMachine::RenderTargetType::COLOR1,false);
+        auto tg3 = VkMachine::createRenderTarget2D(1024,1024,"temp3",VkMachine::RenderTargetType::COLOR1,false);
+        VkMachine::RenderTarget* tgs[]= {tg2,tg3,tg2,tg};
+        VkMachine::createRenderPass(tgs,4,"name2");
+        */
         return true;
     }
 

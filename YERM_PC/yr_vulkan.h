@@ -57,7 +57,7 @@ namespace onart {
         friend class Game;
         public:
             /// @brief Vulkan 확인 계층을 사용하려면 이것을 활성화해 주세요. 사용하려면 Vulkan "SDK"가 컴퓨터에 깔려 있어야 합니다.
-            constexpr static bool USE_VALIDATION_LAYER = false;
+            constexpr static bool USE_VALIDATION_LAYER = true;
             /// @brief 그리기 대상입니다. 텍스처로 사용하거나 메모리 맵으로 데이터에 접근할 수 있습니다. 
             class RenderTarget;
             /// @brief 오프스크린용 렌더 패스입니다.
@@ -114,10 +114,11 @@ namespace onart {
             /// @param name 이후 별도로 접근할 수 있는 이름을 지정합니다. 단, 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다. 빈 문자열 이름은 예약되어 있어 사용이 불가능합니다.
             /// @param type @ref RenderTargetType 참고하세요.
             /// @param sampled true면 샘플링 텍스처로 사용되고, false면 입력 첨부물로 사용됩니다. 일단은 화면을 최종 목적지로 간주하기 때문에 그 외의 용도는 없습니다.
-            /// @param useDepthInput sampled가 false인 경우, 즉 이 타겟이 입력 첨부물로 사용될 경우에 깊이 버퍼도 입력 첨부물로 사용할지 여부입니다.
+            /// @param useDepthInput 이 타겟이 입력 첨부물 혹은 텍스처로 사용될 경우에 깊이 버퍼도 입력 첨부물로 사용할지 여부입니다. 깊이가 입력 첨부물 혹은 샘플링으로 사용될 경우, 스텐실 버퍼는 사용할 수 없습니다.
+            /// @param useStencil true면 깊이 이미지에 더불어 스텐실 버퍼를 사용합니다.
             /// @param mmap 이것이 true라면 픽셀 데이터에 순차로 접근할 수 있습니다. 단, 렌더링 성능이 낮아질 가능성이 매우 높습니다.
             /// @return 이것을 통해 렌더 패스를 생성할 수 있습니다.
-            static RenderTarget* createRenderTarget2D(int width, int height, const string16& name, RenderTargetType type = RenderTargetType::COLOR1DEPTH, bool sampled = true, bool useDepthInput = false, bool mmap = false);
+            static RenderTarget* createRenderTarget2D(int width, int height, const string16& name, RenderTargetType type = RenderTargetType::COLOR1DEPTH, bool sampled = true, bool useDepthInput = false, bool useStencil = false, bool mmap = false);
             /// @brief SPIR-V 컴파일된 셰이더를 VkShaderModule 형태로 저장하고 가져옵니다.
             /// @param spv SPIR-V 코드
             /// @param size 주어진 SPIR-V 코드의 길이(바이트)
@@ -193,7 +194,7 @@ namespace onart {
             /// @brief 큐브맵 렌더 타겟을 생성하고 핸들을 리턴합니다. 한 번 부여된 핸들 번호는 같은 프로세스에서 다시는 사용되지 않습니다.
             /// @param size 각 면의 가로/세로 길이(px)
             /// @return 핸들입니다. 이것을 통해 렌더 패스를 생성할 수 있습니다.
-            static int createRenderTargetCube(int size);
+            static int createRenderTargetCube(int size, const string16& name);
             /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.
             static RenderPass2Screen* getRenderPass2Screen(const string16& name);
             /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.

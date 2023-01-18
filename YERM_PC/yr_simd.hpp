@@ -392,7 +392,7 @@ namespace onart{
     inline int128 b_xor(int128 a, int128 b) { return _mm_xor_si128(a,b); }
     template<uint8_t A> inline int128 shiftLeft(int128 a) { return _mm_slli_epi32(a,A); }
     template<uint8_t A> inline int128 shiftRight(int128 a) { return _mm_srai_epi32(a,A); }
-    inline int128 neg(int128 a){ return zeroi128() - a; }
+    inline int128 neg(int128 a){ return sub(zeroi128(), a); }
 
     template<bool a, bool b, bool c, bool d>
     inline float128 toggleSigns(float128 x) { 

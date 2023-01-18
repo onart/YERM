@@ -165,6 +165,7 @@ namespace onart{
             unsigned writable;
             while ((writable = ringBuffer.writable()) == 0) {
                 if (!inLoop) return;
+                std::this_thread::sleep_for(std::chrono::milliseconds(1)); // 전력 절약
             }
             size_t sz = Source::sources.size();
             for(size_t i = 0; i < sz; i++) {
