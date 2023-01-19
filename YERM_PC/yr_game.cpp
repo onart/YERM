@@ -19,6 +19,7 @@
 
 #include "logger.hpp"
 #include "yr_math.hpp"
+#include "yr_shadercompile.hpp"
 
 #include "../externals/boost/predef/platform.h"
 #include "../externals/boost/predef/compiler.h"
@@ -91,15 +92,24 @@ namespace onart{
         window->posCallback = Input::moveCursor;
         window->touchCallback = Input::touch;
         window->windowSizeCallback = windowResized;
-        /* 테스트 당시 코드:
-        VkMachine::RenderTargetType type[] = {VkMachine::RenderTargetType::COLOR1DEPTH, VkMachine::RenderTargetType::COLOR3};
-        VkMachine::createRenderPass2Screen(type, 3, "main");
-        auto tg = VkMachine::createRenderTarget2D(1024,1024,"temp",VkMachine::RenderTargetType::COLOR1DEPTH);
-        auto tg2 = VkMachine::createRenderTarget2D(1024,1024,"temp2",VkMachine::RenderTargetType::COLOR1,false);
-        auto tg3 = VkMachine::createRenderTarget2D(1024,1024,"temp3",VkMachine::RenderTargetType::COLOR1,false);
-        VkMachine::RenderTarget* tgs[]= {tg2,tg3,tg2,tg};
-        VkMachine::createRenderPass(tgs,4,"name2");
-        */
+        auto rp2s = VkMachine::createRenderPass2Screen(nullptr, 1, "main");
+        auto lo = VkMachine::createPipelineLayout(nullptr, 0, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, "test");
+        VkVertexInputAttributeDescription desc[2];
+        using testv_t = VkMachine::Vertex<vec3, vec3>;
+        testv_t::info(desc, 0);
+        std::vector<uint32_t> vec;
+        compile("../../../shaders/test.vert", shaderc_shader_kind::shaderc_glsl_vertex_shader,&vec);
+        auto vs = VkMachine::createShader(vec.data(), vec.size()*sizeof(vec[0]),"testv");
+        compile("../../../shaders/test.frag", shaderc_shader_kind::shaderc_glsl_fragment_shader,&vec);
+        auto fs = VkMachine::createShader(vec.data(), vec.size()*sizeof(vec[0]),"testf");
+        auto pp = VkMachine::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, "testpp");
+        testv_t verts[3]{{{0,0,0},{1,0,0}},{{0,1,0},{1,0,0}},{{1,0,0},{0,1,0}}};
+        auto vb = VkMachine::createMesh(verts,sizeof(testv_t),3,nullptr,2,0,"testvb");
+        rp2s->start();
+        float t = 1.0f;
+        rp2s->push(&t,0,4);
+        rp2s->invoke(vb);
+        rp2s->execute();
         return true;
     }
 

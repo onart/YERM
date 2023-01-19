@@ -59,7 +59,6 @@ namespace onart{
     }
 
     void Input::moveCursor(double x, double y){
-        LOGWITH(x, y);
         mousePos.x = x;
         mousePos.y = y;
     }

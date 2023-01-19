@@ -329,6 +329,7 @@ namespace onart {
     }
 
     void VkMachine::free() {
+        vkDeviceWaitIdle(device);
         for(VkDescriptorSetLayout& layout: textureLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = VK_NULL_HANDLE; }
         for(VkDescriptorSetLayout& layout: inputAttachmentLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = VK_NULL_HANDLE; }
         for(VkSampler& sampler: textureSampler) { vkDestroySampler(device, sampler, nullptr); sampler = VK_NULL_HANDLE; }
@@ -339,6 +340,7 @@ namespace onart {
         for(auto& pp: pipelines) { vkDestroyPipeline(device, pp.second, nullptr); }
         for(auto& pp: pipelineLayouts) { vkDestroyPipelineLayout(device, pp.second, nullptr); }
 
+        meshes.clear();
         pipelines.clear();
         pipelineLayouts.clear();
         finalPasses.clear();
@@ -1685,7 +1687,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdPushConstants(cb, pipelineLayouts[currentPass], VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
+        vkCmdPushConstants(cb, pipelineLayouts[currentPass], VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT | VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
     }
 
     void VkMachine::RenderPass::invoke(const pMesh& mesh){
@@ -1765,6 +1767,11 @@ namespace onart {
         }
         bound = nullptr;
         currentPass++;
+        if(!pipelines[currentPass]) {
+            LOGWITH("Pipeline not set.");
+            currentPass--;
+            return;
+        }
         VkResult result;
         if(currentPass == 0){
             wait();
@@ -1795,7 +1802,6 @@ namespace onart {
                     clearValues.push_back({1.0f, 0u});
                 }
             }
-            VkClearValue iColor{0.03f,0.03f,0.03f,1.0f};
             rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
             rpInfo.framebuffer = fb;
             rpInfo.pClearValues = clearValues.data();
@@ -1993,7 +1999,7 @@ namespace onart {
     }
 
     void VkMachine::RenderPass2Screen::start(uint32_t pos){
-        if(currentPass == targets.size() - 1) {
+        if(currentPass == targets.size()) {
             LOGWITH("Invalid call. The last subpass already started");
             return;
         }
@@ -2002,10 +2008,14 @@ namespace onart {
             return;
         }
         currentPass++;
+        if(!pipelines[currentPass]) {
+            LOGWITH("Pipeline not set.");
+            currentPass--;
+            return;
+        }
         VkResult result;
         if(currentPass == 0){
-            uint32_t index;
-            result = vkAcquireNextImageKHR(singleton->device, singleton->swapchain.handle, UINT64_MAX, acquireSm[currentCB], VK_NULL_HANDLE, &index);
+            result = vkAcquireNextImageKHR(singleton->device, singleton->swapchain.handle, UINT64_MAX, acquireSm[currentCB], VK_NULL_HANDLE, &imgIndex);
             if(result != VK_SUCCESS) {
                 LOGWITH("Failed to acquire swapchain image:",result,resultAsString(result),"\nThis message can be ignored safely if the rendering goes fine after now");
                 currentPass = -1;
@@ -2024,13 +2034,34 @@ namespace onart {
                 return;
             }
             VkRenderPassBeginInfo rpInfo{};
-            VkClearValue iColor{0.03f,0.03f,0.03f,1.0f};
+
+            std::vector<VkClearValue> clearValues; // TODO: 이건 렌더타겟이 갖고 있는 게 자유도 면에서 나을 것 같음
+            clearValues.reserve(targets.size() * 4 + 2);
+            for(RenderTarget* targ: targets){
+                if((int)targ->type & 0b1) {
+                    clearValues.push_back({0.03f, 0.03f, 0.03f, 1.0f});
+                    if((int)targ->type & 0b10){
+                        clearValues.push_back({0.03f, 0.03f, 0.03f, 1.0f});
+                        if((int)targ->type & 0b100){
+                            clearValues.push_back({0.03f, 0.03f, 0.03f, 1.0f});
+                        }
+                    }
+                }
+                if((int)targ->type & 0b1000){
+                    clearValues.push_back({1.0f, 0u});
+                }
+            }
+
+            clearValues.push_back({0.03f, 0.03f, 0.03f, 1.0f});
+            if(dsImage) clearValues.push_back({1.0f, 0u});
+
             rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-            rpInfo.framebuffer = fbs[index];
-            rpInfo.pClearValues = &iColor; // TODO: 렌더패스 첨부물 인덱스에 대응하게 준비해야 함
-            rpInfo.clearValueCount = 1;
+            rpInfo.framebuffer = fbs[imgIndex];
+            rpInfo.pClearValues = clearValues.data(); // TODO: 렌더패스 첨부물 인덱스에 대응하게 준비해야 함
+            rpInfo.clearValueCount = clearValues.size();
             rpInfo.renderArea.offset = {0,0};
-            rpInfo.renderArea.extent = {targets[0]->width, targets[0]->height};
+            rpInfo.renderArea.extent = singleton->swapchain.extent;
+            rpInfo.renderPass = rp;
 
             vkCmdBeginRenderPass(cbs[currentCB], &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
         }
@@ -2067,10 +2098,10 @@ namespace onart {
         waits[0] = acquireSm[currentCB];
         submitInfo.pWaitSemaphores = waits;
         submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitDstStageMask = waitStages;
         if(other){
             submitInfo.waitSemaphoreCount = 2;
             waits[1] = other->semaphore;
-            submitInfo.pWaitDstStageMask = waitStages;
         }
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = &drawSm[currentCB];
@@ -2085,15 +2116,17 @@ namespace onart {
             return;
         }
 
-        recently = currentCB;
-        currentCB = (currentCB + 1) % COMMANDBUFFER_COUNT;
-        currentPass = -1;
-
         VkPresentInfoKHR presentInfo{};
+        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = &singleton->swapchain.handle;
         presentInfo.waitSemaphoreCount = 1;
         presentInfo.pWaitSemaphores = &drawSm[currentCB];
+        presentInfo.pImageIndices = &imgIndex;
+
+        recently = currentCB;
+        currentCB = (currentCB + 1) % COMMANDBUFFER_COUNT;
+        currentPass = -1;
 
         if((result = vkQueuePresentKHR(singleton->presentQueue, &presentInfo)) != VK_SUCCESS){
             LOGWITH("Failed to submit command present operation");
@@ -2106,7 +2139,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdPushConstants(cbs[currentCB], pipelineLayouts[currentPass], VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
+        vkCmdPushConstants(cbs[currentCB], pipelineLayouts[currentPass], VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT | VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT, start, end - start, input); // TODO: 스펙: 파이프라인 레이아웃 생성 시 단계마다 가용 푸시상수 범위를 분리할 수 있으며(꼭 할 필요는 없는 듯 하긴 함) 여기서 매개변수로 범위와 STAGEFLAGBIT은 일치해야 함
     }
 
     void VkMachine::RenderPass2Screen::usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass){
@@ -2615,6 +2648,15 @@ namespace onart {
         dynInfo.pDynamicStates = dynStates;
         dynInfo.dynamicStateCount = sizeof(dynStates) / sizeof(dynStates[0]);
 
+        VkPipelineViewportStateCreateInfo viewportInfo{};
+        viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewportInfo.viewportCount = 1;
+        viewportInfo.scissorCount = 1;
+
+        VkPipelineMultisampleStateCreateInfo msInfo{};
+        msInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        msInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
         VkGraphicsPipelineCreateInfo pInfo{};
         pInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
         pInfo.stageCount = sizeof(shaderStagesInfo) / sizeof(shaderStagesInfo[0]);
@@ -2625,6 +2667,8 @@ namespace onart {
         pInfo.pDynamicState = &dynInfo;
         pInfo.layout = layout;
         pInfo.pRasterizationState = &rtrInfo;
+        pInfo.pViewportState = &viewportInfo;
+        pInfo.pMultisampleState = &msInfo;
         pInfo.pInputAssemblyState = &inputAssemblyInfo;
         // pInfo.pMultisampleState, pInfo.pTessellationState // TODO: 선택권
         if(OPT_COLOR_COUNT) { pInfo.pColorBlendState = &colorBlendStateCreateInfo; }

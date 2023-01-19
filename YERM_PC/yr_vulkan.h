@@ -498,6 +498,7 @@ namespace onart {
             uint32_t recently = 3;
             
             int currentPass = -1;
+            uint32_t imgIndex;
             VkViewport viewport;
             VkRect2D scissor;
     };
@@ -579,7 +580,10 @@ namespace onart {
     template<class FATTR, class... ATTR>
     struct VkMachine::Vertex{
         friend class VkMachine;
-        inline static constexpr bool CHECK_TYPE = is_one_of<FATTR, VERTEX_ATTR_TYPES> && (sizeof...(ATTR) == 0 ? true : Vertex<ATTR...>::CHECK_TYPE);
+        inline static constexpr bool CHECK_TYPE() {
+            if constexpr (sizeof...(ATTR) == 0) return is_one_of<FATTR, VERTEX_ATTR_TYPES>;
+            else return is_one_of<FATTR, VERTEX_ATTR_TYPES> || Vertex<ATTR...>::CHECK_TYPE();
+        }
     private:
         ftuple<FATTR, ATTR...> member;
         template<class F>
@@ -647,7 +651,7 @@ namespace onart {
             vattrs->offset = ftuple<FATTR, ATTR...>::template offset<LOCATION>();
             if constexpr(LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(vattrs + 1, binding);
         }
-        inline Vertex() {static_assert(CHECK_TYPE, "One or more of attribute types are inavailable");}
+        inline Vertex() {static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
         inline Vertex(const FATTR& first, const ATTR&... rest):member(first, rest...) { static_assert(CHECK_TYPE, "One or more of attribute types are inavailable"); }
         /// @brief 주어진 번호의 참조를 리턴합니다. 인덱스 초과 시 컴파일되지 않습니다.
         template<unsigned POS, std::enable_if_t<POS <= sizeof...(ATTR), bool> = false>
