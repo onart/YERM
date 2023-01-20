@@ -37,8 +37,8 @@ namespace onart{
             static int start(void* hd = nullptr, Window::CreationOptions* opt = nullptr);
             /// @brief 게임 프레임 번호입니다.
             static const int32_t& frame;
-            /// @brief 게임을 시작하고 난 시간(초)입니다.
-            static const float& tp;
+            /// @brief 게임을 시작하고 난 시간(나노초)입니다.
+            static const uint64_t& tp;
             /// @brief 이전 프레임과 현 프레임 간의 간격(초)입니다.
             static const float& dt;
             /// @brief 이전 프레임과 현 프레임 간의 간격(초)의 역수입니다.
@@ -48,11 +48,12 @@ namespace onart{
             /// @param buffer 데이터가 들어갈 위치. 이전에 내용이 있었더라도 무시됩니다.
             static void readFile(const char* fileName, std::basic_string<uint8_t>* buffer);
         private:
+            static const std::chrono::steady_clock::time_point longTp;
             static Window* window;
             static VkMachine* vk;
             static int32_t _frame;
-            static float _tp, _dt, _idt; // float인 이유: 이 엔진 내에서는 SIMD에서 double보다 효율적인 float 자료형이 주로 사용되는데 이게 타임과 연산될 일이 잦은 편이기 때문
-            static const std::chrono::steady_clock::time_point longTp;
+            static float _dt, _idt; // float인 이유: 이 엔진 내에서는 SIMD에서 double보다 효율적인 float 자료형이 주로 사용되는데 이게 타임과 연산될 일이 잦은 편이기 때문
+            static uint64_t _tp;
             static void* hd;
         private:
             static void windowResized(int x, int y);

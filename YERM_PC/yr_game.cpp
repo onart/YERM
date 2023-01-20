@@ -20,6 +20,7 @@
 #include "logger.hpp"
 #include "yr_math.hpp"
 #include "yr_shadercompile.hpp"
+#include "yr_bits.hpp"
 
 #include "../externals/boost/predef/platform.h"
 #include "../externals/boost/predef/compiler.h"
@@ -31,8 +32,10 @@
 namespace onart{
 
     const std::chrono::steady_clock::time_point Game::longTp = std::chrono::steady_clock::now();
-    float Game::_dt = 0.016f, Game::_idt = 60.0f, Game::_tp = 0.0f;
-    const float &Game::dt(Game::_dt), &Game::idt(Game::_idt), &Game::tp(Game::_tp);
+    float Game::_dt = 0.016f, Game::_idt = 60.0f;
+    uint64_t Game::_tp = (longTp - std::chrono::steady_clock::time_point()).count();
+    const float &Game::dt(Game::_dt), &Game::idt(Game::_idt);
+    const uint64_t& Game::tp(Game::_tp);
     int32_t Game::_frame = 1;
     const int32_t& Game::frame(Game::_frame);
     VkMachine* Game::vk = nullptr;
@@ -62,15 +65,27 @@ namespace onart{
             return 1;
         }
 
-        for(;; _frame++) {
-            window->pollEvents();
-            if(window->windowShouldClose()) break;
-            std::chrono::duration<float, std::ratio<1>> longDt = std::chrono::steady_clock::now() - longTp;
-            float temp = longDt.count();
-            _dt = temp - _tp;
-            _tp = temp;
-            _idt = 1.0f / _dt;
-        }
+#if !BOOST_PLAT_ANDROID
+        //std::thread gamethread([](){
+#endif
+            for(;;_frame++){
+                window->pollEvents();
+                if(window->windowShouldClose()) break;
+                std::chrono::duration<uint64_t, std::nano> longDt = std::chrono::steady_clock::now() - longTp;
+
+                // [0, 2^52 - 1] 범위 정수를 균등 간격의 [1.0, 2.0) 범위 double로 대응시키는 함수에 십억을 적용한 후 1을 뺀 결과에 곱하여 1로 만들 수 있는 수
+                constexpr double ONE_SECOND = 1.0 / 0.0000002220446049250313080847263336181640625;
+
+                uint64_t ndt = longDt.count() - _tp;
+                double ddt = (fixedPointConversion64i(ndt) - 1.0) * ONE_SECOND; // 함수를 사용할 수 없는 ndt의 상한선: 4,503,599,627,370,496 > 52일
+                double iddt = 1.0 / ddt;
+                _tp = longDt.count();
+                _dt = static_cast<float>(ddt);
+                _idt = static_cast<float>(iddt);
+            }
+#if !BOOST_PLAT_ANDROID
+        //}); gamethread.join();
+#endif
 
         finalize();
         return 0;

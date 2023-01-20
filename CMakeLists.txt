@@ -20,6 +20,7 @@ else()
         YERM_PC/yr_pool.hpp
         YERM_PC/yr_tuple.hpp
         YERM_PC/yr_shadercompile.hpp
+        YERM_PC/yr_bits.hpp
         YERM_PC/yr_sys.h
         YERM_PC/yr_sys.cpp
         YERM_PC/yr_game.h

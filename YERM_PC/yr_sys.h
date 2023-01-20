@@ -45,7 +45,7 @@ namespace onart{
             Window(void *hd = nullptr, const CreationOptions *options = nullptr);
             Window(const Window&)=delete;
             ~Window();
-            /// @brief 발생한 창 이벤트에 대한 처리를 수행합니다. 등록한 콜백 함수들도 호출됩니다.
+            /// @brief 발생한 창 이벤트에 대한 처리를 수행합니다. 이 함수는 메인 스레드에서만 호출할 수 있습니다. 등록한 콜백 함수들도 호출됩니다.
             void pollEvents();
             /// @brief 현 프레임에 창이 닫히는 경우 true를 리턴합니다. 안드로이드 대상의 경우 화면 회전 시에도 true가 되므로, 반드시 프로그램 종료를 의미하는 것이 아니니 주의하세요.
             bool windowShouldClose();
