@@ -33,7 +33,7 @@
 
 namespace onart{
 
-    const std::chrono::steady_clock::time_point Game::longTp = std::chrono::steady_clock::now();
+    const std::chrono::steady_clock::time_point longTp = std::chrono::steady_clock::now();
     float Game::_dt = 0.016f, Game::_idt = 60.0f;
     uint64_t Game::_tp = (longTp - std::chrono::steady_clock::time_point()).count();
     const float &Game::dt(Game::_dt), &Game::idt(Game::_idt);
@@ -51,8 +51,8 @@ namespace onart{
 
     static std::mutex eventQMutex;
 
-    static enum class WindowEvent{ WE_SIZE = 0, WE_KEYBOARD = 1, WE_CLICK = 2, WE_CURSOR = 3, WE_SCROLL = 4 };
-    static struct EV{
+    enum class WindowEvent{ WE_SIZE = 0, WE_KEYBOARD = 1, WE_CLICK = 2, WE_CURSOR = 3, WE_SCROLL = 4 };
+    struct EV{
         WindowEvent sType;
         union{
             struct{int sizeX, sizeY;};
@@ -154,6 +154,15 @@ namespace onart{
                 _tp = longDt.count();
                 _dt = static_cast<float>(ddt);
                 _idt = static_cast<float>(iddt);
+                auto rp2s = VkMachine::getRenderPass2Screen("main");
+                auto vb = VkMachine::getMesh("testvb");
+                float pushed = std::abs(std::sin((double)_tp * 0.000000001));
+                if(vk->swapchain.handle){
+                    rp2s->start();
+                    rp2s->push(&pushed,0,4);
+                    rp2s->invoke(vb);
+                    rp2s->execute();
+                }
             }
 #if !NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
         });
@@ -235,18 +244,13 @@ namespace onart{
         using testv_t = VkMachine::Vertex<vec3, vec3>;
         testv_t::info(desc, 0);
         std::vector<uint32_t> vec;
-        compile("../../../shaders/test.vert", shaderc_shader_kind::shaderc_glsl_vertex_shader,&vec);
+        compile("../../../shaders/test.vert", shaderc_shader_kind::shaderc_glsl_vertex_shader,&vec); // 여기 때문에 모바일 상 테스트가 지금은 안 됨
         auto vs = VkMachine::createShader(vec.data(), vec.size()*sizeof(vec[0]),"testv");
         compile("../../../shaders/test.frag", shaderc_shader_kind::shaderc_glsl_fragment_shader,&vec);
         auto fs = VkMachine::createShader(vec.data(), vec.size()*sizeof(vec[0]),"testf");
-        auto pp = VkMachine::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, "testpp");
-        testv_t verts[3]{{{0,0,0},{1,0,0}},{{0,1,0},{1,0,0}},{{1,0,0},{0,1,0}}};
-        auto vb = VkMachine::createMesh(verts,sizeof(testv_t),3,nullptr,2,0,"testvb");
-        rp2s->start();
-        float t = 1.0f;
-        rp2s->push(&t,0,4);
-        rp2s->invoke(vb);
-        rp2s->execute();
+        VkMachine::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, "testpp");
+        testv_t verts[3]{{{0,0,0},{1,0,0}},{{0,1,0},{0,0,1}},{{1,0,0},{0,1,0}}};
+        VkMachine::createMesh(verts,sizeof(testv_t),3,nullptr,2,0,"testvb");
         return true;
     }
 

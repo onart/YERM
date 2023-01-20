@@ -56,5 +56,5 @@ dependencies {
     implementation "androidx.games:games-performance-tuner:1.6.0"
     implementation "androidx.games:games-activity:1.2.2"
     implementation "androidx.games:games-controller:1.1.0"
-    implementation 'com.google.oboe:oboe:1.6.1'
+    //implementation 'com.google.oboe:oboe:1.6.1'
 }

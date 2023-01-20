@@ -48,7 +48,6 @@ namespace onart{
             /// @param buffer 데이터가 들어갈 위치. 이전에 내용이 있었더라도 무시됩니다.
             static void readFile(const char* fileName, std::basic_string<uint8_t>* buffer);
         private:
-            static const std::chrono::steady_clock::time_point longTp;
             static Window* window;
             static VkMachine* vk;
             static int32_t _frame;

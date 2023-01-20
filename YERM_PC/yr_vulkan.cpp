@@ -460,14 +460,15 @@ namespace onart {
         vbInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         vbInfo.size = VBSIZE + IBSIZE;
         vbaInfo.flags = 0;
-        result = vmaCreateBuffer(singleton->allocator, &vbInfo, &vbaInfo, &vib, &viba, &mapInfoV);
+        result = vmaCreateBuffer(singleton->allocator, &vbInfo, &vbaInfo, &vib, &viba, nullptr);
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create vertex buffer:",result,resultAsString(result));
             vmaDestroyBuffer(singleton->allocator, sb, sba);
             return pMesh();
         }
-
-        if(mapInfoV.memoryType & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+        VkMemoryPropertyFlags props;
+        vmaGetAllocationMemoryProperties(singleton->allocator, viba, &props);
+        if(props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
         }
@@ -518,7 +519,7 @@ namespace onart {
         }
         vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, UINT64_MAX);
         vkDestroyFence(singleton->device, fence, nullptr);
-        vmaDestroyBuffer(singleton->allocator, vib, viba);
+        vmaDestroyBuffer(singleton->allocator, sb, sba);
         vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &copycb);
         return singleton->meshes[name] = std::make_shared<publicmesh>(vib,viba,vcount,icount,VBSIZE,nullptr,isize==4);
     }
@@ -1725,6 +1726,7 @@ namespace onart {
 
     void VkMachine::RenderPass::execute(RenderPass* other){
         vkCmdEndRenderPass(cb);
+        bound = nullptr;
         VkResult result;
         if((result = vkEndCommandBuffer(cb)) != VK_SUCCESS){
             LOGWITH("Failed to end command buffer:",result);
@@ -1973,6 +1975,7 @@ namespace onart {
         if(bound != mesh.get()) {
             VkDeviceSize offs = 0;
             vkCmdBindVertexBuffers(cbs[currentCB], 0, 1, &mesh->vb, &offs);
+            vkCmdBindVertexBuffers(cbs[currentCB], 0, 1, &mesh->vb, &offs);
             if(mesh->icount) vkCmdBindIndexBuffer(cbs[currentCB], mesh->vb, mesh->ioff, mesh->idxType);
         }
         if(mesh->icount) vkCmdDrawIndexed(cbs[currentCB], mesh->icount, 1, 0, 0, 0);
@@ -2078,6 +2081,7 @@ namespace onart {
 
     void VkMachine::RenderPass2Screen::execute(RenderPass* other){
         vkCmdEndRenderPass(cbs[currentCB]);
+        bound = nullptr;
         VkResult result;
         if((result = vkEndCommandBuffer(cbs[currentCB])) != VK_SUCCESS){
             LOGWITH("Failed to end command buffer:",result,resultAsString(result));
