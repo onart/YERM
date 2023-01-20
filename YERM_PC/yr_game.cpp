@@ -25,6 +25,8 @@
 #include "../externals/boost/predef/platform.h"
 #include "../externals/boost/predef/compiler.h"
 
+#include <thread>
+
 #if BOOST_PLAT_ANDROID
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 #endif
@@ -41,6 +43,76 @@ namespace onart{
     VkMachine* Game::vk = nullptr;
     Window* Game::window = nullptr;
     void* Game::hd = nullptr;
+
+    /// @brief true인 경우 메인 스레드에서 창 이벤트를 폴링하고 메인 스레드에서 게임 루프를 수행합니다.
+    /// false인 경우 메인 스레드에서 창 이벤트를 지속적으로 쌓고 별도의 스레드에서 이를 처리하며 게임 루프를 수행합니다.
+    /// 창을 잡거나 크기를 변경하는 중에도 게임 루프가 지속되었으면 좋겠다면 이 값은 false로 두고, 그럴 필요가 없으면 true를 줍니다. 안드로이드 대상으로는 true인 채로 두는 것이 좋습니다.
+    constexpr bool NO_NEED_TO_USE_SEPARATE_EVENT_THREAD = BOOST_PLAT_ANDROID;
+
+    static std::mutex eventQMutex;
+
+    static enum class WindowEvent{ WE_SIZE = 0, WE_KEYBOARD = 1, WE_CLICK = 2, WE_CURSOR = 3, WE_SCROLL = 4 };
+    static struct EV{
+        WindowEvent sType;
+        union{
+            struct{int sizeX, sizeY;};
+            struct{int key, scancode, action, mods;};
+            struct{int mouseKey, mouseAction, mouseMods;};
+            struct{double mouseX, mouseY;};
+            struct{double scrollX, scrollY;};
+        };
+    };
+
+    static std::vector<EV> eventQ;
+    static std::vector<EV> tempQ;
+
+    static void recordSizeEvent(int x, int y) {
+        std::unique_lock<std::mutex> _(eventQMutex);
+        eventQ.push_back({});
+        EV& back = eventQ.back();
+        back.sType = WindowEvent::WE_SIZE;
+        back.sizeX = x;
+        back.sizeY = y;
+    }
+
+    static void recordKeyEvent(int key, int scancode, int action, int mods) {
+        std::unique_lock<std::mutex> _(eventQMutex);
+        eventQ.push_back({});
+        EV& back = eventQ.back();
+        back.sType = WindowEvent::WE_KEYBOARD;
+        back.key = key;
+        back.scancode = scancode;
+        back.action = action;
+        back.mods = mods;
+    }
+
+    static void recordClickEvent(int key, int action, int mods) {
+        std::unique_lock<std::mutex> _(eventQMutex);
+        eventQ.push_back({});
+        EV& back = eventQ.back();
+        back.sType = WindowEvent::WE_CLICK;
+        back.mouseKey = key;
+        back.mouseAction = action;
+        back.mouseMods = mods;
+    }
+
+    static void recordCursorEvent(double x, double y) {
+        std::unique_lock<std::mutex> _(eventQMutex);
+        eventQ.push_back({});
+        EV& back = eventQ.back();
+        back.sType = WindowEvent::WE_CURSOR;
+        back.mouseX = x;
+        back.mouseY = y;
+    }
+
+    static void recordScrollEvent(double x, double y) {
+        std::unique_lock<std::mutex> _(eventQMutex);
+        eventQ.push_back({});
+        EV& back = eventQ.back();
+        back.sType = WindowEvent::WE_SCROLL;
+        back.scrollX = x;
+        back.scrollY = y;
+    }
 
     int Game::start(void* hd, Window::CreationOptions* opt){
         if(window) {
@@ -65,11 +137,11 @@ namespace onart{
             return 1;
         }
 
-#if !BOOST_PLAT_ANDROID
-        //std::thread gamethread([](){
+#if !NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
+        std::thread gamethread([](){
 #endif
             for(;;_frame++){
-                window->pollEvents();
+                pollEvents();
                 if(window->windowShouldClose()) break;
                 std::chrono::duration<uint64_t, std::nano> longDt = std::chrono::steady_clock::now() - longTp;
 
@@ -83,12 +155,54 @@ namespace onart{
                 _dt = static_cast<float>(ddt);
                 _idt = static_cast<float>(iddt);
             }
-#if !BOOST_PLAT_ANDROID
-        //}); gamethread.join();
+#if !NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
+        });
+        while(!window->windowShouldClose()) { window->waitEvents(); }
+        gamethread.join();
 #endif
 
         finalize();
         return 0;
+    }
+
+    void Game::pollEvents(){
+#if NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
+        window->pollEvents();
+#else
+        eventQMutex.lock();
+        tempQ.swap(eventQ);
+        eventQMutex.unlock();
+        int sx = -1, sy = -1;
+        double cx = -1, cy = -1;
+        for(EV& ev: tempQ) {
+            switch(ev.sType){
+                case WindowEvent::WE_SIZE:
+                    sx = ev.sizeX;
+                    sy = ev.sizeY;
+                    break;
+                case WindowEvent::WE_KEYBOARD:
+                    Input::keyboard(ev.key, ev.scancode, ev.action, ev.mods);
+                    break;
+                case WindowEvent::WE_CLICK:
+                    Input::click(ev.mouseKey, ev.mouseAction, ev.mouseMods);
+                    break;
+                case WindowEvent::WE_CURSOR:
+                    cx = ev.mouseX;
+                    cy = ev.mouseY;
+                    break;
+                case WindowEvent::WE_SCROLL:
+                    // TODO. ev.scrollX, ev.scrollY
+                    break;
+            }
+        }
+        tempQ.clear();
+        if(sx != -1) {
+            windowResized(sx, sy);
+        }
+        if(cx != -1) {
+            Input::moveCursor(cx, cy);
+        }
+#endif
     }
 
     void Game::finalize(){
@@ -102,11 +216,19 @@ namespace onart{
 
     bool Game::init() {
         Audio::init();
+#if BOOST_PLAT_ANDROID
         window->clickCallback = Input::click;
         window->keyCallback = Input::keyboard;
         window->posCallback = Input::moveCursor;
         window->touchCallback = Input::touch;
         window->windowSizeCallback = windowResized;
+#else
+        window->clickCallback = recordClickEvent;
+        window->keyCallback = recordKeyEvent;
+        window->posCallback = recordCursorEvent;
+        window->windowSizeCallback = recordSizeEvent;
+        window->scrollCallback = recordScrollEvent;
+#endif
         auto rp2s = VkMachine::createRenderPass2Screen(nullptr, 1, "main");
         auto lo = VkMachine::createPipelineLayout(nullptr, 0, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, "test");
         VkVertexInputAttributeDescription desc[2];

@@ -322,27 +322,27 @@ namespace onart{
 namespace onart{
 
     /// @brief GLFW 이벤트 콜백과 사용자 지정 콜백을 연결합니다.
-    static void windowSizeCallback(GLFWwindow* window, int x, int y){
+    void Window::_sizeCallback(GLFWwindow* window, int x, int y){
         Window *w = (Window*)glfwGetWindowUserPointer(window);
         if(w->windowSizeCallback) w->windowSizeCallback(x, y);
     }
     /// @brief GLFW 이벤트 콜백과 사용자 지정 콜백을 연결합니다.
-    static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods){
+    void Window::_keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods){
         Window *w = (Window*)glfwGetWindowUserPointer(window);
         if(w->keyCallback) w->keyCallback(key, scancode, action, mods);
     }
     /// @brief GLFW 이벤트 콜백과 사용자 지정 콜백을 연결합니다.
-    static void mouseButtonCallback(GLFWwindow* window, int key, int action, int mods) {
+    void Window::_mouseButtonCallback(GLFWwindow* window, int key, int action, int mods) {
         Window *w = (Window*)glfwGetWindowUserPointer(window);
         if(w->clickCallback) w->clickCallback(key, action, mods);
     }
     /// @brief GLFW 이벤트 콜백과 사용자 지정 콜백을 연결합니다.
-    static void mousePosCallback(GLFWwindow* window, double x, double y){
+    void Window::_mousePosCallback(GLFWwindow* window, double x, double y){
         Window *w = (Window*)glfwGetWindowUserPointer(window);
         if(w->posCallback) w->posCallback(x, y);
     }
     /// @brief GLFW 이벤트 콜백과 사용자 지정 콜백을 연결합니다.
-    static void scrollCallback(GLFWwindow* window, double x, double y){
+    void Window::_scrollCallback(GLFWwindow* window, double x, double y){
         Window *w = (Window*)glfwGetWindowUserPointer(window);
         if(w->scrollCallback) w->scrollCallback(x, y);
     }
@@ -363,11 +363,11 @@ namespace onart{
         }
         GLFWwindow *gw = (GLFWwindow *)window;
         glfwSetWindowUserPointer(gw, this);
-        glfwSetFramebufferSizeCallback(gw, onart::windowSizeCallback);
-        glfwSetKeyCallback(gw, onart::keyCallback);
-        glfwSetMouseButtonCallback(gw, onart::mouseButtonCallback);
-        glfwSetCursorPosCallback(gw, onart::mousePosCallback);
-        glfwSetScrollCallback(gw, onart::scrollCallback);
+        glfwSetFramebufferSizeCallback(gw, _sizeCallback);
+        glfwSetKeyCallback(gw, _keyCallback);
+        glfwSetMouseButtonCallback(gw, _mouseButtonCallback);
+        glfwSetCursorPosCallback(gw, _mousePosCallback);
+        glfwSetScrollCallback(gw, _scrollCallback);
         glfwShowWindow(gw);
         // TODO:
         // glfwSetWindowFocusCallback PC/Android 활성/비활성.
@@ -407,6 +407,10 @@ namespace onart{
 
     void Window::pollEvents(){
         glfwPollEvents();
+    }
+
+    void Window::waitEvents() {
+        glfwWaitEvents();
     }
 
     void Window::getContentScale(float* x, float* y){
