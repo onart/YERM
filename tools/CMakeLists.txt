@@ -18,3 +18,5 @@ target_include_directories(img2ktx PUBLIC ../externals)
 target_link_libraries(img2ktx ktx)
 target_link_directories(img2ktx PUBLIC ../externals/ktx)
 
+#xxd
+add_executable(yrtxxd yrt_xxd.cpp)

@@ -57,7 +57,7 @@ namespace onart {
         friend class Game;
         public:
             /// @brief Vulkan 확인 계층을 사용하려면 이것을 활성화해 주세요. 사용하려면 Vulkan "SDK"가 컴퓨터에 깔려 있어야 합니다.
-            constexpr static bool USE_VALIDATION_LAYER = true;
+            constexpr static bool USE_VALIDATION_LAYER = false;
             /// @brief 그리기 대상입니다. 텍스처로 사용하거나 메모리 맵으로 데이터에 접근할 수 있습니다. 
             class RenderTarget;
             /// @brief 오프스크린용 렌더 패스입니다.

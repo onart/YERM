@@ -240,6 +240,22 @@ namespace onart{
         if(!_HAPP->destroyRequested) onart::onInput(_HAPP);
     }
 
+    void Window::waitEvents() {
+        int events;
+        android_poll_source* source;
+        int timeout = -1;
+        while(ALooper_pollAll(timeout, nullptr, &events, (void**)&source) >= 0) {
+            if(source != nullptr){
+                source->process(source->app, source);
+            }
+            if(_HAPP->destroyRequested){
+                break;
+            }
+            timeout = 0;
+        }
+        if(!_HAPP->destroyRequested) onart::onInput(_HAPP);
+    }
+
     bool Window::windowShouldClose(){
         return _HAPP->destroyRequested; // TODO: 화면 회전 시 액티비티가 파괴되고 재생성될 때, android_main 함수가 리턴하기 전까지 액티비티가 재생성되지 않음. 따라서 컨텍스트는 스택이 아닌 힙 또는 전역 범위에 생성되어 명시적 종료에 의해서만 해제되어야 함
     }

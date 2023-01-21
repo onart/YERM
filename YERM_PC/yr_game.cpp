@@ -19,8 +19,9 @@
 
 #include "logger.hpp"
 #include "yr_math.hpp"
-#include "yr_shadercompile.hpp"
 #include "yr_bits.hpp"
+
+#include "yr_constants.hpp"
 
 #include "../externals/boost/predef/platform.h"
 #include "../externals/boost/predef/compiler.h"
@@ -243,11 +244,8 @@ namespace onart{
         VkVertexInputAttributeDescription desc[2];
         using testv_t = VkMachine::Vertex<vec3, vec3>;
         testv_t::info(desc, 0);
-        std::vector<uint32_t> vec;
-        compile("../../../shaders/test.vert", shaderc_shader_kind::shaderc_glsl_vertex_shader,&vec); // 여기 때문에 모바일 상 테스트가 지금은 안 됨
-        auto vs = VkMachine::createShader(vec.data(), vec.size()*sizeof(vec[0]),"testv");
-        compile("../../../shaders/test.frag", shaderc_shader_kind::shaderc_glsl_fragment_shader,&vec);
-        auto fs = VkMachine::createShader(vec.data(), vec.size()*sizeof(vec[0]),"testf");
+        auto vs = VkMachine::createShader(TEST_VERT, sizeof(TEST_VERT),"testv");
+        auto fs = VkMachine::createShader(TEST_FRAG, sizeof(TEST_FRAG),"testf");
         VkMachine::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, "testpp");
         testv_t verts[3]{{{0,0,0},{1,0,0}},{{0,1,0},{0,0,1}},{{1,0,0},{0,1,0}}};
         VkMachine::createMesh(verts,sizeof(testv_t),3,nullptr,2,0,"testvb");

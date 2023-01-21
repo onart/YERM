@@ -14,6 +14,12 @@
 #ifndef __YR_CONSTANTS_HPP__
 #define __YR_CONSTANTS_HPP__
 
+#include <cstdint>
+#include "../shaders/testshader.txt"
+
+extern const uint32_t TEST_FRAG[78];
+extern const uint32_t TEST_VERT[238];
+
 namespace onart{
     /// @brief 엔진의 그래픽스 타입을 빌드 전에 지정합니다.
     enum class GRAPHICS_TYPE {
