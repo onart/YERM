@@ -232,10 +232,31 @@ namespace onart {
         }
     }
 
-    void VkMachine::createSwapchain(uint32_t width, uint32_t height){ // TODO: 안드로이드 대상에서는 이것 호출에서 처음 값을 유지하기
+    mat4 VkMachine::preTransform(){
+#if BOOST_PLAT_ANDROID
+        switch(singleton->surface.caps.currentTransform){            
+            case VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR:
+                return mat4::rotate(0, 0, PI<float> * 0.5f);
+            case VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR:
+                return mat4::rotate(0, 0, PI<float>);
+            case VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR:
+                return mat4::rotate(0, 0, PI<float> * 1.5f);
+            default:
+                return mat4();
+        }   
+#else
+        return mat4();
+#endif
+    }
+
+    void VkMachine::createSwapchain(uint32_t width, uint32_t height, Window* window){
         destroySwapchain();
         if(width == 0 || height == 0) { // 창 최소화 상태 등. VkMachine은 swapchain이 nullptr일 때 그것이 대상인 렌더패스를 사용할 수 없음 (그리기 호출 시 아무것도 하지 않음)
             return;
+        }
+        if(window) { // 안드로이드에서 홈키 누른 뒤로 surface lost 떠서 다시 안 그려지는 것 때문에
+            vkDestroySurfaceKHR(singleton->instance, singleton->surface.handle, nullptr);
+            window->createWindowSurface(singleton->instance, &singleton->surface.handle);
         }
         checkSurfaceHandle();
         VkSwapchainCreateInfoKHR scInfo{};
@@ -244,12 +265,21 @@ namespace onart {
         scInfo.minImageCount = std::min(3u, surface.caps.maxImageCount == 0 ? 3u : surface.caps.maxImageCount);
         scInfo.imageFormat = surface.format.format;
         scInfo.imageColorSpace = surface.format.colorSpace;
-        scInfo.imageExtent.width = std::clamp(width, surface.caps.minImageExtent.width, surface.caps.maxImageExtent.width);
-        scInfo.imageExtent.height = std::clamp(height, surface.caps.minImageExtent.height, surface.caps.maxImageExtent.height);
         scInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
         scInfo.imageArrayLayers = 1;
         scInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+#if BOOST_PLAT_ANDROID
+        // 아래처럼 currnetTransform을 주지 않으면 suboptimal이라는 문제가 생김. currentTransform을 적용하면 괜찮지만 응용단에서 최후에 회전을 추가로 가해야 함
         scInfo.preTransform = surface.caps.currentTransform; // IDENTITY: 1, 90: 2, 180: 4, 270: 8
+        if (scInfo.preTransform == VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR || scInfo.preTransform == VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR) {
+	        // Pre-rotation: always use native orientation i.e. if rotated, use width and height of identity transform
+	        std::swap(width, height);
+        }
+#else
+        scInfo.preTransform = VkSurfaceTransformFlagBitsKHR::VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+#endif
+        scInfo.imageExtent.width = std::clamp(width, surface.caps.minImageExtent.width, surface.caps.maxImageExtent.width);
+        scInfo.imageExtent.height = std::clamp(height, surface.caps.minImageExtent.height, surface.caps.maxImageExtent.height);
         scInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         scInfo.clipped = VK_TRUE;
         scInfo.oldSwapchain = VK_NULL_HANDLE; // 같은 표면에 대한 핸들은 올드로 사용할 수 없음
@@ -1725,6 +1755,10 @@ namespace onart {
     }
 
     void VkMachine::RenderPass::execute(RenderPass* other){
+        if(currentPass != pipelines.size() - 1){
+            LOGWITH("Renderpass not started. This message can be ignored safely if the rendering goes fine after now");
+            return;
+        }
         vkCmdEndRenderPass(cb);
         bound = nullptr;
         VkResult result;
@@ -1834,10 +1868,12 @@ namespace onart {
         pipelineLayouts.resize(this->targets.size() + 1, VK_NULL_HANDLE);
         setViewport(singleton->swapchain.extent.width, singleton->swapchain.extent.height, 0.0f, 0.0f);
         setScissor(singleton->swapchain.extent.width, singleton->swapchain.extent.height, 0, 0);
+        width = scissor.extent.width;
+        height = scissor.extent.height;
     }
 
     VkMachine::RenderPass2Screen::~RenderPass2Screen(){
-        for(VkFence& fence: fences) { vkDestroyFence(singleton->device, fence, nullptr); fence = nullptr; fence = VK_NULL_HANDLE; }
+        for(VkFence& fence: fences) { vkDestroyFence(singleton->device, fence, nullptr); fence = VK_NULL_HANDLE; }
         for(VkSemaphore& semaphore: acquireSm) { vkDestroySemaphore(singleton->device, semaphore, nullptr); semaphore = VK_NULL_HANDLE; }
         for(VkSemaphore& semaphore: drawSm) { vkDestroySemaphore(singleton->device, semaphore, nullptr); semaphore = VK_NULL_HANDLE; }
         for(VkFramebuffer& fb: fbs){ vkDestroyFramebuffer(singleton->device, fb, nullptr); }
@@ -1855,43 +1891,97 @@ namespace onart {
 
     bool VkMachine::RenderPass2Screen::reconstructFB(uint32_t width, uint32_t height){
         for(VkFramebuffer& fb: fbs) { vkDestroyFramebuffer(singleton->device, fb, nullptr); fb = VK_NULL_HANDLE; }
-        vkDestroyImageView(singleton->device, dsView, nullptr);
-        vmaDestroyImage(singleton->allocator, dsImage, dsAlloc);
-        bool useFinalDepth = dsView != VK_NULL_HANDLE;
-        dsView = VK_NULL_HANDLE;
-        dsImage = VK_NULL_HANDLE;
-        dsAlloc = nullptr;
+        const bool SHOULD_RECREATE_IMG = (this->width != width) || (this->height != height);
+        if(SHOULD_RECREATE_IMG){
+            this->width = width;
+            this->height = height;
+            vkDestroyImageView(singleton->device, dsView, nullptr);
+            vmaDestroyImage(singleton->allocator, dsImage, dsAlloc);
+            bool useFinalDepth = dsView != VK_NULL_HANDLE;
+            dsView = VK_NULL_HANDLE;
+            dsImage = VK_NULL_HANDLE;
+            dsAlloc = nullptr;
 
-        // ^^^ 스왑이 있으므로 위 파트는 이론상 없어도 알아서 해제되지만 있는 편이 메모리 때문에 더 좋을 것 같음
+            // ^^^ 스왑이 있으므로 위 파트는 이론상 없어도 알아서 해제되지만 있는 편이 메모리 때문에 더 좋을 것 같음
 
-        std::vector<RenderTargetType> types(targets.size());
-        struct bool8{bool b;};
-        std::vector<bool8> useDepth(targets.size());
-        for(uint32_t i = 0; i < targets.size(); i++){
-            types[i] = targets[i]->type;
-            useDepth[i].b = bool((int)targets[i]->type & 0b1000);
-            delete targets[i];
-        }
-        targets.clear();
-        RenderPass2Screen* newDat = singleton->createRenderPass2Screen(types.data(), pipelines.size(), "", useFinalDepth, (bool*)useDepth.data());
-        if(!newDat) {
-            this->~RenderPass2Screen();
-            return false;
-        }
-        // 얕은 복사
-        fbs.swap(newDat->fbs);
-        targets.swap(newDat->targets);
-        // 파이프라인과 레이아웃은 유지
+            std::vector<RenderTargetType> types(targets.size());
+            struct bool8{bool b;};
+            std::vector<bool8> useDepth(targets.size());
+            for(uint32_t i = 0; i < targets.size(); i++){
+                types[i] = targets[i]->type;
+                useDepth[i].b = bool((int)targets[i]->type & 0b1000);
+                delete targets[i];
+            }
+            targets.clear();
+            RenderPass2Screen* newDat = singleton->createRenderPass2Screen(types.data(), pipelines.size(), "", useFinalDepth, (bool*)useDepth.data());
+            if(!newDat) {
+                this->~RenderPass2Screen();
+                return false;
+            }
+            // 얕은 복사
+            fbs.swap(newDat->fbs);
+            targets.swap(newDat->targets);
+            // 파이프라인과 레이아웃은 유지
 #define SHALLOW_SWAP(a) std::swap(a, newDat->a)
-        SHALLOW_SWAP(dsImage);
-        SHALLOW_SWAP(dsView);
-        SHALLOW_SWAP(dsAlloc);
-        SHALLOW_SWAP(viewport);
-        SHALLOW_SWAP(scissor);
+            SHALLOW_SWAP(dsImage);
+            SHALLOW_SWAP(dsView);
+            SHALLOW_SWAP(dsAlloc);
+            SHALLOW_SWAP(viewport);
+            SHALLOW_SWAP(scissor);
 #undef SHALLOW_SWAP
-        singleton->finalPasses.erase("");
-        delete newDat; // 문제점: 의미없이 펜스, 세마포어 등이 생성되었다 없어짐
-        return true;
+            singleton->finalPasses.erase("");
+            delete newDat; // 문제점: 의미없이 펜스, 세마포어 등이 생성되었다 없어짐
+            return true;
+        }
+        else{ // 새 스왑체인으로 프레임버퍼만 재생성
+            fbs.resize(singleton->swapchain.imageView.size());
+            std::vector<VkImageView> ivs(pipelines.size()*4);
+            uint32_t totalAttachments = 0;
+            for(RenderTarget* targ: targets) {
+                if(targ->color1) {
+                    ivs.push_back(targ->color1->view);
+                    totalAttachments++;
+                    if(targ->color2) {
+                        ivs.push_back(targ->color2->view);
+                        totalAttachments++;
+                        if(targ->color3){
+                            ivs.push_back(targ->color3->view);
+                            totalAttachments++;
+                        }
+                    }
+                }
+                if(targ->depthstencil) {
+                    ivs.push_back(targ->depthstencil->view);
+                    totalAttachments++;
+                }
+            }
+            VkImageView& swapchainImageViewPlace = ivs[totalAttachments];
+            totalAttachments++;
+            ivs[totalAttachments] = dsView;
+            if(dsView) {
+                totalAttachments++;
+            }
+
+            VkFramebufferCreateInfo fbInfo{};
+            fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            fbInfo.attachmentCount = totalAttachments;
+            fbInfo.pAttachments = ivs.data();
+            fbInfo.renderPass = rp;
+            fbInfo.width = width;
+            fbInfo.height = height;
+            fbInfo.layers = 1;
+            uint32_t i = 0;
+            VkResult result;
+            for(VkFramebuffer& fb: fbs){
+                swapchainImageViewPlace = singleton->swapchain.imageView[i++];
+                if((result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
+                    LOGWITH("Failed to create framebuffer:",result,resultAsString(result));
+                    this->~RenderPass2Screen();
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 
     void VkMachine::RenderPass2Screen::setViewport(float width, float height, float x, float y, bool applyNow){
@@ -2080,6 +2170,10 @@ namespace onart {
     }
 
     void VkMachine::RenderPass2Screen::execute(RenderPass* other){
+        if(currentPass != pipelines.size() - 1){
+            LOGWITH("Renderpass not ready to execute. This message can be ignored safely if the rendering goes fine after now");
+            return;
+        }
         vkCmdEndRenderPass(cbs[currentCB]);
         bound = nullptr;
         VkResult result;
@@ -2111,12 +2205,12 @@ namespace onart {
         submitInfo.pSignalSemaphores = &drawSm[currentCB];
 
         if((result = vkResetFences(singleton->device, 1, &fences[currentCB])) != VK_SUCCESS){
-            LOGWITH("Failed to reset fence. waiting or other operations will play incorrect");
+            LOGWITH("Failed to reset fence. waiting or other operations will play incorrect:",result, resultAsString(result));
             return;
         }
 
         if ((result = vkQueueSubmit(singleton->graphicsQueue, 1, &submitInfo, fences[currentCB])) != VK_SUCCESS) {
-            LOGWITH("Failed to submit command buffer");
+            LOGWITH("Failed to submit command buffer:",result,resultAsString(result));
             return;
         }
 
@@ -2133,7 +2227,7 @@ namespace onart {
         currentPass = -1;
 
         if((result = vkQueuePresentKHR(singleton->presentQueue, &presentInfo)) != VK_SUCCESS){
-            LOGWITH("Failed to submit command present operation");
+            LOGWITH("Failed to submit command present operation:",result, resultAsString(result));
             return;
         }
     }
@@ -2744,7 +2838,7 @@ namespace onart {
         case VK_SUBOPTIMAL_KHR:
             return "swapchain suboptimal";
         case VK_ERROR_OUT_OF_DATE_KHR:
-            return "swapchain outof date";
+            return "swapchain out of date";
         case VK_ERROR_INCOMPATIBLE_DISPLAY_KHR:
             return "incompatible display";
         case VK_ERROR_VALIDATION_FAILED_EXT:

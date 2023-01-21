@@ -98,6 +98,8 @@ namespace onart {
                 USE_STENCIL = 0b10,
                 CULL_BACK = 0b100,
             };
+            /// @brief 스왑체인 회전 변동 관련 최적의 처리를 위해 응용단에서 추가로 가해야 할 회전입니다. PC 버전에서는 반드시 단위행렬이 리턴됩니다.
+            static mat4 preTransform();
             /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param fileName 파일 이름
             /// @param name 프로그램 내부에서 사용할 이름으로, 비워 두면 파일 이름을 그대로 사용합니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
@@ -237,7 +239,7 @@ namespace onart {
             /// @brief 창 표면 초기화 이후 호출되어 특성을 파악합니다.
             void checkSurfaceHandle();
             /// @brief 기존 스왑체인을 제거하고 다시 생성하며, 스왑체인에 대한 이미지뷰도 가져옵니다.
-            void createSwapchain(uint32_t width, uint32_t height);
+            void createSwapchain(uint32_t width, uint32_t height, Window* window = nullptr);
             /// @brief 기존 스왑체인과 관련된 모든 것을 해제합니다.
             void destroySwapchain();
             /// @brief 텍스처와 입력 첨부물에 대한 기술자 집합 레이아웃을 미리 만들어 둡니다.
@@ -496,6 +498,7 @@ namespace onart {
 
             uint32_t currentCB = 0;
             uint32_t recently = 3;
+            uint32_t width, height;
             
             int currentPass = -1;
             uint32_t imgIndex;

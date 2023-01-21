@@ -45,10 +45,12 @@ namespace onart{
     Window* Game::window = nullptr;
     void* Game::hd = nullptr;
 
-    /// @brief true인 경우 메인 스레드에서 창 이벤트를 폴링하고 메인 스레드에서 게임 루프를 수행합니다.
-    /// false인 경우 메인 스레드에서 창 이벤트를 지속적으로 쌓고 별도의 스레드에서 이를 처리하며 게임 루프를 수행합니다.
-    /// 창을 잡거나 크기를 변경하는 중에도 게임 루프가 지속되었으면 좋겠다면 이 값은 false로 두고, 그럴 필요가 없으면 true를 줍니다. 안드로이드 대상으로는 true인 채로 두는 것이 좋습니다.
-    constexpr bool NO_NEED_TO_USE_SEPARATE_EVENT_THREAD = BOOST_PLAT_ANDROID;
+#ifndef YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
+#define YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD (BOOST_PLAT_ANDROID)
+#else
+#undef YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
+#define YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD 1
+#endif
 
     static std::mutex eventQMutex;
 
@@ -138,7 +140,7 @@ namespace onart{
             return 1;
         }
 
-#if !NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
+#if !YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
         std::thread gamethread([](){
 #endif
             for(;;_frame++){
@@ -165,7 +167,7 @@ namespace onart{
                     rp2s->execute();
                 }
             }
-#if !NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
+#if !YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
         });
         while(!window->windowShouldClose()) { window->waitEvents(); }
         gamethread.join();
@@ -176,7 +178,7 @@ namespace onart{
     }
 
     void Game::pollEvents(){
-#if NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
+#if YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
         window->pollEvents();
 #else
         eventQMutex.lock();
@@ -226,7 +228,7 @@ namespace onart{
 
     bool Game::init() {
         Audio::init();
-#if BOOST_PLAT_ANDROID
+#if YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
         window->clickCallback = Input::click;
         window->keyCallback = Input::keyboard;
         window->posCallback = Input::moveCursor;
@@ -253,7 +255,11 @@ namespace onart{
     }
 
     void Game::windowResized(int x, int y){
+#if BOOST_PLAT_ANDROID
+        vk->createSwapchain(x, y, window);
+#else
         vk->createSwapchain(x, y);
+#endif
     }
 
     void Game::exit(){

@@ -81,9 +81,9 @@ target_link_libraries( # Specifies the target library.
         android
         vulkan
         game-activity::game-activity
-        games-frame-pacing::swappy_static
-        games-performance-tuner::tuningfork_static
-        oboe::oboe
+        #games-frame-pacing::swappy_static
+        #games-performance-tuner::tuningfork_static
+        #oboe::oboe
         ktx
         # Links the target library to the log library
         # included in the NDK.
