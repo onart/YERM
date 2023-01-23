@@ -246,8 +246,8 @@ namespace onart{
         VkVertexInputAttributeDescription desc[2];
         using testv_t = VkMachine::Vertex<vec3, vec3>;
         testv_t::info(desc, 0);
-        auto vs = VkMachine::createShader(TEST_VERT, sizeof(TEST_VERT),"testv");
-        auto fs = VkMachine::createShader(TEST_FRAG, sizeof(TEST_FRAG),"testf");
+        auto vs = VkMachine::createShader(const_cast<uint32_t*>(TEST_VERT), sizeof(TEST_VERT),"testv");
+        auto fs = VkMachine::createShader(const_cast<uint32_t*>(TEST_FRAG), sizeof(TEST_FRAG),"testf");
         VkMachine::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, "testpp");
         testv_t verts[3]{{{0,0,0},{1,0,0}},{{0,1,0},{0,0,1}},{{1,0,0},{0,1,0}}};
         VkMachine::createMesh(verts,sizeof(testv_t),3,nullptr,2,0,"testvb");
