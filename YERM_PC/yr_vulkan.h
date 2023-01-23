@@ -103,8 +103,7 @@ namespace onart {
             /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param fileName 파일 이름
             /// @param name 프로그램 내부에서 사용할 이름으로, 비워 두면 파일 이름을 그대로 사용합니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
-            /// @param ubtcs1 품질이 낮아져도 관계 없는데 메모리를 아끼고 싶을 때 true를 줍니다. 원본 파일이 이미 KTX2 - BasisU 형식인 경우 무시됩니다.
-            static pTexture createTexture(const string128& fileName, const string128& name = "", bool ubtcs1 = false);
+            static pTexture createTexture(const string128& fileName, const string128& name = "");
             /// @brief 메모리 상의 ktx2 파일을 통해 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param mem 이미지 시작 주소
             /// @param size mem 배열의 길이(바이트)

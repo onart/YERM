@@ -193,6 +193,10 @@ namespace onart{
         engine = nullptr;
     }
 
+    void Audio::setMasterVolume(float f) {
+        master = std::clamp(f, 0.0f, 1.0f);
+    }
+
 #define _HSTBV reinterpret_cast<stb_vorbis*>(source)
 
     pAudioSource Audio::Source::load(const string128& path, const string128& name) {

@@ -276,17 +276,6 @@ namespace onart{
             AAsset_read(asset, buffer->data(), len);
             AAsset_close(asset);
         }
-#elif BOOST_COMP_MSVC
-        FILE* fp;
-        fopen_s(&fp, fileName, "rb");
-        if (fp) {
-            fseek(fp, 0, SEEK_END);
-            int len = ftell(fp);
-            buffer->resize(len);
-            fseek(fp, 0, SEEK_SET);
-            fread_s(buffer->data(), len, 1, len, fp);
-            fclose(fp);
-        }
 #else
         FILE* fp = fopen(fileName, "rb");
         if(fp) {

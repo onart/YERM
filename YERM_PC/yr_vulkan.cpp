@@ -963,7 +963,7 @@ namespace onart {
         return textures[name] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0);
     }
 
-    VkMachine::pTexture VkMachine::createTexture(const string128& fileName, const string128& name, bool ubtcs1){
+    VkMachine::pTexture VkMachine::createTexture(const string128& fileName, const string128& name){
         const string128& _name = name.size() == 0 ? fileName : name;
         pTexture ret(std::move(getTexture(_name)));
         if(ret) return ret;
