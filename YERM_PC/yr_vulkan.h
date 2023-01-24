@@ -102,13 +102,19 @@ namespace onart {
             static mat4 preTransform();
             /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param fileName 파일 이름
+            /// @param nChannels 채널 수(색상)
+            /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
+            /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
             /// @param name 프로그램 내부에서 사용할 이름으로, 비워 두면 파일 이름을 그대로 사용합니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
-            static pTexture createTexture(const string128& fileName, const string128& name = "");
+            static pTexture createTexture(const string128& fileName, uint32_t nChannels, bool srgb = true, bool hq = true, const string128& name = "");
             /// @brief 메모리 상의 ktx2 파일을 통해 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param mem 이미지 시작 주소
             /// @param size mem 배열의 길이(바이트)
+            /// @param nChannels 채널 수(색상)
             /// @param name 프로그램 내부에서 사용할 이름입니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
-            static pTexture createTexture(const uint8_t* mem, size_t size, const string128& name);
+            /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
+            /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
+            static pTexture createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, const string128& name, bool srgb = true, bool hq = true);
             /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다. 이것을 해제하는 수단은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
             /// @param width 가로 길이(px).
             /// @param height 세로 길이(px).
@@ -214,6 +220,8 @@ namespace onart {
             static pTexture getTexture(const string128& name);
             /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pMesh getMesh(const string16& name);
+            /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
+            inline static bool isSurfaceSRGB(){ return singleton->surface.format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;}
             /// @brief Vulkan 인스턴스를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
             inline static VkInstance getInstance() { return singleton->instance; }
             /// @brief Vulkan 물리 장치를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
@@ -222,6 +230,10 @@ namespace onart {
             inline static VkDevice getDevice() { return singleton->device; }
             /// @brief Vma 할당기를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
             inline static VmaAllocator getAllocator() { return singleton->allocator; }
+            /// @brief 주어진 바인딩 번호의 텍스처 기술자 집합(combined sampler) 레이아웃을 리턴합니다.
+            inline static VkDescriptorSetLayout getTextureLayout(uint32_t binding) { assert(binding < 4); return singleton->textureLayout[binding]; }
+            /// @brief 주어진 바인딩 번호의 입력 첨부물 기술자 집합 레이아웃을 리턴합니다.
+            inline static VkDescriptorSetLayout getInputAttachmentLayout(uint32_t binding) { assert(binding < 4); return singleton->inputAttachmentLayout[binding]; }
         private:
             /// @brief 기본 Vulkan 컨텍스트를 생성합니다. 이 객체를 생성하면 기본적으로 인스턴스, 물리 장치, 가상 장치, 창 표면이 생성됩니다.
             VkMachine(Window*);
@@ -250,7 +262,7 @@ namespace onart {
             /// @brief 세마포어를 생성합니다. (해제는 알아서)
             VkSemaphore createSemaphore();
             /// @brief ktxTexture2 객체로 텍스처를 생성합니다.
-            pTexture createTexture(void* ktxObj, const string128& name);
+            pTexture createTexture(void* ktxObj, const string128& name, uint32_t nChannels, bool srgb, bool hq);
             /// @brief vulkan 객체를 없앱니다.
             void free();
             ~VkMachine();
@@ -355,7 +367,7 @@ namespace onart {
             /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
             /// @param pos 바인드할 set 번호
             /// @param tx 바인드할 텍스처
-            void bind(uint32_t pos, Texture* tx);
+            void bind(uint32_t pos, const pTexture& tx);
             /// @brief 주어진 렌더 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다. 이 패스의 프레임버퍼에서 사용 중인 렌더타겟은 사용할 수 없습니다.
             /// @param pos 바인드할 set 번호
             /// @param target 바인드할 타겟
@@ -437,7 +449,7 @@ namespace onart {
             /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
             /// @param pos 바인드할 set 번호
             /// @param tx 바인드할 텍스처
-            void bind(uint32_t pos, Texture* tx);
+            void bind(uint32_t pos, const pTexture& tx);
             /// @brief 주어진 렌더 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다. 이 패스의 프레임버퍼에서 사용 중인 렌더타겟은 (어차피 접근도 불가능하지만) 사용할 수 없습니다.
             /// @param pos 바인드할 set 번호
             /// @param target 바인드할 타겟

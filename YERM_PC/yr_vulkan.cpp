@@ -41,11 +41,11 @@ namespace onart {
     /// @brief 명령 풀을 생성합니다.
     static VkCommandPool createCommandPool(VkDevice, int qIndex);
     /// @brief 이미지로부터 뷰를 생성합니다.
-    static VkImageView createImageView(VkDevice, VkImage, VkImageViewType, VkFormat, int, int, VkImageAspectFlags);
+    static VkImageView createImageView(VkDevice, VkImage, VkImageViewType, VkFormat, int, int, VkImageAspectFlags, VkComponentMapping={});
     /// @brief 주어진 만큼의 기술자 집합을 할당할 수 있는 기술자 풀을 생성합니다.
     static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t samplerLimit = 256, uint32_t dynUniLimit = 8, uint32_t uniLimit = 16, uint32_t intputAttachmentLimit = 16);
     /// @brief 주어진 기반 형식과 아귀가 맞는, 현재 장치에서 사용 가능한 압축 형식을 리턴합니다.
-    static VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, VkFormat base, bool hq = true, VkImageCreateFlagBits flags = VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT);
+    static VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, uint32_t nChannels, bool srgb, bool hq, VkImageCreateFlagBits flags);
     /// @brief 파이프라인을 주어진 옵션에 따라 생성합니다.
     static VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, VkRenderPass pass, uint32_t subpass, uint32_t flags, const uint32_t OPT_COLOR_COUNT, const bool OPT_USE_DEPTHSTENCIL, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkStencilOpState* front, VkStencilOpState* back);
     /// @brief VkResult를 스트링으로 표현합니다. 리턴되는 문자열은 텍스트(코드) 영역에 존재합니다.
@@ -370,6 +370,7 @@ namespace onart {
         for(auto& pp: pipelines) { vkDestroyPipeline(device, pp.second, nullptr); }
         for(auto& pp: pipelineLayouts) { vkDestroyPipelineLayout(device, pp.second, nullptr); }
 
+        textures.clear();
         meshes.clear();
         pipelines.clear();
         pipelineLayouts.clear();
@@ -753,14 +754,14 @@ namespace onart {
         return singleton->shaders[name] = ret;
     }
 
-    VkMachine::pTexture VkMachine::createTexture(void* ktxObj, const string128& name){
+    VkMachine::pTexture VkMachine::createTexture(void* ktxObj, const string128& name, uint32_t nChannels, bool srgb, bool hq){
         ktxTexture2* texture = reinterpret_cast<ktxTexture2*>(ktxObj);
         if (texture->numLevels == 0) return pTexture();
         VkFormat availableFormat;
         ktx_error_code_e k2result;
         if(ktxTexture2_NeedsTranscoding(texture)){
             ktx_transcode_fmt_e tf;
-            switch (availableFormat = textureFormatFallback(physicalDevice.card, texture->baseWidth, texture->baseHeight, (VkFormat)texture->vkFormat, texture->isCubemap ? VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : (VkImageCreateFlagBits)0))
+            switch (availableFormat = textureFormatFallback(physicalDevice.card, texture->baseWidth, texture->baseHeight, nChannels, srgb, hq, texture->isCubemap ? VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : (VkImageCreateFlagBits)0))
             {
             case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
                 tf = KTX_TTF_ASTC_4x4_RGBA;
@@ -919,7 +920,6 @@ namespace onart {
         viewInfo.subresourceRange = imgBarrier.subresourceRange;
         ktxTexture_Destroy(ktxTexture(texture));
 
-        result = vkCreateImageView(device, &viewInfo, nullptr, &newView);
         if((result = vkCreateImageView(device, &viewInfo, nullptr, &newView)) != VK_SUCCESS){
             LOGWITH("Failed to create image view:",result,resultAsString(result));
             return pTexture();
@@ -963,7 +963,11 @@ namespace onart {
         return textures[name] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0);
     }
 
-    VkMachine::pTexture VkMachine::createTexture(const string128& fileName, const string128& name){
+    VkMachine::pTexture VkMachine::createTexture(const string128& fileName, uint32_t nChannels, bool srgb, bool hq, const string128& name){
+        if(nChannels > 4 || nChannels == 0) {
+            LOGWITH("Invalid channel count. nChannels must be 1~4");
+            return pTexture();
+        }
         const string128& _name = name.size() == 0 ? fileName : name;
         pTexture ret(std::move(getTexture(_name)));
         if(ret) return ret;
@@ -975,10 +979,14 @@ namespace onart {
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }
-        return singleton->createTexture(texture, _name);
+        return singleton->createTexture(texture, _name, nChannels, srgb, hq);
     }
 
-    VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, const string128& name){
+    VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, const string128& name, bool srgb, bool hq){
+        if(nChannels > 4 || nChannels == 0) {
+            LOGWITH("Invalid channel count. nChannels must be 1~4");
+            return pTexture();
+        }
         pTexture ret(std::move(getTexture(name)));
         if(ret) return ret;
         ktxTexture2* texture;
@@ -988,7 +996,7 @@ namespace onart {
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }
-        return singleton->createTexture(texture, name);
+        return singleton->createTexture(texture, name, nChannels, srgb, hq);
     }
 
     VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding):img(img), view(view), alloc(alloc), dset(dset), binding(binding){ }
@@ -1172,7 +1180,7 @@ namespace onart {
             arr[colorCount].format = VkFormat::VK_FORMAT_D24_UNORM_S8_UINT;
             arr[colorCount].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
             arr[colorCount].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            arr[colorCount].storeOp = sampled || mapped ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE; // 그림자맵에서야 필요하고 그 외에는 필요없음
+            arr[colorCount].storeOp = (sampled || mapped) ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE; // 그림자맵에서야 필요하고 그 외에는 필요없음
             arr[colorCount].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             arr[colorCount].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
             arr[colorCount].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -1712,7 +1720,7 @@ namespace onart {
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &ub->dset, ub->isDynamic, &off);
     }
 
-    void VkMachine::RenderPass::bind(uint32_t pos, Texture* tx) {
+    void VkMachine::RenderPass::bind(uint32_t pos, const pTexture& tx) {
         if(currentPass == -1){
             LOGWITH("Invalid call: render pass not begun");
             return;
@@ -2057,7 +2065,7 @@ namespace onart {
         vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &ub->dset, ub->isDynamic, &off);
     }
 
-    void VkMachine::RenderPass2Screen::bind(uint32_t pos, Texture* tx) {
+    void VkMachine::RenderPass2Screen::bind(uint32_t pos, const pTexture& tx) {
         if(currentPass == -1){
             LOGWITH("Invalid call: render pass not begun");
             return;
@@ -2585,7 +2593,7 @@ namespace onart {
         return ret;
     }
 
-    VkImageView createImageView(VkDevice device, VkImage image, VkImageViewType type, VkFormat format, int levelCount, int layerCount, VkImageAspectFlags aspect){
+    VkImageView createImageView(VkDevice device, VkImage image, VkImageViewType type, VkFormat format, int levelCount, int layerCount, VkImageAspectFlags aspect, VkComponentMapping swizzle){
         VkImageViewCreateInfo ivInfo{};
         ivInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         ivInfo.format = format;
@@ -2595,6 +2603,7 @@ namespace onart {
         ivInfo.subresourceRange.baseArrayLayer = 0;
         ivInfo.subresourceRange.layerCount = layerCount;
         ivInfo.subresourceRange.levelCount = levelCount;
+        ivInfo.components = swizzle;
 
         VkImageView ret;
         VkResult result;
@@ -2646,68 +2655,76 @@ namespace onart {
             (props.maxExtent.height >= y);
     }
 
-    VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, VkFormat base, bool hq, VkImageCreateFlagBits flags) {
+    VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, uint32_t nChannels, bool srgb, bool hq, VkImageCreateFlagBits flags) {
     #define CHECK_N_RETURN(f) if(isThisFormatAvailable(physicalDevice,f,x,y,flags)) return f
-        switch (base)
+        switch (nChannels)
         {
-        case VK_FORMAT_R8G8B8A8_UINT:
-        case VK_FORMAT_R8G8B8A8_UNORM:
-            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
-            if(hq) return base;
-            CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC3_UNORM_BLOCK);
-            break;
-        case VK_FORMAT_R8G8B8A8_SRGB:
+        case 4:
+        if(srgb){
             CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
-            if(hq) return base;
+            if(hq) return VK_FORMAT_R8G8B8A8_SRGB;
             CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC3_SRGB_BLOCK);
-            break;
-        case VK_FORMAT_R8G8B8_UINT:
-        case VK_FORMAT_R8G8B8_UNORM:
+            return VK_FORMAT_R8G8B8A8_SRGB;
+        }
+        else{
             CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
-            if(hq) return base;
-            CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC1_RGB_UNORM_BLOCK);
+            if(hq) return VK_FORMAT_R8G8B8A8_UNORM;
+            CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC3_UNORM_BLOCK);
+            return VK_FORMAT_R8G8B8A8_UNORM;
+        }
             break;
-        case VK_FORMAT_R8G8B8_SRGB:
+        case 3:
+        if(srgb){
             CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
-            if(hq) return base;
+            if(hq) return VK_FORMAT_R8G8B8_SRGB;
             CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC1_RGB_SRGB_BLOCK);
-            break;
-        case VK_FORMAT_R8G8_UINT:
-        case VK_FORMAT_R8G8_UNORM:
+            return VK_FORMAT_R8G8B8_SRGB;
+        }
+        else{
             CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
-            if(hq) return base;
+            if(hq) return VK_FORMAT_R8G8B8_UNORM;
+            CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC1_RGB_UNORM_BLOCK);
+            return VK_FORMAT_R8G8B8_UNORM;
+        }
+        case 2:
+        if(srgb){
+            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
+            return VK_FORMAT_R8G8_SRGB;
+        }
+        else{
+            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
+            CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
+            if(hq) return VK_FORMAT_R8G8_UNORM;
             CHECK_N_RETURN(VK_FORMAT_EAC_R11G11_UNORM_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC5_UNORM_BLOCK);
-            break;
-        case VK_FORMAT_R8G8_SRGB:
+            return VK_FORMAT_R8G8_UNORM;
+        }
+        case 1:
+        if(srgb){
             CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
-            break;
-        case VK_FORMAT_R8_UINT:
-        case VK_FORMAT_R8_UNORM:
+            return VK_FORMAT_R8_SRGB;
+        }
+        else{
             CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
-            if(hq) return base;
+            if(hq) return VK_FORMAT_R8_UNORM;
             CHECK_N_RETURN(VK_FORMAT_EAC_R11_UNORM_BLOCK);
             CHECK_N_RETURN(VK_FORMAT_BC4_UNORM_BLOCK);
-            break;
-        case VK_FORMAT_R8_SRGB:
-            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
-            break;
-        default:
-            break;
+            return VK_FORMAT_R8_UNORM;
         }
-        return base;
+        default:
+            return VK_FORMAT_UNDEFINED;
+        }
     #undef CHECK_N_RETURN
     }
 

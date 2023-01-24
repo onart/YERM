@@ -19,6 +19,7 @@
 #include <iostream>
 #include <string>
 #include <cstring>
+#include <algorithm>
 
 namespace onart{
     /// @brief 길이가 한정되었지만 모든 내용이 스택 상에 배치되며 C++ basic_string과 호환됩니다.
@@ -30,14 +31,14 @@ namespace onart{
             /// @brief 빈 문자열을 생성합니다.
             inline BasicStackString():_size(0) { data[0]=0; }
             /// @brief 고정 크기 배열로부터 문자를 생성합니다.
-            template<uint8_t N> inline BasicStackString(const T (&literal)[N]):_size(N) { 
+            template<uint8_t N> inline BasicStackString(const T (&literal)[N]):_size(N - 1) { 
                 static_assert((size_t)N < (size_t)CAPACITY - 1, "The given array is bigger than capacity.");
                 memcpy(data, literal, sizeof(T)*N);
                 data[N] = 0;
             }
             /// @brief 다른 문자열로부터 복사 생성합니다. 길이가 넘치면 잘립니다.
-            template<uint8_t N> inline BasicStackString(const BasicStackString<T, N>& other):_size(std::min(CAPACITY-1,other._size)){
-                memcpy(data, other, _size * sizeof(T));
+            template<uint8_t N> inline BasicStackString(const BasicStackString<T, N>& other):_size(std::min((size_t)CAPACITY-1,other.size())){
+                memcpy(data, other.begin(), _size * sizeof(T));
                 data[_size] = 0;
             }
             /// @brief 다른 문자열로부터 복사 생성합니다.

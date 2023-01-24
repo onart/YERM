@@ -159,10 +159,12 @@ namespace onart{
                 _idt = static_cast<float>(iddt);
                 auto rp2s = VkMachine::getRenderPass2Screen("main");
                 auto vb = VkMachine::getMesh("testvb");
+                auto tx = VkMachine::getTexture("tex.ktx2");
                 float pushed = std::abs(std::sin((double)_tp * 0.000000001));
                 if(vk->swapchain.handle){
                     rp2s->start();
                     rp2s->push(&pushed,0,4);
+                    rp2s->bind(0, tx);
                     rp2s->invoke(vb);
                     rp2s->execute();
                 }
@@ -242,15 +244,18 @@ namespace onart{
         window->scrollCallback = recordScrollEvent;
 #endif
         auto rp2s = VkMachine::createRenderPass2Screen(nullptr, 1, "main");
-        auto lo = VkMachine::createPipelineLayout(nullptr, 0, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, "test");
+        VkDescriptorSetLayout texLayout = VkMachine::getTextureLayout(0);
+        auto lo = VkMachine::createPipelineLayout(&texLayout, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, "test");
         VkVertexInputAttributeDescription desc[2];
-        using testv_t = VkMachine::Vertex<vec3, vec3>;
+        using testv_t = VkMachine::Vertex<vec3, vec2>;
         testv_t::info(desc, 0);
         auto vs = VkMachine::createShader(TEST_VERT, sizeof(TEST_VERT),"testv");
         auto fs = VkMachine::createShader(TEST_FRAG, sizeof(TEST_FRAG),"testf");
         VkMachine::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, "testpp");
-        testv_t verts[3]{{{0,0,0},{1,0,0}},{{0,1,0},{0,0,1}},{{1,0,0},{0,1,0}}};
-        VkMachine::createMesh(verts,sizeof(testv_t),3,nullptr,2,0,"testvb");
+        testv_t verts[]{{{-1,-1,0},{0,0}},{{-1,1,0},{0,1}},{{1,-1,0},{1,0}},{{1,1,0},{1,1}}};
+        uint16_t inds[]{0,1,2,2,1,3};
+        VkMachine::createMesh(verts,sizeof(testv_t),4,inds,2,6,"testvb");
+        VkMachine::createTexture(TEX0, sizeof(TEX0), 4, "tex.ktx2", VkMachine::isSurfaceSRGB());
         return true;
     }
 
