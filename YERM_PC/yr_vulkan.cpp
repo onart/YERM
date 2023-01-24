@@ -1002,6 +1002,26 @@ namespace onart {
         return singleton->textureLayout[binding];
     }
 
+    void VkMachine::Texture::collect(bool removeUsing) {
+        if(removeUsing) {
+            singleton->textures.clear();
+        }
+        else{
+            for(auto it = singleton->textures.cbegin(); it != singleton->textures.cend();){
+                if(it->second.use_count() == 1){
+                    singleton->textures.erase(it++);
+                }
+                else{
+                    ++it;
+                }
+            }
+        }
+    }
+
+    void VkMachine::Texture::drop(const string16& name){
+        singleton->textures.erase(name);
+    }
+
     VkMachine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil, bool sampled, bool mmap, VkDescriptorSet* dsets)
     :type(type), width(width), height(height), color1(color1), color2(color2), color3(color3), depthstencil(depthstencil), sampled(sampled), mapped(mmap){
         int nim=0;
@@ -1569,6 +1589,26 @@ namespace onart {
         std::memcpy((uint8_t*)vmap + ioff + offset, input, size);
     }
 
+    void VkMachine::Mesh::collect(bool removeUsing) {
+        if(removeUsing) {
+            singleton->meshes.clear();
+        }
+        else{
+            for(auto it = singleton->meshes.cbegin(); it != singleton->meshes.cend();){
+                if(it->second.use_count() == 1){
+                    singleton->meshes.erase(it++);
+                }
+                else{
+                    ++it;
+                }
+            }
+        }
+    }
+
+    void VkMachine::Mesh::drop(const string16& name){
+        singleton->meshes.erase(name);
+    }
+
     VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount): rp(rp), fb(fb), stageCount(stageCount), pipelines(stageCount), targets(stageCount){
         fence = singleton->createFence(true);
         semaphore = singleton->createSemaphore();
@@ -1667,6 +1707,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
+        ub->sync();
         uint32_t off = ub->offset(ubPos);
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &ub->dset, ub->isDynamic, &off);
     }
@@ -2011,6 +2052,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
+        ub->sync();
         uint32_t off = ub->offset(ubPos);
         vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &ub->dset, ub->isDynamic, &off);
     }
@@ -2280,16 +2322,20 @@ namespace onart {
 
     void VkMachine::UniformBuffer::update(const void* input, uint32_t index, uint32_t offset, uint32_t size){
         std::memcpy(&staged[index * individual + offset], input, size);
+        shouldSync = true;
     }
 
     void VkMachine::UniformBuffer::sync(){
+        if(!shouldSync) return;
         std::memcpy(mmap, staged.data(), staged.size());
         vmaInvalidateAllocation(singleton->allocator, alloc, 0, VK_WHOLE_SIZE);
         vmaFlushAllocation(singleton->allocator, alloc, 0, VK_WHOLE_SIZE);
+        shouldSync = false;
     }
 
     void VkMachine::UniformBuffer::resize(uint32_t size) {
         if(!isDynamic || size == length) return;
+        shouldSync = true;
         staged.resize(individual * size);
         if(size > length) {
             for(uint32_t i = length; i < size; i++){

@@ -16,8 +16,8 @@
 
 #include <cstdint>
 
-extern const volatile uint32_t TEST_FRAG[78];
-extern const volatile uint32_t TEST_VERT[238];
+extern const uint32_t TEST_FRAG[78];
+extern const uint32_t TEST_VERT[238];
 
 namespace onart{
     /// @brief 엔진의 그래픽스 타입을 빌드 전에 지정합니다.

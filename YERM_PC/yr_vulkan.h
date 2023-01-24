@@ -509,6 +509,11 @@ namespace onart {
         friend class VkMachine;
         friend class RenderPass;
         public:
+            /// @brief 사용하지 않는 텍스처 데이터를 정리합니다.
+            /// @param removeUsing 사용하는 텍스처 데이터도 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getTexture로 찾을 수 없습니다.)
+            static void collect(bool removeUsing = false);
+            /// @brief 주어진 이름의 텍스처 데이터를 내립니다. 사용하고 있는 텍스처 데이터는 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getTexture로 찾을 수 없습니다.)
+            static void drop(const string16& name);
         protected:
             Texture(VkImage img, VkImageView imgView, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding);
             VkDescriptorSetLayout getLayout();
@@ -524,6 +529,11 @@ namespace onart {
     class VkMachine::Mesh{
         friend class VkMachine;
         public:
+            /// @brief 사용하지 않는 메시 데이터를 정리합니다.
+            /// @param removeUsing 사용하는 메시 데이터도 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getMesh로 찾을 수 없습니다.)
+            static void collect(bool removeUsing = false);
+            /// @brief 주어진 이름의 메시 데이터를 내립니다. 사용하고 있는 메시 데이터는 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getMesh로 찾을 수 없습니다.)
+            static void drop(const string16& name);
             /// @brief 메모리 맵을 사용하도록 생성된 객체에 대하여 정점 속성 데이터를 업데이트합니다. 그 외의 경우 아무 동작도 하지 않습니다.
             /// @param input 입력 데이터
             /// @param offset 기존 데이터에서 수정할 시작점(바이트)입니다. (입력 데이터에서의 오프셋이 아닙니다. 0이 정점 버퍼의 시작점입니다.)
@@ -547,6 +557,7 @@ namespace onart {
     class VkMachine::UniformBuffer{
         friend class VkMachine;
         friend class RenderPass;
+        friend class RenderPass2Screen;
         public:
             /// @brief 동적 공유 버퍼에 한하여 버퍼 원소 수를 주어진 만큼으로 조정합니다. 기존 데이터 중 주어진 크기 이내에 있는 것은 유지됩니다. 단, 어지간해서는 이 함수를 직/간접적으로 호출할 일이 없도록 첫 생성 시 크기(매개변수 length)를 적절히 마련합시다.
             void resize(uint32_t size);
@@ -571,6 +582,7 @@ namespace onart {
             VkBuffer buffer = VK_NULL_HANDLE;
             VmaAllocation alloc = nullptr;
             const bool isDynamic;
+            bool shouldSync = false;
             uint32_t binding;
             const uint32_t individual; // 동적 공유 버퍼인 경우 (버퍼 업데이트를 위한) 개별 성분의 크기
             uint32_t length;
@@ -644,11 +656,12 @@ namespace onart {
         /// @brief 정점 속성 바인딩을 받아옵니다.
         /// @param vattrs 출력 위치
         /// @param binding 바인딩 번호
+        /// @param locationPlus 셰이더 내의 location이 시작할 번호
         template<unsigned LOCATION = 0>
-        inline static constexpr void info(VkVertexInputAttributeDescription* vattrs, uint32_t binding = 0){
+        inline static constexpr void info(VkVertexInputAttributeDescription* vattrs, uint32_t binding = 0, uint32_t locationPlus = 0){
             using A_TYPE = std::remove_reference_t<decltype(Vertex().get<LOCATION>())>;
             vattrs->binding = binding;
-            vattrs->location = LOCATION;
+            vattrs->location = LOCATION + locationPlus;
             vattrs->format = getFormat<A_TYPE>();
             vattrs->offset = ftuple<FATTR, ATTR...>::template offset<LOCATION>();
             if constexpr(LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(vattrs + 1, binding);
