@@ -160,10 +160,15 @@ namespace onart{
                 auto rp2s = VkMachine::getRenderPass2Screen("main");
                 auto vb = VkMachine::getMesh("testvb");
                 auto tx = VkMachine::getTexture("tex.ktx2");
+                int x, y;
+                window->getFramebufferSize(&x, &y);
+                float aspect = (float)x / y;
                 float pushed = std::abs(std::sin((double)_tp * 0.000000001));
+                mat4 rot = VkMachine::preTransform() * mat4(1,0,0,0,0,aspect,0,0,0,0,1,0,0,0,0,1) * mat4::rotate(0,0,(double)_tp * 0.000000001);
                 if(vk->swapchain.handle){
                     rp2s->start();
-                    rp2s->push(&pushed,0,4);
+                    rp2s->push(&rot, 0, 64);
+                    rp2s->push(&pushed,64,68);
                     rp2s->bind(0, tx);
                     rp2s->invoke(vb);
                     rp2s->execute();

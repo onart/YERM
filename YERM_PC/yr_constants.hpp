@@ -16,8 +16,8 @@
 
 #include <cstdint>
 
-extern const uint32_t TEST_FRAG[188];
-extern const uint32_t TEST_VERT[196];
+extern const uint32_t TEST_FRAG[207];
+extern const uint32_t TEST_VERT[252];
 extern const uint8_t TEX0[63239];
 
 namespace onart{
