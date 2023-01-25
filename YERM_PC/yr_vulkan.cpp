@@ -591,7 +591,7 @@ namespace onart {
         if((int)type & 0b1){
             color1 = new ImageSet;
             imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
-            imgInfo.format = VkFormat::VK_FORMAT_B8G8R8A8_SRGB;
+            imgInfo.format = singleton->surface.format.format;
             result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color1->img, &color1->alloc, nullptr);
             if(result != VK_SUCCESS) {
                 LOGWITH("Failed to create image:", result,resultAsString(result));
@@ -1156,7 +1156,7 @@ namespace onart {
     uint32_t VkMachine::RenderTarget::attachmentRefs(VkAttachmentDescription* arr){
         uint32_t colorCount = 0;
         if(color1) {
-            arr[0].format = VkFormat::VK_FORMAT_B8G8R8A8_SRGB;
+            arr[0].format = singleton->surface.format.format;
             arr[0].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
             arr[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
             arr[0].storeOp = (sampled || mapped) ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -1311,7 +1311,7 @@ namespace onart {
         attachments[totalAttachments].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         attachments[totalAttachments].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         attachments[totalAttachments].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        attachments[totalAttachments].format = VK_FORMAT_B8G8R8A8_SRGB;
+        attachments[totalAttachments].format = singleton->surface.format.format;
         attachments[totalAttachments].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
 
         subpasses[subpassCount - 1].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
