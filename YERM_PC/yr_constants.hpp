@@ -20,6 +20,8 @@ extern const uint32_t TEST_FRAG[207];
 extern const uint32_t TEST_VERT[252];
 extern const uint32_t TEST_IA_FRAG[172];
 extern const uint32_t TEST_IA_VERT[219];
+extern const uint32_t TEST_TX_VERT[276];
+extern const uint32_t TEST_TX_FRAG[119];
 
 extern const uint8_t TEX0[63239];
 

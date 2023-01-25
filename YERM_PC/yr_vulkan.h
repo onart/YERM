@@ -332,7 +332,7 @@ namespace onart {
         private:
             /// @brief 이 타겟을 위한 첨부물을 기술합니다.
             /// @return 색 첨부물의 수(최대 3)
-            uint32_t attachmentRefs(VkAttachmentDescription* descr);
+            uint32_t attachmentRefs(VkAttachmentDescription* descr, bool forSample);
             uint32_t getDescriptorSets(VkDescriptorSet* out);
             VkMachine::ImageSet* color1, *color2, *color3, *depthstencil;
             VkDescriptorSet dset1 = VK_NULL_HANDLE, dset2 = VK_NULL_HANDLE, dset3 = VK_NULL_HANDLE, dsetDS = VK_NULL_HANDLE;

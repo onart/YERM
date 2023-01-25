@@ -415,7 +415,7 @@ namespace onart {
         samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
         samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
         samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-        samplerInfo.magFilter = VK_FILTER_LINEAR;
+        samplerInfo.magFilter = VK_FILTER_LINEAR; // TODO: NEAREST랑 선택권
         samplerInfo.minFilter = VK_FILTER_LINEAR;
         samplerInfo.mipLodBias = VK_SAMPLER_MIPMAP_MODE_LINEAR;
         samplerInfo.minLod = 0.0f;
@@ -1160,7 +1160,7 @@ namespace onart {
         return singleton->uniformBuffers[name] = new UniformBuffer(length, individual, buffer, layout, dset, alloc, mmap, binding);
     }
 
-    uint32_t VkMachine::RenderTarget::attachmentRefs(VkAttachmentDescription* arr){
+    uint32_t VkMachine::RenderTarget::attachmentRefs(VkAttachmentDescription* arr, bool forSample){
         uint32_t colorCount = 0;
         if(color1) {
             arr[0].format = singleton->surface.format.format;
@@ -1170,15 +1170,13 @@ namespace onart {
             arr[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             arr[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             arr[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            arr[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            arr[0].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             colorCount = 1;
             if(color2){
                 std::memcpy(arr + 1, arr, sizeof(arr[0]));
-                arr[1].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                 colorCount = 2;
                 if(color3) {
                     std::memcpy(arr + 2, arr, sizeof(arr[0]));
-                    arr[2].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                     colorCount = 3;
                 }
             }
@@ -1269,7 +1267,7 @@ namespace onart {
         uint32_t inputAttachmentCount = 0;
     
         for(uint32_t i = 0; i < subpassCount - 1; i++){
-            uint32_t colorCount = targets[i]->attachmentRefs(&attachments[totalAttachments]);
+            uint32_t colorCount = targets[i]->attachmentRefs(&attachments[totalAttachments], false);
             subpasses[i].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
             subpasses[i].colorAttachmentCount = colorCount;
             subpasses[i].pColorAttachments = &colorRefs[totalAttachments];
@@ -1364,7 +1362,7 @@ namespace onart {
         rpInfo.pSubpasses = subpasses.data();
         rpInfo.attachmentCount = totalAttachments;
         rpInfo.pAttachments = attachments.data();
-        rpInfo.dependencyCount = subpassCount; // 스왑체인 의존성은 이 함수를 통해 만들지 않기 때문에 이대로 사용
+        rpInfo.dependencyCount = subpassCount;
         rpInfo.pDependencies = &dependencies[0];
         VkRenderPass newPass;
 
@@ -1428,7 +1426,7 @@ namespace onart {
         uint32_t inputAttachmentCount = 0;
 
         for(uint32_t i = 0; i < subpassCount; i++){
-            uint32_t colorCount = targets[i]->attachmentRefs(&attachments[totalAttachments]);
+            uint32_t colorCount = targets[i]->attachmentRefs(&attachments[totalAttachments], i == (subpassCount - 1));
             subpasses[i].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
             subpasses[i].colorAttachmentCount = colorCount;
             subpasses[i].pColorAttachments = &colorRefs[totalAttachments];
@@ -1471,14 +1469,22 @@ namespace onart {
             inputAttachmentCount = colorCount; if(targets[i]->depthstencil) inputAttachmentCount++;
         }
 
+        dependencies[0].srcSubpass = subpassCount - 1;
+        dependencies[0].dstSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT| VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        dependencies[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        dependencies[0].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        dependencies[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+		
         VkRenderPassCreateInfo rpInfo{};
         rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
         rpInfo.subpassCount = subpassCount;
         rpInfo.pSubpasses = subpasses.data();
         rpInfo.attachmentCount = totalAttachments;
         rpInfo.pAttachments = attachments.data();
-        rpInfo.dependencyCount = subpassCount - 1; // 스왑체인 의존성은 이 함수를 통해 만들지 않기 때문에 이대로 사용
-        rpInfo.pDependencies = &dependencies[1];
+        rpInfo.dependencyCount = subpassCount; // 스왑체인 의존성은 이 함수를 통해 만들지 않기 때문에 이대로 사용
+        rpInfo.pDependencies = &dependencies[0];
         VkRenderPass newPass;
         VkResult result;
         if((result = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
@@ -1624,7 +1630,7 @@ namespace onart {
         singleton->meshes.erase(name);
     }
 
-    VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount): rp(rp), fb(fb), stageCount(stageCount), pipelines(stageCount), targets(stageCount){
+    VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount): rp(rp), fb(fb), stageCount(stageCount), pipelines(stageCount), pipelineLayouts(stageCount), targets(stageCount){
         fence = singleton->createFence(true);
         semaphore = singleton->createSemaphore();
         singleton->allocateCommandBuffers(1, true, &cb);
@@ -1900,6 +1906,7 @@ namespace onart {
             rpInfo.clearValueCount = clearValues.size();
             rpInfo.renderArea.offset = {0,0};
             rpInfo.renderArea.extent = {targets[0]->width, targets[0]->height};
+            rpInfo.renderPass = rp;
 
             vkCmdBeginRenderPass(cb, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
         }

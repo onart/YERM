@@ -156,6 +156,7 @@ namespace onart{
                 _tp = longDt.count();
                 _dt = static_cast<float>(ddt);
                 _idt = static_cast<float>(iddt);
+                auto off = VkMachine::getRenderPass("off");
                 auto rp2s = VkMachine::getRenderPass2Screen("main");
                 auto vb = VkMachine::getMesh("testvb");
                 auto tx = VkMachine::getTexture("tex.ktx2");
@@ -165,14 +166,18 @@ namespace onart{
                 float pushed = std::abs(std::sin((double)_tp * 0.000000001));
                 mat4 rot = VkMachine::preTransform() * mat4(1,0,0,0,0,aspect,0,0,0,0,1,0,0,0,0,1) * mat4::rotate(0,0,(double)_tp * 0.000000001);
                 if(vk->swapchain.handle){
+                    off->start();
+                    off->push(&rot, 0, 64);
+                    off->push(&pushed,64,68);
+                    off->bind(0, tx);
+                    off->invoke(vb);
+                    off->start();
+                    off->invoke(VkMachine::getMesh("fixedtri"));
+                    off->execute();
                     rp2s->start();
-                    rp2s->push(&rot, 0, 64);
-                    rp2s->push(&pushed,64,68);
-                    rp2s->bind(0, tx);
-                    rp2s->invoke(vb);
-                    rp2s->start();
+                    rp2s->bind(0, VkMachine::getRenderTarget("tex2"), 0);
                     rp2s->invoke(VkMachine::getMesh("fixedtri"));
-                    rp2s->execute();
+                    rp2s->execute(off);
                 }
             }
 #if !YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
@@ -249,8 +254,13 @@ namespace onart{
         window->windowSizeCallback = recordSizeEvent;
         window->scrollCallback = recordScrollEvent;
 #endif
+        VkMachine::RenderTarget* targets[2] = {
+            VkMachine::createRenderTarget2D(512, 512, "tex1", VkMachine::RenderTargetType::COLOR1, false),
+            VkMachine::createRenderTarget2D(512, 512, "tex2", VkMachine::RenderTargetType::COLOR1, true)
+        };
         auto rtt = VkMachine::RenderTargetType::COLOR1;
-        auto rp2s = VkMachine::createRenderPass2Screen(&rtt, 2, "main", false);
+        auto offrp = VkMachine::createRenderPass(targets, 2, "off");
+        auto rp2s = VkMachine::createRenderPass2Screen(nullptr, 1, "main", false);
         VkDescriptorSetLayout texLayout = VkMachine::getTextureLayout(0);
         VkDescriptorSetLayout iaLayout = VkMachine::getInputAttachmentLayout(0);
         auto lo = VkMachine::createPipelineLayout(&texLayout, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, "test");
@@ -260,10 +270,13 @@ namespace onart{
         testv_t::info(desc, 0);
         auto vs = VkMachine::createShader(TEST_VERT, sizeof(TEST_VERT),"testv");
         auto fs = VkMachine::createShader(TEST_FRAG, sizeof(TEST_FRAG),"testf");
-        VkMachine::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, "testpp");
+        VkMachine::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, offrp, 0, 0, lo, vs, fs, "testpp");
         vs = VkMachine::createShader(TEST_IA_VERT, sizeof(TEST_IA_VERT), "testiav");
         fs = VkMachine::createShader(TEST_IA_FRAG, sizeof(TEST_IA_FRAG), "testiaf");
-        VkMachine::createPipeline(nullptr, 0, 0, nullptr, 0, 0, rp2s, 1, 0, lo2, vs, fs, "testiapp");
+        VkMachine::createPipeline(nullptr, 0, 0, nullptr, 0, 0, offrp, 1, 0, lo2, vs, fs, "testiapp");
+        vs = VkMachine::createShader(TEST_TX_VERT, sizeof(TEST_TX_VERT), "testtxv");
+        fs = VkMachine::createShader(TEST_TX_FRAG, sizeof(TEST_TX_FRAG), "testtxf");
+        VkMachine::createPipeline(nullptr, 0, 0, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, "testtxpp");
         testv_t verts[]{{{-1,-1,0},{0,0}},{{-1,1,0},{0,1}},{{1,-1,0},{1,0}},{{1,1,0},{1,1}}};
         uint16_t inds[]{0,1,2,2,1,3};
         VkMachine::createNullMesh(3, "fixedtri");
