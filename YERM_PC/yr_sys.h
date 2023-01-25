@@ -33,7 +33,7 @@ namespace onart{
                 /// @brief 창 높이(픽셀). 기본값은 480이며 PC에서만 사용됩니다.
                 int height = 480;
                 /// @brief 창 크기 조절 가능 여부. 기본값은 false이며 PC에서만 사용됩니다.
-                bool resizable = false;
+                bool resizable = true;
                 /// @brief 초기 전체화면 여부. 기본값은 false이며 PC에서만 사용됩니다.
                 bool fullScreen = false;
                 /// @brief 창에 닫기 버튼 등을 기본으로 둡니다. 기본값은 true이며 PC에서만 사용됩니다.

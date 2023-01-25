@@ -270,6 +270,7 @@ namespace onart{
     }
 
     void Window::getFramebufferSize(int* x, int* y){
+        if(!_HAPP->window) return;
         if(x) *x = ANativeWindow_getWidth(_HAPP->window);
         if(y) *y = ANativeWindow_getHeight(_HAPP->window);
     }

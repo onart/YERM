@@ -442,6 +442,13 @@ namespace onart {
         vmaDestroyImage(singleton->allocator, img, alloc);
     }
 
+    VkMachine::pMesh VkMachine::createNullMesh(size_t vcount, const string16& name) {
+        pMesh m = getMesh(name);
+        if(m) { return m; }
+        struct publicmesh:public Mesh{publicmesh(VkBuffer _1, VmaAllocation _2, size_t _3, size_t _4,size_t _5,void* _6,bool _7):Mesh(_1,_2,_3,_4,_5,_6,_7){}};
+        return singleton->meshes[name] = std::make_shared<publicmesh>(VK_NULL_HANDLE,VK_NULL_HANDLE,vcount,0,0,nullptr,false);
+    }
+
     VkMachine::pMesh VkMachine::createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, const string16& name, bool stage) {
         if(icount != 0 && isize != 2 && isize != 4){
             LOGWITH("Invalid isize");
@@ -1775,7 +1782,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        if(bound != mesh.get()) {
+        if((bound != mesh.get()) && (mesh->vb != VK_NULL_HANDLE)) {
             VkDeviceSize offs = 0;
             vkCmdBindVertexBuffers(cb, 0, 1, &mesh->vb, &offs);
             if(mesh->icount) vkCmdBindIndexBuffer(cb, mesh->vb, mesh->ioff, mesh->idxType);
@@ -1984,7 +1991,8 @@ namespace onart {
         }
         else{ // 새 스왑체인으로 프레임버퍼만 재생성
             fbs.resize(singleton->swapchain.imageView.size());
-            std::vector<VkImageView> ivs(pipelines.size()*4);
+            std::vector<VkImageView> ivs;
+            ivs.reserve(pipelines.size()*4);
             uint32_t totalAttachments = 0;
             for(RenderTarget* targ: targets) {
                 if(targ->color1) {
@@ -2112,7 +2120,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        if(bound != mesh.get()) {
+        if((bound != mesh.get()) && (mesh->vb != VK_NULL_HANDLE)) {
             VkDeviceSize offs = 0;
             vkCmdBindVertexBuffers(cbs[currentCB], 0, 1, &mesh->vb, &offs);
             vkCmdBindVertexBuffers(cbs[currentCB], 0, 1, &mesh->vb, &offs);
@@ -2753,13 +2761,13 @@ namespace onart {
         vbind[1].stride = isize;
         
         std::vector<VkVertexInputAttributeDescription> attrs(vattr + iattr);
-        std::copy(vinfo, vinfo + vattr, attrs.data());
+        if(vattr) std::copy(vinfo, vinfo + vattr, attrs.data());
         if(iattr) std::copy(iinfo, iinfo + iattr, attrs.data() + vattr);
 
         VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
         vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertexInputInfo.vertexBindingDescriptionCount = iattr ? 2 : 1;
-        vertexInputInfo.pVertexBindingDescriptions = vbind;
+        vertexInputInfo.vertexBindingDescriptionCount = (vattr ? 1 : 0) + (iattr ? 1 : 0);
+        vertexInputInfo.pVertexBindingDescriptions = vattr ? vbind : vbind + 1;
         vertexInputInfo.vertexAttributeDescriptionCount = attrs.size();
         vertexInputInfo.pVertexAttributeDescriptions = attrs.data();
 

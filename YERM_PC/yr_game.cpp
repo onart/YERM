@@ -147,7 +147,6 @@ namespace onart{
                 pollEvents();
                 if(window->windowShouldClose()) break;
                 std::chrono::duration<uint64_t, std::nano> longDt = std::chrono::steady_clock::now() - longTp;
-
                 // [0, 2^52 - 1] 범위 정수를 균등 간격의 [1.0, 2.0) 범위 double로 대응시키는 함수에 십억을 적용한 후 1을 뺀 결과에 곱하여 1로 만들 수 있는 수
                 constexpr double ONE_SECOND = 1.0 / 0.0000002220446049250313080847263336181640625;
 
@@ -171,6 +170,8 @@ namespace onart{
                     rp2s->push(&pushed,64,68);
                     rp2s->bind(0, tx);
                     rp2s->invoke(vb);
+                    rp2s->start();
+                    rp2s->invoke(VkMachine::getMesh("fixedtri"));
                     rp2s->execute();
                 }
             }
@@ -248,17 +249,24 @@ namespace onart{
         window->windowSizeCallback = recordSizeEvent;
         window->scrollCallback = recordScrollEvent;
 #endif
-        auto rp2s = VkMachine::createRenderPass2Screen(nullptr, 1, "main");
+        auto rtt = VkMachine::RenderTargetType::COLOR1;
+        auto rp2s = VkMachine::createRenderPass2Screen(&rtt, 2, "main", false);
         VkDescriptorSetLayout texLayout = VkMachine::getTextureLayout(0);
+        VkDescriptorSetLayout iaLayout = VkMachine::getInputAttachmentLayout(0);
         auto lo = VkMachine::createPipelineLayout(&texLayout, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, "test");
+        auto lo2 = VkMachine::createPipelineLayout(&iaLayout, 1, 0, "test2");
         VkVertexInputAttributeDescription desc[2];
         using testv_t = VkMachine::Vertex<vec3, vec2>;
         testv_t::info(desc, 0);
         auto vs = VkMachine::createShader(TEST_VERT, sizeof(TEST_VERT),"testv");
         auto fs = VkMachine::createShader(TEST_FRAG, sizeof(TEST_FRAG),"testf");
         VkMachine::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, "testpp");
+        vs = VkMachine::createShader(TEST_IA_VERT, sizeof(TEST_IA_VERT), "testiav");
+        fs = VkMachine::createShader(TEST_IA_FRAG, sizeof(TEST_IA_FRAG), "testiaf");
+        VkMachine::createPipeline(nullptr, 0, 0, nullptr, 0, 0, rp2s, 1, 0, lo2, vs, fs, "testiapp");
         testv_t verts[]{{{-1,-1,0},{0,0}},{{-1,1,0},{0,1}},{{1,-1,0},{1,0}},{{1,1,0},{1,1}}};
         uint16_t inds[]{0,1,2,2,1,3};
+        VkMachine::createNullMesh(3, "fixedtri");
         VkMachine::createMesh(verts,sizeof(testv_t),4,inds,2,6,"testvb");
         VkMachine::createTexture(TEX0, sizeof(TEX0), 4, "tex.ktx2", VkMachine::isSurfaceSRGB());
         return true;
