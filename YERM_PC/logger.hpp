@@ -55,6 +55,14 @@ inline std::string __getLogContent(const std::string& file, int line, const std:
     return strm.str();
 }
 
+/// @brief 콘솔이 아닌 다른 곳에 로그를 하고 싶을 때 사용합니다.
+template <class... T>
+inline std::string toString(const T&... extra) {
+    std::ostringstream strm;
+    __getMultiple(strm, extra...);
+    return strm.str();
+}
+
 #ifdef YR_NO_LOG
     #define LOGHERE
     #define LOGWITH(...)

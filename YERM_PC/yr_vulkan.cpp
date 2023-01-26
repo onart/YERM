@@ -1887,11 +1887,11 @@ namespace onart {
             clearValues.reserve(stageCount * 4);
             for(RenderTarget* targ: targets){
                 if((int)targ->type & 0b1) {
-                    clearValues.push_back({0.03f, 0.03f, 0.03f, 1.0f});
+                    clearValues.push_back({0.03f, 0.03f, 0.03f, 0.0f});
                     if((int)targ->type & 0b10){
-                        clearValues.push_back({0.03f, 0.03f, 0.03f, 1.0f});
+                        clearValues.push_back({0.03f, 0.03f, 0.03f, 0.0f});
                         if((int)targ->type & 0b100){
-                            clearValues.push_back({0.03f, 0.03f, 0.03f, 1.0f});
+                            clearValues.push_back({0.03f, 0.03f, 0.03f, 0.0f});
                         }
                     }
                 }
@@ -2196,11 +2196,11 @@ namespace onart {
             clearValues.reserve(targets.size() * 4 + 2);
             for(RenderTarget* targ: targets){
                 if((int)targ->type & 0b1) {
-                    clearValues.push_back({0.03f, 0.03f, 0.03f, 1.0f});
+                    clearValues.push_back({0.03f, 0.03f, 0.03f, 0.0f});
                     if((int)targ->type & 0b10){
-                        clearValues.push_back({0.03f, 0.03f, 0.03f, 1.0f});
+                        clearValues.push_back({0.03f, 0.03f, 0.03f, 0.0f});
                         if((int)targ->type & 0b100){
-                            clearValues.push_back({0.03f, 0.03f, 0.03f, 1.0f});
+                            clearValues.push_back({0.03f, 0.03f, 0.03f, 0.0f});
                         }
                     }
                 }
