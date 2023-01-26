@@ -32,6 +32,7 @@ SIMD 파트 때문에 컴파일러는 [Clang](https://github.com/llvm/llvm-proje
 Source | Description
 ---- | ----
 [Boost.Predef](https://www.boost.org/doc/libs/1_73_0/libs/predef/doc/index.html) | 빌드 타임에 플랫폼을 판별하기 위한 헤더입니다. [Boost Software License](https://www.boost.org/LICENSE_1_0.txt)
+[ASIO](https://think-async.com/Asio/index.html) | 여러 플랫폼에서 BSD 소켓을 사용할 수 있고 비동기적 동작, 스레드 풀 등을 포함한 헤더입니다. Boost와의 종속성이 없는 버전입니다. [Boost Software License](https://www.boost.org/LICENSE_1_0.txt)
 [GLFW](https://www.glfw.org/) | PC 대상 크로스 플랫폼 창 관리자입니다. [zlib/libpng license](https://www.glfw.org/license)
 [libktx](https://github.com/KhronosGroup/KTX-Software) | KTX 텍스처 컨테이너 파일을 읽고 씁니다. 이 프로젝트에서는 Basis Universal 형태를 사용하기 위해 이 라이브러리를 사용합니다. 자체 라이센스는 아파치 2.0이지만 그 안에서 포함된 외부 소스는 다양한 라이센스를 가지고 있으므로 참고하시기 바랍니다. 다음 링크 내의 라이센스는 모두 아파치 2.0과 공존할 수 있는 것으로 확인됩니다. [license](https://github.com/KhronosGroup/KTX-Software/tree/master/LICENSES)
 [shaderc](https://github.com/google/shaderc) | GLSL이나 HLSL 코드를 SPIR-V로 컴파일합니다. 이것은 최종 빌드에 링크될 필요가 없으므로 셰이더 코드가 자주 수정될 때 디버그 용도로 사용하는 것이 권장됩니다. [Apache license 2.0](https://github.com/google/shaderc/blob/main/LICENSE)

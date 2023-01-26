@@ -1170,7 +1170,7 @@ namespace onart {
             arr[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             arr[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             arr[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            arr[0].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            arr[0].finalLayout = forSample ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             colorCount = 1;
             if(color2){
                 std::memcpy(arr + 1, arr, sizeof(arr[0]));
