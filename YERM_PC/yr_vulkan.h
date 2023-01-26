@@ -102,60 +102,60 @@ namespace onart {
             static mat4 preTransform();
             /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param fileName 파일 이름
+            /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param nChannels 채널 수(색상)
             /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
             /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
-            /// @param name 프로그램 내부에서 사용할 이름으로, 비워 두면 파일 이름을 그대로 사용합니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
-            static pTexture createTexture(const string128& fileName, uint32_t nChannels, bool srgb = true, bool hq = true, const string128& name = "");
+            static pTexture createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb = true, bool hq = true);
             /// @brief 메모리 상의 ktx2 파일을 통해 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param mem 이미지 시작 주소
             /// @param size mem 배열의 길이(바이트)
             /// @param nChannels 채널 수(색상)
-            /// @param name 프로그램 내부에서 사용할 이름입니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
+            /// @param key 프로그램 내부에서 사용할 이름입니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
             /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
-            static pTexture createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, const string128& name, bool srgb = true, bool hq = true);
+            static pTexture createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb = true, bool hq = true);
             /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다. 이것을 해제하는 수단은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
             /// @param width 가로 길이(px).
             /// @param height 세로 길이(px).
-            /// @param name 이후 별도로 접근할 수 있는 이름을 지정합니다. 단, 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다. 빈 문자열 이름은 예약되어 있어 사용이 불가능합니다.
+            /// @param key 이후 별도로 접근할 수 있는 이름을 지정합니다. 단, 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다. INT32_MIN, 즉 -2147483648 값은 예약되어 있어 사용이 불가능합니다.
             /// @param type @ref RenderTargetType 참고하세요.
             /// @param sampled true면 샘플링 텍스처로 사용되고, false면 입력 첨부물로 사용됩니다. 일단은 화면을 최종 목적지로 간주하기 때문에 그 외의 용도는 없습니다.
             /// @param useDepthInput 이 타겟이 입력 첨부물 혹은 텍스처로 사용될 경우에 깊이 버퍼도 입력 첨부물로 사용할지 여부입니다. 깊이가 입력 첨부물 혹은 샘플링으로 사용될 경우, 스텐실 버퍼는 사용할 수 없습니다.
             /// @param useStencil true면 깊이 이미지에 더불어 스텐실 버퍼를 사용합니다.
             /// @param mmap 이것이 true라면 픽셀 데이터에 순차로 접근할 수 있습니다. 단, 렌더링 성능이 낮아질 가능성이 매우 높습니다.
             /// @return 이것을 통해 렌더 패스를 생성할 수 있습니다.
-            static RenderTarget* createRenderTarget2D(int width, int height, const string16& name, RenderTargetType type = RenderTargetType::COLOR1DEPTH, bool sampled = true, bool useDepthInput = false, bool useStencil = false, bool mmap = false);
+            static RenderTarget* createRenderTarget2D(int width, int height, int32_t key, RenderTargetType type = RenderTargetType::COLOR1DEPTH, bool sampled = true, bool useDepthInput = false, bool useStencil = false, bool mmap = false);
             /// @brief SPIR-V 컴파일된 셰이더를 VkShaderModule 형태로 저장하고 가져옵니다.
             /// @param spv SPIR-V 코드
             /// @param size 주어진 SPIR-V 코드의 길이(바이트)
-            /// @param name 이후 별도로 접근할 수 있는 이름을 지정합니다. 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다.
-            static VkShaderModule createShader(const uint32_t* spv, size_t size, const string16& name);
+            /// @param key 이후 별도로 접근할 수 있는 이름을 지정합니다. 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다.
+            static VkShaderModule createShader(const uint32_t* spv, size_t size, int32_t key);
             /// @brief 셰이더에서 사용할 수 있는 uniform 버퍼를 생성하여 리턴합니다. 이것을 해제하는 방법은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
             /// @param length 이 값이 1이면 버퍼 하나를 생성하며, 2 이상이면 동적 공유 버퍼를 생성합니다. 동적 공유 버퍼는 렌더 패스 진행 중 바인드할 영역을 바꿀 수 있습니다.
             /// @param size 각 버퍼의 크기입니다.
             /// @param stages 이 자원에 접근할 수 있는 셰이더 단계들입니다. (비트 플래그의 조합)
-            /// @param name 프로그램 내에서 사용할 이름입니다(최대 15바이트). 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
+            /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
             /// @param binding 바인딩 번호입니다.
-            static UniformBuffer* createUniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, const string16& name, uint32_t binding = 0);
+            static UniformBuffer* createUniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, int32_t key, uint32_t binding = 0);
             /// @brief 주어진 렌더 타겟들을 대상으로 하는 렌더패스를 구성합니다.
             /// @param targets 렌더 타겟 포인터의 배열입니다. 마지막 것을 제외한 모든 타겟은 input attachment로 생성되었어야 하며 그렇지 않은 경우 실패합니다.
             /// @param subpassCount targets 배열의 크기입니다.
-            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. 빈 문자열 이름은 예약되어 있어 사용이 불가능합니다.
-            static RenderPass* createRenderPass(RenderTarget** targets, uint32_t subpassCount, const string16& name);
+            /// @param key 이름입니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. INT32_MIN, 즉 -2147483648은 예약된 값이기 때문에 사용할 수 없습니다.
+            static RenderPass* createRenderPass(RenderTarget** targets, uint32_t subpassCount, int32_t key);
             /// @brief 화면으로 이어지는 렌더패스를 생성합니다. 각 패스의 타겟들은 현재 창의 해상도와 동일하게 맞춰집니다.
             /// @param targets 생성할 렌더 타겟들의 타입 배열입니다. 서브패스의 마지막은 이것을 제외한 스왑체인 이미지입니다.
             /// @param subpassCount 최종 서브패스의 수입니다. 즉 targets 배열 길이 + 1을 입력해야 합니다.
-            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. (RenderPass 객체와 같은 집합을 공유하지 않음) 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. 빈 문자열 이름은 예약되어 있어 사용이 불가능합니다.
+            /// @param key 이름입니다. (RenderPass 객체와 같은 집합을 공유하지 않음) 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. INT32_MIN, 즉 -2147483648은 예약된 값이기 때문에 사용할 수 없습니다.
             /// @param useDepth subpassCount가 1이고 이 값이 true인 경우 최종 패스에서 깊이/스텐실 이미지를 사용하게 됩니다. subpassCount가 1이 아니면 무시됩니다.
             /// @param useDepthAsInput targets와 일대일 대응하며, 대응하는 성분의 깊이 성분을 다음 서브패스의 입력으로 사용하려면 true를 줍니다. nullptr를 주는 경우 일괄 false로 취급됩니다. 즉 nullptr가 아니라면 반드시 subpassCount - 1 길이의 배열이 주어져야 합니다.
-            static RenderPass2Screen* createRenderPass2Screen(RenderTargetType* targets, uint32_t subpassCount, const string16& name, bool useDepth = true, bool* useDepthAsInput = nullptr);
+            static RenderPass2Screen* createRenderPass2Screen(RenderTargetType* targets, uint32_t subpassCount, int32_t key, bool useDepth = true, bool* useDepthAsInput = nullptr);
             /// @brief 파이프라인 레이아웃을 만듭니다. 파이파라인 레이아웃은 셰이더에서 접근할 수 있는 uniform 버퍼, 입력 첨부물, 텍스처 등의 사양을 말합니다.
             /// @param layouts 레이아웃 객체의 배열입니다. Texture, UniformBuffer, RenderTarget의 getLayout으로 얻을 수 있습니다.
             /// @param count layouts의 길이
             /// @param stages 푸시 상수에 접근할 수 있는 파이프라인 단계 플래그들입니다. 이 값에 0 외의 값이 들어가면 푸시 상수 공간은 항상 128바이트가 명시됩니다. 0이 들어가면 푸시 상수는 사용한다고 명시되지 않습니다.
-            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
-            static VkPipelineLayout createPipelineLayout(VkDescriptorSetLayout* layouts, uint32_t count, VkShaderStageFlags stages, const string16& name);
+            /// @param key 이름입니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
+            static VkPipelineLayout createPipelineLayout(VkDescriptorSetLayout* layouts, uint32_t count, VkShaderStageFlags stages, int32_t key);
             /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 사용할 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
             /// @param vinfo 정점 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다.
             /// @param vsize 개별 정점의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
@@ -171,7 +171,7 @@ namespace onart {
             /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
             /// @param front 앞면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
             /// @param back 뒷면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
-            static VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, RenderPass* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr);
+            static VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, RenderPass* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr);
             /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 사용할 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
             /// @param vinfo 정점 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다.
             /// @param vsize 개별 정점의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
@@ -187,7 +187,7 @@ namespace onart {
             /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
             /// @param front 앞면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
             /// @param back 뒷면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
-            static VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr);
+            static VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr);
             /// @brief 정점 버퍼(모델) 객체를 생성합니다.
             /// @param vdata 정점 데이터
             /// @param vsize 정점 하나의 크기(바이트)
@@ -195,35 +195,35 @@ namespace onart {
             /// @param idata 인덱스 데이터입니다. 이 값은 vcount가 65536 이상일 경우 32비트 정수로, 그 외에는 16비트 정수로 취급됩니다.
             /// @param isize 인덱스 하나의 크기입니다. 이 값은 반드시 2 또는 4여야 합니다.
             /// @param icount 인덱스의 수입니다. 이 값이 0이면 인덱스 버퍼를 사용하지 않습니다.
-            /// @param name 프로그램 내에서 사용할 이름입니다.
+            /// @param key 프로그램 내에서 사용할 이름입니다.
             /// @param stage 메모리 맵을 통해 지속적으로 데이터를 바꾸어 보낼지 선택합니다. stage가 false라서 메모리 맵을 사용하게 되는 경우 vdata, idata를 nullptr로 주어도 됩니다.
-            static pMesh createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, const string16& name, bool stage = true);
+            static pMesh createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, int32_t key, bool stage = true);
             /// @brief 정점의 수 정보만 저장하는 메시 객체를 생성합니다. 이것은 파이프라인 자체에서 정점 데이터가 정의되어 있는 경우를 위한 것입니다.
             /// @param vcount 정점의 수
             /// @param name 프로그램 내에서 사용할 이름입니다.
-            static pMesh createNullMesh(size_t vcount, const string16& name);
+            static pMesh createNullMesh(size_t vcount, int32_t key);
             /// @brief 큐브맵 렌더 타겟을 생성하고 핸들을 리턴합니다. 한 번 부여된 핸들 번호는 같은 프로세스에서 다시는 사용되지 않습니다.
             /// @param size 각 면의 가로/세로 길이(px)
             /// @return 핸들입니다. 이것을 통해 렌더 패스를 생성할 수 있습니다.
-            static int createRenderTargetCube(int size, const string16& name);
+            static int createRenderTargetCube(int size, int32_t key);
             /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static RenderPass2Screen* getRenderPass2Screen(const string16& name);
+            static RenderPass2Screen* getRenderPass2Screen(int32_t key);
             /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static RenderPass* getRenderPass(const string16& name);
+            static RenderPass* getRenderPass(int32_t key);
             /// @brief 만들어 둔 파이프라인을 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static VkPipeline getPipeline(const string16& name);
+            static VkPipeline getPipeline(int32_t key);
             /// @brief 만들어 둔 파이프라인 레이아웃을 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static VkPipelineLayout getPipelineLayout(const string16& name);
+            static VkPipelineLayout getPipelineLayout(int32_t key);
             /// @brief 만들어 둔 렌더 타겟을 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static RenderTarget* getRenderTarget(const string16& name);
+            static RenderTarget* getRenderTarget(int32_t key);
             /// @brief 만들어 둔 공유 버퍼를 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static UniformBuffer* getUniformBuffer(const string16& name);
+            static UniformBuffer* getUniformBuffer(int32_t key);
             /// @brief 만들어 둔 셰이더 모듈을 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static VkShaderModule getShader(const string16& name);
+            static VkShaderModule getShader(int32_t key);
             /// @brief 올려 둔 텍스처 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
-            static pTexture getTexture(const string128& name);
+            static pTexture getTexture(int32_t key);
             /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
-            static pMesh getMesh(const string16& name);
+            static pMesh getMesh(int32_t key);
             /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
             inline static bool isSurfaceSRGB(){ return singleton->surface.format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;}
             /// @brief Vulkan 인스턴스를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
@@ -266,7 +266,7 @@ namespace onart {
             /// @brief 세마포어를 생성합니다. (해제는 알아서)
             VkSemaphore createSemaphore();
             /// @brief ktxTexture2 객체로 텍스처를 생성합니다.
-            pTexture createTexture(void* ktxObj, const string128& name, uint32_t nChannels, bool srgb, bool hq);
+            pTexture createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq);
             /// @brief vulkan 객체를 없앱니다.
             void free();
             ~VkMachine();
@@ -300,15 +300,15 @@ namespace onart {
                 VkExtent2D extent;
                 std::vector<VkImageView> imageView;
             }swapchain;
-            std::map<string16, RenderPass*> renderPasses;
-            std::map<string16, RenderPass2Screen*> finalPasses;
-            std::map<string16, RenderTarget*> renderTargets;
-            std::map<string16, VkShaderModule> shaders;
-            std::map<string16, UniformBuffer*> uniformBuffers;
-            std::map<string16, VkPipelineLayout> pipelineLayouts;
-            std::map<string16, VkPipeline> pipelines;
-            std::map<string16, pMesh> meshes;
-            std::map<string128, pTexture> textures;
+            std::map<int32_t, RenderPass*> renderPasses;
+            std::map<int32_t, RenderPass2Screen*> finalPasses;
+            std::map<int32_t, RenderTarget*> renderTargets;
+            std::map<int32_t, VkShaderModule> shaders;
+            std::map<int32_t, UniformBuffer*> uniformBuffers;
+            std::map<int32_t, VkPipelineLayout> pipelineLayouts;
+            std::map<int32_t, VkPipeline> pipelines;
+            std::map<int32_t, pMesh> meshes;
+            std::map<int32_t, pTexture> textures;
             struct ImageSet{
                 VkImage img = VK_NULL_HANDLE;
                 VkImageView view = VK_NULL_HANDLE;
@@ -529,7 +529,7 @@ namespace onart {
             /// @param removeUsing 사용하는 텍스처 데이터도 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getTexture로 찾을 수 없습니다.)
             static void collect(bool removeUsing = false);
             /// @brief 주어진 이름의 텍스처 데이터를 내립니다. 사용하고 있는 텍스처 데이터는 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getTexture로 찾을 수 없습니다.)
-            static void drop(const string16& name);
+            static void drop(int32_t name);
         protected:
             Texture(VkImage img, VkImageView imgView, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding);
             VkDescriptorSetLayout getLayout();
@@ -549,7 +549,7 @@ namespace onart {
             /// @param removeUsing 사용하는 메시 데이터도 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getMesh로 찾을 수 없습니다.)
             static void collect(bool removeUsing = false);
             /// @brief 주어진 이름의 메시 데이터를 내립니다. 사용하고 있는 메시 데이터는 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getMesh로 찾을 수 없습니다.)
-            static void drop(const string16& name);
+            static void drop(int32_t name);
             /// @brief 메모리 맵을 사용하도록 생성된 객체에 대하여 정점 속성 데이터를 업데이트합니다. 그 외의 경우 아무 동작도 하지 않습니다.
             /// @param input 입력 데이터
             /// @param offset 기존 데이터에서 수정할 시작점(바이트)입니다. (입력 데이터에서의 오프셋이 아닙니다. 0이 정점 버퍼의 시작점입니다.)

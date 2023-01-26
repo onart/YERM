@@ -150,55 +150,55 @@ namespace onart {
         return ret;
     }
 
-    VkPipeline VkMachine::getPipeline(const string16& name){
+    VkPipeline VkMachine::getPipeline(int32_t name){
         auto it = singleton->pipelines.find(name);
         if(it != singleton->pipelines.end()) return it->second;
         else return VK_NULL_HANDLE;
     }
 
-    VkPipelineLayout VkMachine::getPipelineLayout(const string16& name){
+    VkPipelineLayout VkMachine::getPipelineLayout(int32_t name){
         auto it = singleton->pipelineLayouts.find(name);
         if(it != singleton->pipelineLayouts.end()) return it->second;
         else return VK_NULL_HANDLE;
     }
 
-    VkMachine::pMesh VkMachine::getMesh(const string16& name) {
+    VkMachine::pMesh VkMachine::getMesh(int32_t name) {
         auto it = singleton->meshes.find(name);
         if(it != singleton->meshes.end()) return it->second;
         else return pMesh();
     }
 
-    VkMachine::RenderTarget* VkMachine::getRenderTarget(const string16& name){
+    VkMachine::RenderTarget* VkMachine::getRenderTarget(int32_t name){
         auto it = singleton->renderTargets.find(name);
         if(it != singleton->renderTargets.end()) return it->second;
         else return nullptr;
     }
 
-    VkMachine::UniformBuffer* VkMachine::getUniformBuffer(const string16& name){
+    VkMachine::UniformBuffer* VkMachine::getUniformBuffer(int32_t name){
         auto it = singleton->uniformBuffers.find(name);
         if(it != singleton->uniformBuffers.end()) return it->second;
         else return nullptr;
     }
 
-    VkMachine::RenderPass2Screen* VkMachine::getRenderPass2Screen(const string16& name){
+    VkMachine::RenderPass2Screen* VkMachine::getRenderPass2Screen(int32_t name){
         auto it = singleton->finalPasses.find(name);
         if(it != singleton->finalPasses.end()) return it->second;
         else return nullptr;
     }
 
-    VkMachine::RenderPass* VkMachine::getRenderPass(const string16& name){
+    VkMachine::RenderPass* VkMachine::getRenderPass(int32_t name){
         auto it = singleton->renderPasses.find(name);
         if(it != singleton->renderPasses.end()) return it->second;
         else return nullptr;
     }
 
-    VkShaderModule VkMachine::getShader(const string16& name){
+    VkShaderModule VkMachine::getShader(int32_t name){
         auto it = singleton->shaders.find(name);
         if(it != singleton->shaders.end()) return it->second;
         else return VK_NULL_HANDLE;
     }
 
-    VkMachine::pTexture VkMachine::getTexture(const string128& name){
+    VkMachine::pTexture VkMachine::getTexture(int32_t name){
         auto it = singleton->textures.find(name);
         if(it != singleton->textures.end()) return it->second;
         else return pTexture();
@@ -442,14 +442,14 @@ namespace onart {
         vmaDestroyImage(singleton->allocator, img, alloc);
     }
 
-    VkMachine::pMesh VkMachine::createNullMesh(size_t vcount, const string16& name) {
+    VkMachine::pMesh VkMachine::createNullMesh(size_t vcount, int32_t name) {
         pMesh m = getMesh(name);
         if(m) { return m; }
         struct publicmesh:public Mesh{publicmesh(VkBuffer _1, VmaAllocation _2, size_t _3, size_t _4,size_t _5,void* _6,bool _7):Mesh(_1,_2,_3,_4,_5,_6,_7){}};
         return singleton->meshes[name] = std::make_shared<publicmesh>(VK_NULL_HANDLE,VK_NULL_HANDLE,vcount,0,0,nullptr,false);
     }
 
-    VkMachine::pMesh VkMachine::createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, const string16& name, bool stage) {
+    VkMachine::pMesh VkMachine::createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, int32_t name, bool stage) {
         if(icount != 0 && isize != 2 && isize != 4){
             LOGWITH("Invalid isize");
             return pMesh();
@@ -562,7 +562,7 @@ namespace onart {
         return singleton->meshes[name] = std::make_shared<publicmesh>(vib,viba,vcount,icount,VBSIZE,nullptr,isize==4);
     }
 
-    VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, const string16& name, RenderTargetType type, bool sampled, bool useDepthInput, bool useStencil, bool mmap){
+    VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, int32_t name, RenderTargetType type, bool sampled, bool useDepthInput, bool useStencil, bool mmap){
         if(!singleton->allocator) {
             LOGWITH("Warning: Tried to create image before initialization");
             return nullptr;
@@ -745,7 +745,7 @@ namespace onart {
         }
     }
 
-    VkShaderModule VkMachine::createShader(const uint32_t* spv, size_t size, const string16& name) {
+    VkShaderModule VkMachine::createShader(const uint32_t* spv, size_t size, int32_t name) {
         VkShaderModule ret = getShader(name);
         if(ret) return ret;
 
@@ -761,7 +761,7 @@ namespace onart {
         return singleton->shaders[name] = ret;
     }
 
-    VkMachine::pTexture VkMachine::createTexture(void* ktxObj, const string128& name, uint32_t nChannels, bool srgb, bool hq){
+    VkMachine::pTexture VkMachine::createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq){
         ktxTexture2* texture = reinterpret_cast<ktxTexture2*>(ktxObj);
         if (texture->numLevels == 0) return pTexture();
         VkFormat availableFormat;
@@ -967,34 +967,33 @@ namespace onart {
         vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
 
         struct txtr:public Texture{ inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint32_t _5):Texture(_1,_2,_3,_4,_5){} };
-        return textures[name] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0);
+        return textures[key] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0);
     }
 
-    VkMachine::pTexture VkMachine::createTexture(const string128& fileName, uint32_t nChannels, bool srgb, bool hq, const string128& name){
+    VkMachine::pTexture VkMachine::createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb, bool hq){
         if(nChannels > 4 || nChannels == 0) {
             LOGWITH("Invalid channel count. nChannels must be 1~4");
             return pTexture();
         }
-        const string128& _name = name.size() == 0 ? fileName : name;
-        pTexture ret(std::move(getTexture(_name)));
+        pTexture ret(std::move(getTexture(key)));
         if(ret) return ret;
 
         ktxTexture2* texture;
         ktx_error_code_e k2result;
 
-        if((k2result= ktxTexture2_CreateFromNamedFile(fileName.c_str(), KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS){
+        if((k2result= ktxTexture2_CreateFromNamedFile(fileName, KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS){
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }
-        return singleton->createTexture(texture, _name, nChannels, srgb, hq);
+        return singleton->createTexture(texture, key, nChannels, srgb, hq);
     }
 
-    VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, const string128& name, bool srgb, bool hq){
+    VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb, bool hq){
         if(nChannels > 4 || nChannels == 0) {
             LOGWITH("Invalid channel count. nChannels must be 1~4");
             return pTexture();
         }
-        pTexture ret(std::move(getTexture(name)));
+        pTexture ret(std::move(getTexture(key)));
         if(ret) return ret;
         ktxTexture2* texture;
         ktx_error_code_e k2result;
@@ -1003,7 +1002,7 @@ namespace onart {
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }
-        return singleton->createTexture(texture, name, nChannels, srgb, hq);
+        return singleton->createTexture(texture, key, nChannels, srgb, hq);
     }
 
     VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding):img(img), view(view), alloc(alloc), dset(dset), binding(binding){ }
@@ -1033,7 +1032,7 @@ namespace onart {
         }
     }
 
-    void VkMachine::Texture::drop(const string16& name){
+    void VkMachine::Texture::drop(int32_t name){
         singleton->textures.erase(name);
     }
 
@@ -1071,7 +1070,7 @@ namespace onart {
         return nim;
     }
 
-    VkMachine::UniformBuffer* VkMachine::createUniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, const string16& name, uint32_t binding){
+    VkMachine::UniformBuffer* VkMachine::createUniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, int32_t name, uint32_t binding){
         UniformBuffer* ret = getUniformBuffer(name);
         if(ret) return ret;
 
@@ -1202,20 +1201,20 @@ namespace onart {
         if(depthstencil) { singleton->removeImageSet(depthstencil); /*if (dsetDS) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dsetDS);*/ }
     }
 
-    VkMachine::RenderPass2Screen* VkMachine::createRenderPass2Screen(RenderTargetType* tgs, uint32_t subpassCount, const string16& name, bool useDepth, bool* useDepthAsInput){
+    VkMachine::RenderPass2Screen* VkMachine::createRenderPass2Screen(RenderTargetType* tgs, uint32_t subpassCount, int32_t name, bool useDepth, bool* useDepthAsInput){
         RenderPass2Screen* r = getRenderPass2Screen(name);
         if(r) return r;
 
         if(subpassCount == 0) return nullptr;
         std::vector<RenderTarget*> targets(subpassCount - 1);
         for(uint32_t i = 0; i < subpassCount - 1; i++){
-            targets[i] = createRenderTarget2D(singleton->swapchain.extent.width, singleton->swapchain.extent.height, "", tgs[i], false, useDepthAsInput ? useDepthAsInput[i] : false);
+            targets[i] = createRenderTarget2D(singleton->swapchain.extent.width, singleton->swapchain.extent.height, INT32_MIN, tgs[i], false, useDepthAsInput ? useDepthAsInput[i] : false);
             if(!targets[i]){
                 LOGHERE;
                 for(RenderTarget* t:targets) delete t;
                 return nullptr;
             }
-            singleton->renderTargets.erase("");
+            singleton->renderTargets.erase(INT32_MIN);
         }
 
         VkImage dsImage = VK_NULL_HANDLE;
@@ -1399,7 +1398,7 @@ namespace onart {
         return ret;
     }
 
-    VkMachine::RenderPass* VkMachine::createRenderPass(RenderTarget** targets, uint32_t subpassCount, const string16& name){
+    VkMachine::RenderPass* VkMachine::createRenderPass(RenderTarget** targets, uint32_t subpassCount, int32_t name){
         RenderPass* r = getRenderPass(name);
         if(r) return r;
         if(subpassCount == 0) return nullptr;
@@ -1515,7 +1514,7 @@ namespace onart {
 
     VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr,
     VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, RenderPass* pass, uint32_t subpass,
-    uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front, VkStencilOpState* back){
+    uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front, VkStencilOpState* back){
         VkPipeline ret = getPipeline(name);
         if(ret) {
             pass->usePipeline(ret, layout, subpass);
@@ -1541,7 +1540,7 @@ namespace onart {
     VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr,
     VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr,
     RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout,
-    VkShaderModule vs, VkShaderModule fs, const string16& name, VkStencilOpState* front, VkStencilOpState* back) {
+    VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front, VkStencilOpState* back) {
         VkPipeline ret = getPipeline(name);
         if(ret) {
             pass->usePipeline(ret, layout, subpass);
@@ -1571,7 +1570,7 @@ namespace onart {
         return singleton->pipelines[name] = ret;
     }
 
-    VkPipelineLayout VkMachine::createPipelineLayout(VkDescriptorSetLayout* layouts, uint32_t count,  VkShaderStageFlags stages, const string16& name){
+    VkPipelineLayout VkMachine::createPipelineLayout(VkDescriptorSetLayout* layouts, uint32_t count,  VkShaderStageFlags stages, int32_t name){
         VkPipelineLayout ret = getPipelineLayout(name);
         if(ret) return ret;
 
@@ -1626,7 +1625,7 @@ namespace onart {
         }
     }
 
-    void VkMachine::Mesh::drop(const string16& name){
+    void VkMachine::Mesh::drop(int32_t name){
         singleton->meshes.erase(name);
     }
 
@@ -1976,7 +1975,7 @@ namespace onart {
                 delete targets[i];
             }
             targets.clear();
-            RenderPass2Screen* newDat = singleton->createRenderPass2Screen(types.data(), pipelines.size(), "", useFinalDepth, (bool*)useDepth.data());
+            RenderPass2Screen* newDat = singleton->createRenderPass2Screen(types.data(), pipelines.size(), INT32_MIN, useFinalDepth, (bool*)useDepth.data());
             if(!newDat) {
                 this->~RenderPass2Screen();
                 return false;
@@ -1992,7 +1991,7 @@ namespace onart {
             SHALLOW_SWAP(viewport);
             SHALLOW_SWAP(scissor);
 #undef SHALLOW_SWAP
-            singleton->finalPasses.erase("");
+            singleton->finalPasses.erase(INT32_MIN);
             delete newDat; // 문제점: 의미없이 펜스, 세마포어 등이 생성되었다 없어짐
             return true;
         }
