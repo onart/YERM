@@ -232,8 +232,8 @@ namespace onart{
 
     void Game::finalize(){
         Audio::finalize();
-        delete window;
         delete vk;
+        delete window; // Window보다 스왑체인을 먼저 없애야 함 (안 그러면 X11에서 막혀서 프로그램이 안 끝남)
         window = nullptr;
         vk = nullptr;
         Window::terminate();

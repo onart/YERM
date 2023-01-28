@@ -323,7 +323,7 @@ namespace onart {
         for(VkImageView v: swapchain.imageView){ vkDestroyImageView(device, v, nullptr); }
         vkDestroySwapchainKHR(device, swapchain.handle, nullptr);
         swapchain.imageView.clear();
-        swapchain.handle = 0;
+        swapchain.handle = VK_NULL_HANDLE;
     }
 
     bool VkMachine::createLayouts(){

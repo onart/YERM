@@ -683,7 +683,7 @@ namespace onart {
             if constexpr(LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(vattrs + 1, binding);
         }
         inline Vertex() {static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
-        inline Vertex(const FATTR& first, const ATTR&... rest):member(first, rest...) { static_assert(CHECK_TYPE, "One or more of attribute types are inavailable"); }
+        inline Vertex(const FATTR& first, const ATTR&... rest):member(first, rest...) { static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
         /// @brief 주어진 번호의 참조를 리턴합니다. 인덱스 초과 시 컴파일되지 않습니다.
         template<unsigned POS, std::enable_if_t<POS <= sizeof...(ATTR), bool> = false>
         constexpr inline auto& get() { return member.template get<POS>(); }
