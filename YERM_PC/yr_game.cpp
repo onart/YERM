@@ -258,6 +258,7 @@ namespace onart{
             VkMachine::createRenderTarget2D(512, 512, 0, VkMachine::RenderTargetType::COLOR1, false),
             VkMachine::createRenderTarget2D(512, 512, 1, VkMachine::RenderTargetType::COLOR1, true)
         };
+        VkMachine::createRenderPass2Cube(512, 512, 123, false, true);
         auto rtt = VkMachine::RenderTargetType::COLOR1;
         auto offrp = VkMachine::createRenderPass(targets, 2, 0);
         auto rp2s = VkMachine::createRenderPass2Screen(nullptr, 1, 1, false);

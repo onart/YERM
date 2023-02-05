@@ -47,7 +47,7 @@ namespace onart {
     /// @brief 주어진 기반 형식과 아귀가 맞는, 현재 장치에서 사용 가능한 압축 형식을 리턴합니다.
     static VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, uint32_t nChannels, bool srgb, bool hq, VkImageCreateFlagBits flags);
     /// @brief 파이프라인을 주어진 옵션에 따라 생성합니다.
-    static VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, VkRenderPass pass, uint32_t subpass, uint32_t flags, const uint32_t OPT_COLOR_COUNT, const bool OPT_USE_DEPTHSTENCIL, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkStencilOpState* front, VkStencilOpState* back);
+    static VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, VkRenderPass pass, uint32_t subpass, uint32_t flags, const uint32_t OPT_COLOR_COUNT, const bool OPT_USE_DEPTHSTENCIL, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkShaderModule tc, VkShaderModule te, VkShaderModule gs, VkStencilOpState* front, VkStencilOpState* back);
     /// @brief VkResult를 스트링으로 표현합니다. 리턴되는 문자열은 텍스트(코드) 영역에 존재합니다.
     inline static const char* resultAsString(VkResult);
 
@@ -82,6 +82,8 @@ namespace onart {
         }
         if(isCpu) LOGWITH("Warning: this device is CPU");
         // properties.limits.minMemorymapAlignment, minTexelBufferOffsetAlignment, minUniformBufferOffsetAlignment, minStorageBufferOffsetAlignment, optimalBufferCopyOffsetAlignment, optimalBufferCopyRowPitchAlignment를 저장
+
+        vkGetPhysicalDeviceFeatures(physicalDevice.card, &physicalDevice.features);
 
         checkSurfaceHandle();
 
@@ -189,6 +191,12 @@ namespace onart {
     VkMachine::RenderPass* VkMachine::getRenderPass(int32_t name){
         auto it = singleton->renderPasses.find(name);
         if(it != singleton->renderPasses.end()) return it->second;
+        else return nullptr;
+    }
+
+    VkMachine::RenderPass2Cube* VkMachine::getRenderPass2Cube(int32_t name){
+        auto it = singleton->cubePasses.find(name);
+        if(it != singleton->cubePasses.end()) return it->second;
         else return nullptr;
     }
 
@@ -363,6 +371,8 @@ namespace onart {
         for(VkDescriptorSetLayout& layout: textureLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = VK_NULL_HANDLE; }
         for(VkDescriptorSetLayout& layout: inputAttachmentLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = VK_NULL_HANDLE; }
         for(VkSampler& sampler: textureSampler) { vkDestroySampler(device, sampler, nullptr); sampler = VK_NULL_HANDLE; }
+        vkDestroySampler(device, nearestSampler, nullptr); nearestSampler = VK_NULL_HANDLE;
+        for(auto& cp: cubePasses) { delete cp.second; }
         for(auto& fp: finalPasses) { delete fp.second; }
         for(auto& rp: renderPasses) { delete rp.second; }
         for(auto& rt: renderTargets){ delete rt.second; }
@@ -374,6 +384,7 @@ namespace onart {
         meshes.clear();
         pipelines.clear();
         pipelineLayouts.clear();
+        cubePasses.clear();
         finalPasses.clear();
         renderPasses.clear();
         renderTargets.clear();
@@ -429,6 +440,13 @@ namespace onart {
                 LOGWITH("Failed to create texture sampler:", result,resultAsString(result));
                 return false;
             }
+        }
+        samplerInfo.maxLod = 1.0f;
+        samplerInfo.magFilter = VK_FILTER_NEAREST;
+        result = vkCreateSampler(device, &samplerInfo, nullptr, &nearestSampler);
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create texture sampler:", result,resultAsString(result));
+            return false;
         }
         return true;
     }
@@ -1201,6 +1219,270 @@ namespace onart {
         if(depthstencil) { singleton->removeImageSet(depthstencil); /*if (dsetDS) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dsetDS);*/ }
     }
 
+    VkMachine::RenderPass2Cube* VkMachine::createRenderPass2Cube(uint32_t width, uint32_t height, int32_t key, bool useColor, bool useDepth) {
+        RenderPass2Cube* r = getRenderPass2Cube(key);
+        if(r) return r;
+        if(!(useColor || useDepth)){
+            LOGWITH("At least one of useColor and useDepth should be true");
+            return nullptr;
+        }
+        //const bool CAN_USE_GEOM = singleton->physicalDevice.features.geometryShader;
+
+        VkImageCreateInfo imgInfo{};
+        imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imgInfo.extent.width = width;
+        imgInfo.extent.height = height;
+        imgInfo.extent.depth = 1;
+        imgInfo.mipLevels = 1;
+        imgInfo.arrayLayers = 6;
+        imgInfo.imageType = VK_IMAGE_TYPE_2D;
+        imgInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imgInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+        imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+
+        VkImage colorImage = VK_NULL_HANDLE, depthImage = VK_NULL_HANDLE;
+        VmaAllocation colorAlloc = {}, depthAlloc = {};
+        VkImageView targets[12]{}; // 앞 6개는 컬러, 뒤 6개는 깊이
+        VkImageView texture = VK_NULL_HANDLE; // 컬러가 있으면 컬러, 깊이만 있으면 깊이. (큐브맵 텍스처가 가능한 경우에 한해서)
+        VkResult result;
+        if(useColor) {
+            imgInfo.format = singleton->surface.format.format;
+            imgInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+            result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &colorImage, &colorAlloc, nullptr);
+            if(result != VK_SUCCESS) {
+                LOGWITH("Failed to create image:",result,resultAsString(result));
+                return nullptr;
+            }
+        }
+        if(useDepth) {
+            imgInfo.format = VK_FORMAT_D32_SFLOAT;
+            imgInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+            if(!useColor) imgInfo.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+            result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &depthImage, &depthAlloc, nullptr);
+            if(result != VK_SUCCESS) {
+                LOGWITH("Failed to create image:",result,resultAsString(result));
+                vmaDestroyImage(singleton->allocator, colorImage, colorAlloc);
+                return nullptr;
+            }
+        }
+
+        VkImageViewCreateInfo viewInfo{};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.subresourceRange.baseMipLevel = 0;
+        viewInfo.subresourceRange.levelCount = 1;
+        viewInfo.subresourceRange.layerCount = 1;
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+
+        if(useColor) {
+            viewInfo.image = colorImage;
+            viewInfo.format = singleton->surface.format.format;
+            viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            for(int i = 0; i < 6; i++){
+                result = vkCreateImageView(singleton->device, &viewInfo, nullptr, &targets[i]);
+                if(result != VK_SUCCESS) {
+                    LOGWITH("Failed to create image view:",result,resultAsString(result));
+                    for(int j = 0; j < i; j++) {
+                        vkDestroyImageView(singleton->device, targets[j], nullptr);
+                    }
+                    vmaDestroyImage(singleton->allocator, colorImage, colorAlloc);
+                    vmaDestroyImage(singleton->allocator, depthImage, depthAlloc);
+                    return nullptr;
+                }
+            }
+        }
+
+        if(useDepth) {
+            viewInfo.image = depthImage;
+            viewInfo.format = VK_FORMAT_D32_SFLOAT;
+            viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            for(int i = 6; i < 12; i++){
+                result = vkCreateImageView(singleton->device, &viewInfo, nullptr, &targets[i]);
+                if(result != VK_SUCCESS) {
+                    LOGWITH("Failed to create image view:",result,resultAsString(result));
+                    for(int j = 0; j < i; j++) {
+                        vkDestroyImageView(singleton->device, targets[j], nullptr);
+                    }
+                    vmaDestroyImage(singleton->allocator, colorImage, colorAlloc);
+                    vmaDestroyImage(singleton->allocator, depthImage, depthAlloc);
+                    return nullptr;
+                }
+            }
+        }
+
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+        viewInfo.subresourceRange.layerCount = 6;
+        viewInfo.image = useColor ? colorImage : depthImage;
+        viewInfo.format = useColor ? singleton->surface.format.format : VK_FORMAT_D32_SFLOAT;
+        viewInfo.subresourceRange.aspectMask = useColor ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT; // ??
+        result = vkCreateImageView(singleton->device, &viewInfo, nullptr, &texture);
+        if(result != VK_SUCCESS){
+            LOGWITH("Failed to create cube image view:",result,resultAsString(result));
+            for(int j = 0; j < 12; j++) {
+                vkDestroyImageView(singleton->device, targets[j], nullptr);
+            }
+            vmaDestroyImage(singleton->allocator, colorImage, colorAlloc);
+            vmaDestroyImage(singleton->allocator, depthImage, depthAlloc);
+            return nullptr;
+        }
+
+
+        VkSubpassDescription subpassDesc{};
+        VkAttachmentReference refs[2]{};
+        VkAttachmentDescription attachs[2]{};
+
+        refs[0].attachment = 0;
+        refs[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        refs[1].attachment = useColor ? 1 : 0;
+        refs[1].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; // 스텐실 없어도 기본적으로 이 값을 써야 함. separate feature를 켜면 depth만 optimal 가능
+
+        attachs[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        attachs[0].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        attachs[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        attachs[0].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        attachs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        attachs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        attachs[0].samples = VK_SAMPLE_COUNT_1_BIT;
+        attachs[0].format = singleton->surface.format.format;
+
+        attachs[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        attachs[1].finalLayout = useColor ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        attachs[1].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        attachs[1].storeOp = useColor ? VK_ATTACHMENT_STORE_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE;
+        attachs[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        attachs[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        attachs[1].samples = VK_SAMPLE_COUNT_1_BIT;
+        attachs[1].format = VK_FORMAT_D32_SFLOAT;
+        subpassDesc.colorAttachmentCount = useColor ? 1 : 0;
+        subpassDesc.pColorAttachments = refs;
+        subpassDesc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpassDesc.pDepthStencilAttachment = useDepth ? &refs[1] : nullptr;
+
+        // 큐브맵 샘플 좌표 기준: 0번부터 +x, -x, +y, -y, +z, -z
+        VkRenderPassCreateInfo rpInfo{};
+        rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        rpInfo.subpassCount = 1;
+        rpInfo.pSubpasses = &subpassDesc;
+        rpInfo.attachmentCount = ((int)useColor + (int)useDepth);
+        rpInfo.pAttachments = useColor ? attachs : attachs + 1;
+
+        VkRenderPass rp{};
+        VkFramebuffer fb[6]{};
+
+        result = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &rp);
+        if(result != VK_SUCCESS) {
+            LOGWITH("Failed to create render pass:", result, resultAsString(result));
+            for(int j = 0; j < 12; j++) {
+                vkDestroyImageView(singleton->device, targets[j], nullptr);
+            }
+            vmaDestroyImage(singleton->allocator, colorImage, colorAlloc);
+            vmaDestroyImage(singleton->allocator, depthImage, depthAlloc);
+            return nullptr;
+        }
+
+        VkFramebufferCreateInfo fbInfo{};
+        fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        fbInfo.attachmentCount = rpInfo.attachmentCount;
+        VkImageView fbatt[2] = {};
+        fbInfo.pAttachments = fbatt;
+        fbInfo.width = width;
+        fbInfo.height = height;
+        fbInfo.layers = 1;
+        fbInfo.renderPass = rp;
+        for(int i = 0; i < 6; i++){
+            fbatt[1] = targets[i+6];
+            fbatt[0] = useColor ? targets[i] : targets[i+6];
+            result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb[i]);
+            if(result != VK_SUCCESS){
+                LOGWITH("Failed to create framebuffer:", result, resultAsString(result));
+                for(int j = 0; j < i; j++){
+                    vkDestroyFramebuffer(singleton->device, fb[j], nullptr);
+                }
+                for(int j = 0; j < 12; j++) {
+                    vkDestroyImageView(singleton->device, targets[j], nullptr);
+                }
+                vmaDestroyImage(singleton->allocator, colorImage, colorAlloc);
+                vmaDestroyImage(singleton->allocator, depthImage, depthAlloc);
+                vkDestroyRenderPass(singleton->device, rp, nullptr);
+                return nullptr;
+            }
+        }
+
+        VkCommandBuffer prim, sec;
+        VkCommandBuffer facewise[6]{};
+        VkDescriptorSet dset;
+
+        VkFence fence = singleton->createFence(true);
+        VkSemaphore semaphore = singleton->createSemaphore();
+        singleton->allocateCommandBuffers(1, true, &prim);
+        singleton->allocateCommandBuffers(1, false, &sec);
+        singleton->allocateCommandBuffers(6, false, facewise);
+        
+        singleton->allocateDescriptorSets(&singleton->textureLayout[1], 1, &dset); // 바인딩 1
+
+        if(!prim || !sec || !fence || !semaphore || !dset || !facewise[0]){
+            LOGHERE;
+            vkDestroySemaphore(singleton->device, semaphore, nullptr);
+            vkDestroyFence(singleton->device, fence, nullptr);
+            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &prim);
+            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &sec);
+            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 6, facewise);
+            for(int j = 0; j < 6; j++){
+                vkDestroyFramebuffer(singleton->device, fb[j], nullptr);
+            }
+            for(int j = 0; j < 12; j++) {
+                vkDestroyImageView(singleton->device, targets[j], nullptr);
+            }
+            vmaDestroyImage(singleton->allocator, colorImage, colorAlloc);
+            vmaDestroyImage(singleton->allocator, depthImage, depthAlloc);
+            vkDestroyRenderPass(singleton->device, rp, nullptr);
+            return nullptr;
+        }
+
+        VkWriteDescriptorSet writer{};
+        VkDescriptorImageInfo diInfo{};
+        diInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        diInfo.imageView = texture;
+        diInfo.sampler = singleton->textureSampler[0];
+        
+        writer.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writer.descriptorCount = 1;
+        writer.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writer.dstBinding = 1;
+        writer.dstSet = dset;
+        writer.pImageInfo = &diInfo;
+        writer.dstArrayElement = 0;
+        vkUpdateDescriptorSets(singleton->device, 1, &writer, 0, nullptr);
+
+        r = new RenderPass2Cube;
+        std::copy(targets, targets+12, r->ivs);
+        std::copy(fb, fb + 6, r->fbs);
+        std::copy(facewise, facewise + 6, r->facewise);
+        r->rp = rp;
+        r->width = width;
+        r->height = height;
+        r->colorAlloc = colorAlloc;
+        r->colorTarget = colorImage;
+        r->depthAlloc = depthAlloc;
+        r->depthTarget = depthImage;
+        r->fence = fence;
+        r->semaphore = semaphore;
+        r->cb = prim;
+        r->scb = sec;
+        r->csamp = dset;
+        r->tex = texture;
+        for(int face = 0; face < 6; face++){ // 아무 동작 없이도 바로 제출할 수 있게
+            r->beginFacewise(face);
+            vkEndCommandBuffer(r->facewise[face]);
+        }
+        return singleton->cubePasses[key] = r;
+    }
+
     VkMachine::RenderPass2Screen* VkMachine::createRenderPass2Screen(RenderTargetType* tgs, uint32_t subpassCount, int32_t name, bool useDepth, bool* useDepthAsInput){
         RenderPass2Screen* r = getRenderPass2Screen(name);
         if(r) return r;
@@ -1514,11 +1796,31 @@ namespace onart {
 
     VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr,
     VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, RenderPass* pass, uint32_t subpass,
-    uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front, VkStencilOpState* back){
+    uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front, VkStencilOpState* back, VkShaderModule tc, VkShaderModule te, VkShaderModule gs){
         VkPipeline ret = getPipeline(name);
         if(ret) {
             pass->usePipeline(ret, layout, subpass);
             return ret;
+        }
+
+        if(!(vs && fs)){
+            LOGWITH("Vertex and fragment shader should be provided.");
+            return VK_NULL_HANDLE;
+        }
+
+        if(tc && te) {
+            if(!singleton->physicalDevice.features.tessellationShader) {
+                LOGWITH("Tesselation shaders are inavailable in this device. Try to use another pipeline.");
+                return VK_NULL_HANDLE;
+            }
+        }
+        else if(tc || te){
+            LOGWITH("Tesselation control shader and tesselation evaluation shader must be both null or both available.");
+            return VK_NULL_HANDLE;
+        }
+        if(gs && !singleton->physicalDevice.features.geometryShader) {
+            LOGWITH("Geometry shaders are inavailable in this device. Try to use another pipeline.");
+            return VK_NULL_HANDLE;
         }
 
         const uint32_t OPT_COLOR_COUNT =
@@ -1528,7 +1830,7 @@ namespace onart {
             0;
         const bool OPT_USE_DEPTHSTENCIL = (int)pass->targets[subpass]->type & 0b1000;
 
-        ret = onart::createPipeline(singleton->device, vinfo, vsize, vattr, iinfo, isize, iattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, front, back);
+        ret = onart::createPipeline(singleton->device, vinfo, vsize, vattr, iinfo, isize, iattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, tc, te, gs, front, back);
         if(!ret){
             LOGHERE;
             return VK_NULL_HANDLE;
@@ -1540,12 +1842,34 @@ namespace onart {
     VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr,
     VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr,
     RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout,
-    VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front, VkStencilOpState* back) {
+    VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front, VkStencilOpState* back,
+    VkShaderModule tc, VkShaderModule te, VkShaderModule gs) {
         VkPipeline ret = getPipeline(name);
         if(ret) {
             pass->usePipeline(ret, layout, subpass);
             return ret;
         }
+
+        if(!(vs && fs)){
+            LOGWITH("Vertex and fragment shader should be provided.");
+            return VK_NULL_HANDLE;
+        }
+
+        if(tc && te) {
+            if(!singleton->physicalDevice.features.tessellationShader) {
+                LOGWITH("Tesselation shaders are inavailable in this device. Try to use another pipeline.");
+                return VK_NULL_HANDLE;
+            }
+        }
+        else if(tc || te){
+            LOGWITH("Tesselation control shader and tesselation evaluation shader must be both null or both available.");
+            return VK_NULL_HANDLE;
+        }
+        if(gs && !singleton->physicalDevice.features.geometryShader) {
+            LOGWITH("Geometry shaders are inavailable in this device. Try to use another pipeline.");
+            return VK_NULL_HANDLE;
+        }
+
         uint32_t OPT_COLOR_COUNT;
         bool OPT_USE_DEPTHSTENCIL;
         if(subpass == pass->targets.size()) {
@@ -1561,7 +1885,7 @@ namespace onart {
             OPT_USE_DEPTHSTENCIL = (int)pass->targets[subpass]->type & 0b1000;
         }
 
-        ret = onart::createPipeline(singleton->device, vinfo, size, vattr, iinfo, isize, iattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, front, back);
+        ret = onart::createPipeline(singleton->device, vinfo, size, vattr, iinfo, isize, iattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, tc, te, gs, front, back);
         if(!ret){
             LOGHERE;
             return VK_NULL_HANDLE;
@@ -1918,6 +2242,257 @@ namespace onart {
         vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]);
         vkCmdSetViewport(cb, 0, 1, &viewport);
         vkCmdSetScissor(cb, 0, 1, &scissor);
+    }
+
+    VkMachine::RenderPass2Cube::~RenderPass2Cube(){
+        vkDestroyFence(singleton->device, fence, nullptr); fence = VK_NULL_HANDLE;
+        vkDestroySemaphore(singleton->device, semaphore, nullptr); semaphore = VK_NULL_HANDLE;
+        vkDestroyRenderPass(singleton->device, rp, nullptr); rp = VK_NULL_HANDLE;
+        for(VkFramebuffer& fb: fbs) {vkDestroyFramebuffer(singleton->device, fb, nullptr); fb = VK_NULL_HANDLE;}
+        vkDestroyImageView(singleton->device, tex, nullptr); tex = VK_NULL_HANDLE;
+        vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &cb); cb = VK_NULL_HANDLE;
+        vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &scb); scb = VK_NULL_HANDLE;
+        for(VkImageView& iv:ivs) { vkDestroyImageView(singleton->device, iv, nullptr); iv = VK_NULL_HANDLE; }
+        vmaDestroyImage(singleton->allocator, colorTarget, colorAlloc); colorTarget = VK_NULL_HANDLE; colorAlloc = {};
+        vmaDestroyImage(singleton->allocator, depthTarget, depthAlloc); depthTarget = VK_NULL_HANDLE; depthAlloc = {};
+        //vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &csamp); csamp = VK_NULL_HANDLE;
+    }
+
+    void VkMachine::RenderPass2Cube::beginFacewise(uint32_t pass){
+        if(pass >= 6) return;
+        VkCommandBufferInheritanceInfo ciInfo{};
+        ciInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+        ciInfo.renderPass = rp;
+        ciInfo.framebuffer = fbs[pass];
+        ciInfo.subpass = 0;
+        VkCommandBufferBeginInfo cbInfo{};
+        cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        cbInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+        cbInfo.pInheritanceInfo = &ciInfo;
+        VkResult result;
+        if((result = vkBeginCommandBuffer(facewise[pass], &cbInfo)) != VK_SUCCESS){
+            LOGWITH("Failed to begin command buffer:",result,resultAsString(result));
+        }
+    }
+
+    void VkMachine::RenderPass2Cube::bind(uint32_t pos, UniformBuffer* ub, uint32_t pass, uint32_t ubPos){
+        if(!recording){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        ub->sync();
+        uint32_t off = ub->offset(ubPos);
+        if(pass >= 6) {
+            vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &ub->dset, ub->isDynamic, &off);
+        }
+        else{
+            beginFacewise(pass);
+            vkCmdBindDescriptorSets(facewise[pass], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &ub->dset, ub->isDynamic, &off);
+            vkEndCommandBuffer(facewise[pass]);
+        }
+    }
+
+    void VkMachine::RenderPass2Cube::bind(uint32_t pos, const pTexture& tx){
+        if(!recording){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
+    }
+
+    void VkMachine::RenderPass2Cube::bind(uint32_t pos, RenderTarget* target, uint32_t index){
+        if(!recording){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        if(!target->sampled){
+            LOGWITH("Invalid call: this target is not made with texture");
+            return;
+        }
+        VkDescriptorSet dset;
+        switch(index){
+            case 0:
+                dset = target->dset1;
+                break;
+            case 1:
+                dset = target->dset2;
+                break;
+            case 2:
+                dset = target->dset3;
+                break;
+            case 3:
+                dset = target->dsetDS;
+                break;
+            default:
+                LOGWITH("Invalid render target index");
+                return;
+        }
+        if(!dset) {
+            LOGWITH("Invalid render target index");
+            return;
+        }
+        vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &dset, 0, nullptr);
+    }
+    
+    void VkMachine::RenderPass2Cube::usePipeline(VkPipeline pipeline, VkPipelineLayout layout){
+        this->pipeline = pipeline;
+        this->pipelineLayout = layout;
+        if(recording) { vkCmdBindPipeline(scb, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline); }
+    }
+
+    void VkMachine::RenderPass2Cube::push(void* input, uint32_t start, uint32_t end){
+        if(!recording){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        vkCmdPushConstants(scb, pipelineLayout, VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT | VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
+    }
+
+    void VkMachine::RenderPass2Cube::invoke(const pMesh& mesh){
+         if(!recording){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        if((bound != mesh.get()) && (mesh->vb != VK_NULL_HANDLE)) {
+            VkDeviceSize offs = 0;
+            vkCmdBindVertexBuffers(scb, 0, 1, &mesh->vb, &offs);
+            if(mesh->icount) vkCmdBindIndexBuffer(scb, mesh->vb, mesh->ioff, mesh->idxType);
+        }
+        if(mesh->icount) vkCmdDrawIndexed(scb, mesh->icount, 1, 0, 0, 0);
+        else vkCmdDraw(scb, mesh->vcount, 1, 0, 0);
+        bound = mesh.get();
+    }
+
+    void VkMachine::RenderPass2Cube::invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount){
+         if(!recording){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        VkDeviceSize offs[2] = {0, 0};
+        VkBuffer buffs[2] = {mesh->vb, instanceInfo->vb};
+        vkCmdBindVertexBuffers(scb, 0, 2, buffs, offs);
+        if(mesh->icount) {
+            vkCmdBindIndexBuffer(scb, mesh->vb, mesh->ioff, mesh->idxType);
+            vkCmdDrawIndexed(scb, mesh->icount, instanceCount, 0, 0, 0);
+        }
+        else{
+            vkCmdDraw(scb, mesh->vcount, instanceCount, 0, 0);
+        }
+        bound = nullptr;
+    }
+
+    void VkMachine::RenderPass2Cube::execute(RenderPass* other){
+        if(!recording){
+            LOGWITH("Renderpass not started. This message can be ignored safely if the rendering goes fine after now");
+            return;
+        }
+
+        VkResult result = vkEndCommandBuffer(scb);
+        if(result != VK_SUCCESS){ // 호스트/GPU 메모리 부족 문제만 존재
+            LOGWITH("Secondary command buffer begin failed:",result, resultAsString(result));
+            return;
+        }
+
+        VkCommandBufferBeginInfo cbInfo{};
+        cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        cbInfo.flags = VkCommandBufferUsageFlagBits::VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(cb, &cbInfo);
+        if(result != VK_SUCCESS){ // 호스트/GPU 메모리 부족 문제만 존재
+            LOGWITH("Primary Command buffer begin failed:",result,resultAsString(result));
+            return;
+        }
+
+        VkClearValue cvs[2]{};
+        cvs[1].depthStencil.depth = 1.0f;
+        VkRenderPassBeginInfo rpBeginInfo{};
+        rpBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        rpBeginInfo.clearValueCount = (colorTarget ? 1 : 0) + (depthTarget ? 1 : 0);
+        rpBeginInfo.pClearValues = colorTarget ? cvs : &cvs[1];
+        rpBeginInfo.renderPass = rp;
+        rpBeginInfo.renderArea.extent.width = width;
+        rpBeginInfo.renderArea.extent.height = height;
+        rpBeginInfo.renderArea.offset = {};
+
+        VkCommandBuffer ubNdraw[2] = {facewise[0], scb};
+        
+        for(int i=0;i<6;i++){
+            rpBeginInfo.framebuffer = fbs[i];
+            vkCmdBeginRenderPass(cb, &rpBeginInfo, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+            ubNdraw[0] = facewise[i];
+            vkCmdExecuteCommands(cb, 2, ubNdraw);
+            vkCmdEndRenderPass(cb);
+        }
+        bound = nullptr;
+        if((result = vkEndCommandBuffer(scb)) != VK_SUCCESS){
+            LOGWITH("Failed to end command buffer:",result);
+            return;
+        }
+        
+        VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cb;
+        if(other){
+            submitInfo.waitSemaphoreCount = 1;
+            submitInfo.pWaitSemaphores = &other->semaphore;
+            submitInfo.pWaitDstStageMask = waitStages;
+        }
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = &semaphore;
+
+        if((result = vkResetFences(singleton->device, 1, &fence)) != VK_SUCCESS){
+            LOGWITH("Failed to reset fence. waiting or other operations will play incorrect");
+            return;
+        }
+
+        if ((result = vkQueueSubmit(singleton->graphicsQueue, 1, &submitInfo, fence)) != VK_SUCCESS) {
+            LOGWITH("Failed to submit command buffer");
+            return;
+        }
+
+        recording = false;
+    }
+
+    bool VkMachine::RenderPass2Cube::wait(uint64_t timeout){
+        return vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, timeout) == VK_SUCCESS; // VK_TIMEOUT이나 VK_ERROR_DEVICE_LOST
+    }
+
+    void VkMachine::RenderPass2Cube::start(){
+        if(recording) {
+            LOGWITH("Invalid call. The renderpass already started");
+            return;
+        }
+        bound = nullptr;
+        if(!pipeline) {
+            LOGWITH("Pipeline not set:",this);
+            return;
+        }
+        VkResult result;
+        wait();
+        recording = true;
+        vkResetCommandBuffer(cb, 0);
+        vkResetCommandBuffer(scb, 0);
+        VkCommandBufferInheritanceInfo ciInfo{};
+        ciInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+        ciInfo.renderPass = rp; // 공유..지만 다른 패스를 쓴대도 호환만 되면 명시 가능
+        ciInfo.subpass = 0; // 무조건 실제와 일치해야 해서 서브패스에서 수행 불가능
+        //ciInfo.framebuffer = nullptr; // : 여러 프레임버퍼에 대해 사용하기 때문에 명시할 수 없음
+
+        VkCommandBufferBeginInfo cbInfo{};
+        cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        cbInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+        result = vkBeginCommandBuffer(scb, &cbInfo);
+        if(result != VK_SUCCESS){
+            recording = false;
+            LOGWITH("Failed to begin secondary command buffer:",result, resultAsString(result));
+            return;
+        }
+        
+        vkCmdBindPipeline(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        vkCmdSetViewport(scb, 0, 1, &viewport);
+        vkCmdSetScissor(scb, 0, 1, &scissor);
     }
 
     VkMachine::RenderPass2Screen::RenderPass2Screen(VkRenderPass rp, std::vector<RenderTarget*>&& targets, std::vector<VkFramebuffer>&& fbs, VkImage dsImage, VkImageView dsView, VmaAllocation dsAlloc)
@@ -2530,7 +3105,6 @@ namespace onart {
         // properties.limits: 대부분의 사양상의 limit은 매우 널널하여 지금은 검사하지 않음.
 
         // features
-        if(features.imageCubeArray) score |= (1ULL << 55);
         if(features.textureCompressionASTC_LDR) score |= (1ULL << 54);
         if(features.textureCompressionBC) score |= (1ULL << 53);
         if(features.textureCompressionETC2) score |= (1ULL << 52);
@@ -2555,10 +3129,11 @@ namespace onart {
         VkPhysicalDeviceFeatures wantedFeatures{};
         VkPhysicalDeviceFeatures availableFeatures;
         vkGetPhysicalDeviceFeatures(card, &availableFeatures);
-        wantedFeatures.imageCubeArray = availableFeatures.imageCubeArray;
         wantedFeatures.textureCompressionASTC_LDR = availableFeatures.textureCompressionASTC_LDR;
         wantedFeatures.textureCompressionBC = availableFeatures.textureCompressionBC;
         wantedFeatures.textureCompressionETC2 = availableFeatures.textureCompressionETC2;
+        wantedFeatures.tessellationShader = availableFeatures.tessellationShader;
+        wantedFeatures.geometryShader = availableFeatures.geometryShader;
 
         VkDeviceCreateInfo deviceInfo{};
         deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -2745,17 +3320,39 @@ namespace onart {
     VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr,
     VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr,
     VkRenderPass pass, uint32_t subpass, uint32_t flags, const uint32_t OPT_COLOR_COUNT, const bool OPT_USE_DEPTHSTENCIL,
-    VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkStencilOpState* front, VkStencilOpState* back) {
-        VkPipelineShaderStageCreateInfo shaderStagesInfo[2] = {};
+    VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkShaderModule tc, VkShaderModule te, VkShaderModule gs, VkStencilOpState* front, VkStencilOpState* back) {
+        VkPipelineShaderStageCreateInfo shaderStagesInfo[5] = {};
         shaderStagesInfo[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         shaderStagesInfo[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
         shaderStagesInfo[0].module = vs;
         shaderStagesInfo[0].pName = "main";
 
-        shaderStagesInfo[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        shaderStagesInfo[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        shaderStagesInfo[1].module = fs;
-        shaderStagesInfo[1].pName = "main";
+        uint32_t lastStage = 1;
+
+        if(tc) {
+            shaderStagesInfo[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            shaderStagesInfo[1].stage = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+            shaderStagesInfo[1].module = tc;
+            shaderStagesInfo[1].pName = "main";
+            shaderStagesInfo[2].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            shaderStagesInfo[2].stage = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+            shaderStagesInfo[2].module = te;
+            shaderStagesInfo[2].pName = "main";
+            lastStage = 3;
+        }
+        if(gs) {
+            shaderStagesInfo[lastStage].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            shaderStagesInfo[lastStage].stage = VK_SHADER_STAGE_GEOMETRY_BIT;
+            shaderStagesInfo[lastStage].module = gs;
+            shaderStagesInfo[lastStage].pName = "main";
+            lastStage++;
+        }
+
+        shaderStagesInfo[lastStage].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStagesInfo[lastStage].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        shaderStagesInfo[lastStage].module = fs;
+        shaderStagesInfo[lastStage].pName = "main";
+        lastStage++;
 
         VkVertexInputBindingDescription vbind[2]{};
         vbind[0].binding = 0;
@@ -2830,11 +3427,15 @@ namespace onart {
 
         VkPipelineMultisampleStateCreateInfo msInfo{};
         msInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-        msInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        msInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; // TODO: 선택권
+
+        VkPipelineTessellationStateCreateInfo tessInfo{};
+        tessInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO;
+        tessInfo.patchControlPoints = 3; // TODO: 선택권
 
         VkGraphicsPipelineCreateInfo pInfo{};
         pInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-        pInfo.stageCount = sizeof(shaderStagesInfo) / sizeof(shaderStagesInfo[0]);
+        pInfo.stageCount = lastStage;
         pInfo.pStages = shaderStagesInfo;
         pInfo.pVertexInputState = &vertexInputInfo;
         pInfo.renderPass = pass;
@@ -2845,7 +3446,7 @@ namespace onart {
         pInfo.pViewportState = &viewportInfo;
         pInfo.pMultisampleState = &msInfo;
         pInfo.pInputAssemblyState = &inputAssemblyInfo;
-        // pInfo.pMultisampleState, pInfo.pTessellationState // TODO: 선택권
+        if(tc) pInfo.pTessellationState = &tessInfo;
         if(OPT_COLOR_COUNT) { pInfo.pColorBlendState = &colorBlendStateCreateInfo; }
         if(OPT_USE_DEPTHSTENCIL){ pInfo.pDepthStencilState = &dsInfo; }
         VkPipeline ret;
