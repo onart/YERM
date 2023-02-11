@@ -9,36 +9,13 @@
 #include <string>
 
 template <class... T>
-inline void __logMultiple(const T&...);
-
-template<>
-inline void __logMultiple(){ std::cout << std::endl; }
-
-template <class F>
-inline void __logMultiple(const F& first){ std::cout << first << std::endl; }
-
-template <class F, class... T>
-inline void __logMultiple(const F& first, const T &...extra){
-  std::cout << first << ' ';
-  __logMultiple(extra...);
-}
-
-template <class... T>
-inline void __logPosition(const std::string& file, int line, const std::string& func, const T&... extra){
-    std::cout << file << ':' << line << ' ' << func;
-    if constexpr(sizeof...(T) > 0) std::cout << ": ";
-    __logMultiple(extra...);
-
-}
-
-template <class... T>
 inline void __getMultiple(std::ostream&, const T&...);
 
 template<>
-inline void __getMultiple(std::ostream& strm) { strm << '\n'; }
+inline void __getMultiple(std::ostream& strm) { strm << std::endl; }
 
 template<class F>
-inline void __getMultiple(std::ostream& strm, const F& first) { strm << first << '\n'; }
+inline void __getMultiple(std::ostream& strm, const F& first) { strm << first << std::endl; }
 
 template<class F, class... T>
 inline void __getMultiple(std::ostream& strm, const F& first, const T&... extra) { 
@@ -53,6 +30,13 @@ inline std::string __getLogContent(const std::string& file, int line, const std:
     if constexpr(sizeof...(T) > 0) strm << ": ";
     __getMultiple(strm, extra...);
     return strm.str();
+}
+
+template <class... T>
+inline void __logPosition(const std::string& file, int line, const std::string& func, const T&... extra){
+    std::cout << file << ':' << line << ' ' << func;
+    if constexpr(sizeof...(T) > 0) std::cout << ": ";
+    __getMultiple(std::cout, extra...);
 }
 
 /// @brief 콘솔이 아닌 다른 곳에 로그를 하고 싶을 때 사용합니다.
