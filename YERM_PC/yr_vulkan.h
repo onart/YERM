@@ -261,8 +261,9 @@ namespace onart {
             /// @brief 그래픽스/전송 명령 버퍼를 풀로부터 할당합니다.
             /// @param count 할당할 수
             /// @param isPrimary true면 주 버퍼, false면 보조 버퍼입니다.
+            /// @param fromGraphics true면 그래픽스 전용의 풀에서 할당을 시도하고 false면 전달 전용의 풀에서 할당을 시도합니다.
             /// @param buffers 버퍼가 들어갑니다. count 길이 이상의 배열이어야 하며, 할당 실패 시 첫 번째에 nullptr가 들어갑니다.
-            void allocateCommandBuffers(int count, bool isPrimary, VkCommandBuffer* buffers);
+            void allocateCommandBuffers(int count, bool isPrimary, bool fromGraphics, VkCommandBuffer* buffers);
             /// @brief 기술자 집합을 할당합니다.
             /// @param layouts 할당할 집합 레이아웃
             /// @param count 할당할 수
@@ -299,14 +300,17 @@ namespace onart {
             } surface;
             struct{
                 VkPhysicalDevice card = VK_NULL_HANDLE;
-                uint32_t gq, pq;
+                uint32_t gq, pq, subq;
+                uint32_t subqIndex;
                 uint64_t minUBOffsetAlignment;
                 VkPhysicalDeviceFeatures features;
             } physicalDevice;
             VkDevice device = VK_NULL_HANDLE;
             VkQueue graphicsQueue = VK_NULL_HANDLE;
             VkQueue presentQueue = VK_NULL_HANDLE;
+            VkQueue transferQueue = VK_NULL_HANDLE;
             VkCommandPool gCommandPool = VK_NULL_HANDLE;
+            VkCommandPool tCommandPool = VK_NULL_HANDLE;
             VkCommandBuffer baseBuffer[1]={};
             VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
             VkDescriptorSetLayout textureLayout[4] = {}; // 바인딩 0~3 하나씩

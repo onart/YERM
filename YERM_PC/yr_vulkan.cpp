@@ -31,11 +31,11 @@ namespace onart {
     /// @brief Vulkan 인스턴스를 생성합니다. 자동으로 호출됩니다.
     static VkInstance createInstance(Window*);
     /// @brief 사용할 Vulkan 물리 장치를 선택합니다. CPU 기반인 경우 경고를 표시하지만 선택에 실패하지는 않습니다.
-    static VkPhysicalDevice findPhysicalDevice(VkInstance, VkSurfaceKHR, bool*, uint32_t*, uint32_t*, uint64_t*);
+    static VkPhysicalDevice findPhysicalDevice(VkInstance, VkSurfaceKHR, bool*, uint32_t*, uint32_t*, uint32_t*, uint32_t*, uint64_t*);
     /// @brief 주어진 Vulkan 물리 장치에 대한 우선도를 매깁니다. 높을수록 좋게 취급합니다. 대부분의 경우 물리 장치는 하나일 것이므로 함수가 아주 중요하지는 않을 거라 생각됩니다.
     static uint64_t assessPhysicalDevice(VkPhysicalDevice);
     /// @brief 주어진 장치에 대한 가상 장치를 생성합니다.
-    static VkDevice createDevice(VkPhysicalDevice, int, int);
+    static VkDevice createDevice(VkPhysicalDevice, int, int, int, int);
     /// @brief 주어진 장치에 대한 메모리 관리자를 세팅합니다.
     static VmaAllocator createAllocator(VkInstance, VkPhysicalDevice, VkDevice);
     /// @brief 명령 풀을 생성합니다.
@@ -75,7 +75,7 @@ namespace onart {
         }
 
         bool isCpu;
-        if(!(physicalDevice.card = findPhysicalDevice(instance, surface.handle, &isCpu, &physicalDevice.gq, &physicalDevice.pq, &physicalDevice.minUBOffsetAlignment))) { // TODO: 모든 가용 graphics/transfer 큐 정보를 저장해 두고 버퍼/텍스처 등 자원 세팅은 다른 큐를 사용하게 만들자
+        if(!(physicalDevice.card = findPhysicalDevice(instance, surface.handle, &isCpu, &physicalDevice.gq, &physicalDevice.pq, &physicalDevice.subq, &physicalDevice.subqIndex, &physicalDevice.minUBOffsetAlignment))) { // TODO: 모든 가용 graphics/transfer 큐 정보를 저장해 두고 버퍼/텍스처 등 자원 세팅은 다른 큐를 사용하게 만들자
             LOGWITH("Couldn\'t find any appropriate graphics device");
             free();
             return;
@@ -87,14 +87,16 @@ namespace onart {
 
         checkSurfaceHandle();
 
-        if(!(device = createDevice(physicalDevice.card, physicalDevice.gq, physicalDevice.pq))) {
+        if(!(device = createDevice(physicalDevice.card, physicalDevice.gq, physicalDevice.pq, physicalDevice.subq, physicalDevice.subqIndex))) {
             free();
             return;
         }
 
         vkGetDeviceQueue(device, physicalDevice.gq, 0, &graphicsQueue);
         vkGetDeviceQueue(device, physicalDevice.pq, 0, &presentQueue);
-
+        vkGetDeviceQueue(device, physicalDevice.subq, physicalDevice.subqIndex, &transferQueue);
+        //LOGRAW(physicalDevice.subqIndex, graphicsQueue, transferQueue, presentQueue);
+        //LOGRAW(physicalDevice.gq, physicalDevice.pq, physicalDevice.subq);
 
         if(!(allocator = createAllocator(instance, physicalDevice.card, device))){
             free();
@@ -105,8 +107,12 @@ namespace onart {
             free();
             return;
         }
+        if(!(tCommandPool = createCommandPool(device, physicalDevice.subq))){
+            free();
+            return;
+        }
 
-        allocateCommandBuffers(sizeof(baseBuffer)/sizeof(baseBuffer[0]), true, baseBuffer);
+        allocateCommandBuffers(sizeof(baseBuffer)/sizeof(baseBuffer[0]), true, true, baseBuffer);
         if(!baseBuffer[0]){
             free();
         }
@@ -212,11 +218,11 @@ namespace onart {
         else return pTexture();
     }
 
-    void VkMachine::allocateCommandBuffers(int count, bool isPrimary, VkCommandBuffer* buffers){
+    void VkMachine::allocateCommandBuffers(int count, bool isPrimary, bool fromGraphics, VkCommandBuffer* buffers){
         VkCommandBufferAllocateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         bufferInfo.level = isPrimary ? VK_COMMAND_BUFFER_LEVEL_PRIMARY : VK_COMMAND_BUFFER_LEVEL_SECONDARY;
-        bufferInfo.commandPool = gCommandPool;
+        bufferInfo.commandPool = fromGraphics ? gCommandPool : tCommandPool;
         bufferInfo.commandBufferCount = count;
         VkResult result;
         if((result = vkAllocateCommandBuffers(device, &bufferInfo, buffers))!=VK_SUCCESS){
@@ -392,16 +398,19 @@ namespace onart {
         destroySwapchain();
         vmaDestroyAllocator(allocator);
         vkDestroyCommandPool(device, gCommandPool, nullptr);
+        vkDestroyCommandPool(device, tCommandPool, nullptr);
         vkDestroyDescriptorPool(device, descriptorPool, nullptr);
         vkDestroyDevice(device, nullptr);
         vkDestroySurfaceKHR(instance, surface.handle, nullptr);
         vkDestroyInstance(instance, nullptr);
         allocator = VK_NULL_HANDLE;
         gCommandPool = VK_NULL_HANDLE;
+        tCommandPool = VK_NULL_HANDLE;
         descriptorPool = VK_NULL_HANDLE;
         device = VK_NULL_HANDLE;
         graphicsQueue = VK_NULL_HANDLE;
         presentQueue = VK_NULL_HANDLE;
+        transferQueue = VK_NULL_HANDLE;
         surface.handle = VK_NULL_HANDLE;
         instance = VK_NULL_HANDLE;
     }
@@ -530,7 +539,7 @@ namespace onart {
         }
 
         VkCommandBuffer copycb;
-        singleton->allocateCommandBuffers(1, true, &copycb);
+        singleton->allocateCommandBuffers(1, true, false, &copycb);
         if(!copycb) {
             LOGHERE;
             vmaDestroyBuffer(singleton->allocator, vib, viba);
@@ -546,14 +555,14 @@ namespace onart {
         if((result = vkBeginCommandBuffer(copycb, &cbInfo)) != VK_SUCCESS){
             LOGWITH("Failed to begin command buffer:",result,resultAsString(result));
             vmaDestroyBuffer(singleton->allocator, vib, viba);
-            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &copycb);
+            vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
         }
         vkCmdCopyBuffer(copycb, sb, vib, 1, &copyRegion);
         if((result = vkEndCommandBuffer(copycb)) != VK_SUCCESS){
             LOGWITH("Failed to end command buffer:",result,resultAsString(result));
             vmaDestroyBuffer(singleton->allocator, vib, viba);
-            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &copycb);
+            vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
         }
         VkSubmitInfo submitInfo{};
@@ -564,19 +573,19 @@ namespace onart {
         if(!fence) {
             LOGHERE;
             vmaDestroyBuffer(singleton->allocator, vib, viba);
-            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &copycb);
+            vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
         }
-        if((result = vkQueueSubmit(singleton->graphicsQueue, 1, &submitInfo, fence)) != VK_SUCCESS){
+        if((result = vkQueueSubmit(singleton->transferQueue, 1, &submitInfo, fence)) != VK_SUCCESS){
             LOGWITH("Failed to submit copy command");
             vmaDestroyBuffer(singleton->allocator, vib, viba);
-            vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &copycb);
+            vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
         }
         vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, UINT64_MAX);
         vkDestroyFence(singleton->device, fence, nullptr);
         vmaDestroyBuffer(singleton->allocator, sb, sba);
-        vkFreeCommandBuffers(singleton->device, singleton->gCommandPool, 1, &copycb);
+        vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
         return singleton->meshes[name] = std::make_shared<publicmesh>(vib,viba,vcount,icount,VBSIZE,nullptr,isize==4);
     }
 
@@ -882,7 +891,7 @@ namespace onart {
         allocInfo.flags = 0;
         vmaCreateImage(allocator, &imgInfo, &allocInfo, &newImg, &newAlloc2, nullptr);
         VkCommandBuffer copyCmd;
-        allocateCommandBuffers(1, true, &copyCmd);
+        allocateCommandBuffers(1, true, false, &copyCmd);
 
         VkImageMemoryBarrier imgBarrier{};
         imgBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -901,7 +910,7 @@ namespace onart {
         if((result = vkBeginCommandBuffer(copyCmd, &beginInfo)) != VK_SUCCESS){
             LOGWITH("Failed to begin command buffer:",result,resultAsString(result));
             ktxTexture_Destroy(ktxTexture(texture));
-            vkFreeCommandBuffers(device, gCommandPool, 1, &copyCmd);
+            vkFreeCommandBuffers(device, tCommandPool, 1, &copyCmd);
             vmaDestroyImage(allocator, newImg, newAlloc2);
             vmaDestroyBuffer(allocator, newBuffer, newAlloc);
             return pTexture();
@@ -917,7 +926,7 @@ namespace onart {
         if((result = vkEndCommandBuffer(copyCmd)) != VK_SUCCESS){
             LOGWITH("Failed to end command buffer:",result,resultAsString(result));
             ktxTexture_Destroy(ktxTexture(texture));
-            vkFreeCommandBuffers(device, gCommandPool, 1, &copyCmd);
+            vkFreeCommandBuffers(device, tCommandPool, 1, &copyCmd);
             vmaDestroyImage(allocator, newImg, newAlloc2);
             vmaDestroyBuffer(allocator, newBuffer, newAlloc);
             return pTexture();
@@ -926,12 +935,22 @@ namespace onart {
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &copyCmd;
-        if((result = vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE)) != VK_SUCCESS){ // TODO: 큐 전체대기 -> 펜스대기
-            LOGWITH("Failed to submit copy command:",result,resultAsString(result));
+        VkFence fence = createFence();
+        if(fence == VK_NULL_HANDLE) {
+            LOGHERE;
             ktxTexture_Destroy(ktxTexture(texture));
-            vkFreeCommandBuffers(device, gCommandPool, 1, &copyCmd);
+            vkFreeCommandBuffers(device, tCommandPool, 1, &copyCmd);
             vmaDestroyImage(allocator, newImg, newAlloc2);
             vmaDestroyBuffer(allocator, newBuffer, newAlloc);
+            return pTexture();
+        }
+        if((result = vkQueueSubmit(transferQueue, 1, &submitInfo, fence)) != VK_SUCCESS){
+            LOGWITH("Failed to submit copy command:",result,resultAsString(result));
+            ktxTexture_Destroy(ktxTexture(texture));
+            vkFreeCommandBuffers(device, tCommandPool, 1, &copyCmd);
+            vmaDestroyImage(allocator, newImg, newAlloc2);
+            vmaDestroyBuffer(allocator, newBuffer, newAlloc);
+            vkDestroyFence(device, fence, nullptr);
             return pTexture();
         }
 
@@ -945,13 +964,11 @@ namespace onart {
         viewInfo.subresourceRange = imgBarrier.subresourceRange;
         ktxTexture_Destroy(ktxTexture(texture));
 
-        if((result = vkCreateImageView(device, &viewInfo, nullptr, &newView)) != VK_SUCCESS){
-            LOGWITH("Failed to create image view:",result,resultAsString(result));
-            return pTexture();
-        }
+        result = vkCreateImageView(device, &viewInfo, nullptr, &newView);
 
-        vkQueueWaitIdle(graphicsQueue);
-        vkFreeCommandBuffers(device, gCommandPool, 1, &copyCmd);
+        vkWaitForFences(device, 1, &fence, VK_FALSE, UINT64_MAX);
+        vkDestroyFence(device, fence, nullptr);
+        vkFreeCommandBuffers(device, tCommandPool, 1, &copyCmd);
         vmaDestroyBuffer(allocator, newBuffer, newAlloc);
 
         if(result != VK_SUCCESS){
@@ -1419,9 +1436,9 @@ namespace onart {
 
         VkFence fence = singleton->createFence(true);
         VkSemaphore semaphore = singleton->createSemaphore();
-        singleton->allocateCommandBuffers(1, true, &prim);
-        singleton->allocateCommandBuffers(1, false, &sec);
-        singleton->allocateCommandBuffers(6, false, facewise);
+        singleton->allocateCommandBuffers(1, true, true, &prim);
+        singleton->allocateCommandBuffers(1, false, true, &sec);
+        singleton->allocateCommandBuffers(6, false, true, facewise);
         
         singleton->allocateDescriptorSets(&singleton->textureLayout[1], 1, &dset); // 바인딩 1
 
@@ -1956,7 +1973,7 @@ namespace onart {
     VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount): rp(rp), fb(fb), stageCount(stageCount), pipelines(stageCount), pipelineLayouts(stageCount), targets(stageCount){
         fence = singleton->createFence(true);
         semaphore = singleton->createSemaphore();
-        singleton->allocateCommandBuffers(1, true, &cb);
+        singleton->allocateCommandBuffers(1, true, true, &cb);
     }
 
     VkMachine::RenderPass::~RenderPass(){
@@ -2500,7 +2517,7 @@ namespace onart {
         for(VkFence& fence: fences) fence = singleton->createFence(true);
         for(VkSemaphore& semaphore: acquireSm) semaphore = singleton->createSemaphore();
         for(VkSemaphore& semaphore: drawSm) semaphore = singleton->createSemaphore();
-        singleton->allocateCommandBuffers(COMMANDBUFFER_COUNT, true, cbs);
+        singleton->allocateCommandBuffers(COMMANDBUFFER_COUNT, true, true, cbs);
         pipelines.resize(this->targets.size() + 1, VK_NULL_HANDLE);
         pipelineLayouts.resize(this->targets.size() + 1, VK_NULL_HANDLE);
         setViewport(singleton->swapchain.extent.width, singleton->swapchain.extent.height, 0.0f, 0.0f);
@@ -3024,7 +3041,7 @@ namespace onart {
         return instance;
     }
 
-    VkPhysicalDevice findPhysicalDevice(VkInstance instance, VkSurfaceKHR surface, bool* isCpu, uint32_t* graphicsQueue, uint32_t* presentQueue, uint64_t* minUBAlignment) {
+    VkPhysicalDevice findPhysicalDevice(VkInstance instance, VkSurfaceKHR surface, bool* isCpu, uint32_t* graphicsQueue, uint32_t* presentQueue, uint32_t* subQueue, uint32_t* subqIndex, uint64_t* minUBAlignment) {
         uint32_t count;
         vkEnumeratePhysicalDevices(instance, &count, nullptr);
         std::vector<VkPhysicalDevice> cards(count);
@@ -3032,34 +3049,53 @@ namespace onart {
 
         uint64_t maxScore = 0;
         VkPhysicalDevice goodCard = VK_NULL_HANDLE;
-        uint32_t maxGq = 0, maxPq = 0;
+        uint32_t maxGq = 0, maxPq = 0, maxSubq = 0;
+        uint32_t maxSubqIndex = 0;
         for(VkPhysicalDevice card: cards) {
 
             uint32_t qfcount;
-            uint64_t gq = ~0ULL, pq = ~0ULL;
+            uint64_t gq = ~0ULL, pq = ~0ULL, subq = ~0ULL;
+            uint32_t si = 0;
             vkGetPhysicalDeviceQueueFamilyProperties(card, &qfcount, nullptr);
             std::vector<VkQueueFamilyProperties> qfs(qfcount);
             vkGetPhysicalDeviceQueueFamilyProperties(card, &qfcount, qfs.data());
 
-            // 큐 계열: GRAPHICS, PRESENT 사용이 안 되면 0점
+            // 큐 계열: GRAPHICS, PRESENT 사용이 안 되면 0점. GRAPHICS, PRESENT 사용이 같이 되면서 별도로 transfer 가능한 큐가 존재하는 것이 최상
             for(uint32_t i = 0; i < qfcount ; i++){
                 if(qfs[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
                     if(gq == ~0ULL) {
                         gq = i;
+                        if(qfs[i].queueCount >= 2) {
+                            subq = i;
+                            si = 1;
+                        }
                     }
+                    else if(subq == ~0ULL) {
+                        subq = i;
+                        si = 0;
+                    }
+                }
+                else if((qfs[i].queueFlags & VK_QUEUE_TRANSFER_BIT) && (subq == ~0ULL)){
+                    subq = i;
+                    si = 0;
                 }
                 VkBool32 supported;
                 vkGetPhysicalDeviceSurfaceSupportKHR(card, i, surface, &supported);
                 if(supported) {
                     if(pq == ~0ULL){ pq = i; }
                     if(qfs[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) { // 큐 계열 하나로 다 된다면 EXCLUSIVE 모드를 사용할 수 있음
-                        gq = pq = i; break;
+                        gq = pq = i;
+                        if(qfs[i].queueCount >= 2) {
+                            subq = i;
+                            si = 1;
+                            break;
+                        }
                     }
                 }
-                if((gq == ~0ULL) && (pq == ~0ULL)) break;
             }
 
-            if (gq < 0 || pq < 0) continue;
+            if (gq < 0 || pq < 0) continue; // 탈락
+            if(subq == ~0ULL) subq = gq;
 
             uint64_t score = assessPhysicalDevice(card);
             if(score > maxScore) {
@@ -3067,11 +3103,15 @@ namespace onart {
                 goodCard = card;
                 maxGq = (uint32_t)gq;
                 maxPq = (uint32_t)pq;
+                maxSubq = (uint32_t)subq;
+                maxSubqIndex = si;
             }
         }
         *isCpu = !(maxScore & (0b111ULL << 61));
         *graphicsQueue = maxGq;
         *presentQueue = maxPq;
+        *subQueue = maxSubq;
+        *subqIndex = maxSubqIndex;
         VkPhysicalDeviceProperties props;
         vkGetPhysicalDeviceProperties(goodCard, &props);
         *minUBAlignment = props.limits.minUniformBufferOffsetAlignment;
@@ -3113,18 +3153,38 @@ namespace onart {
         return score;
     }
 
-    VkDevice createDevice(VkPhysicalDevice card, int gq, int pq) {
-        VkDeviceQueueCreateInfo qInfo[2]{};
+    VkDevice createDevice(VkPhysicalDevice card, int gq, int pq, int tq, int tqi) {
+        VkDeviceQueueCreateInfo qInfo[3]{};
         float queuePriority = 1.0f;
         qInfo[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
         qInfo[0].queueFamilyIndex = gq;
-        qInfo[0].queueCount = 1;
+        qInfo[0].queueCount = 1 + tqi;
         qInfo[0].pQueuePriorities = &queuePriority;
 
-        qInfo[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        qInfo[1].queueFamilyIndex = gq;
-        qInfo[1].queueCount = 1;
-        qInfo[1].pQueuePriorities = &queuePriority;
+        uint32_t qInfoCount = 1;
+        
+        if(gq == pq) {
+            qInfo[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            qInfo[1].queueFamilyIndex = tq;
+            qInfo[1].queueCount = 1;
+            qInfo[1].pQueuePriorities = &queuePriority;
+            qInfoCount += (1 - tqi);
+        }
+        else{
+            qInfo[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            qInfo[1].queueFamilyIndex = pq;
+            qInfo[1].queueCount = 1;
+            qInfo[1].pQueuePriorities = &queuePriority;
+
+            qInfoCount = 2;
+
+            qInfo[2].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            qInfo[2].queueFamilyIndex = tq;
+            qInfo[2].queueCount = 1;
+            qInfo[2].pQueuePriorities = &queuePriority;
+            
+            qInfoCount += (1 - tqi);
+        }
 
         VkPhysicalDeviceFeatures wantedFeatures{};
         VkPhysicalDeviceFeatures availableFeatures;
@@ -3138,7 +3198,7 @@ namespace onart {
         VkDeviceCreateInfo deviceInfo{};
         deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         deviceInfo.pQueueCreateInfos = qInfo;
-        deviceInfo.queueCreateInfoCount = 1 + (gq != pq);
+        deviceInfo.queueCreateInfoCount = qInfoCount;
         deviceInfo.pEnabledFeatures = &wantedFeatures;
         deviceInfo.ppEnabledExtensionNames = VK_DESIRED_DEVICE_EXT;
         deviceInfo.enabledExtensionCount = sizeof(VK_DESIRED_DEVICE_EXT) / sizeof(VK_DESIRED_DEVICE_EXT[0]);

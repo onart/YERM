@@ -50,15 +50,18 @@ inline std::string toString(const T&... extra) {
 #ifdef YR_NO_LOG
     #define LOGHERE
     #define LOGWITH(...)
+    #define LOGRAW(...)
 #else
     #ifdef BOOST_PLAT_ANDROID_AVAILABLE
     #include <android/log.h>
         
         #define LOGHERE __android_log_print(ANDROID_LOG_DEBUG, "", "%s:%d %s\n", __FILE__, __LINE__, __func__)
         #define LOGWITH(...) __android_log_print(ANDROID_LOG_DEBUG, "", "%s", __getLogContent(__FILE__, __LINE__, __func__, __VA_ARGS__).c_str())
+        #define LOGRAW(...) __android_log_print(ANDROID_LOG_DEBUG, "", "%s", toString(__VA_ARGS__).c_str())
     #else
         #define LOGHERE __logPosition(__FILE__, __LINE__, __func__)
         #define LOGWITH(...) __logPosition(__FILE__, __LINE__, __func__, __VA_ARGS__)
+        #define LOGRAW(...) __getMultiple(std::cout, __VA_ARGS__)
     #endif
 #endif
 
