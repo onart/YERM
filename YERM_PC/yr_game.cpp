@@ -13,7 +13,7 @@
 // limitations under the License.
 #include "yr_game.h"
 #include "yr_sys.h"
-#include "yr_vulkan.h"
+#include "yr_graphics.h"
 #include "yr_input.h"
 #include "yr_audio.h"
 
@@ -41,7 +41,7 @@ namespace onart{
     const uint64_t& Game::tp(Game::_tp);
     int32_t Game::_frame = 1;
     const int32_t& Game::frame(Game::_frame);
-    VkMachine* Game::vk = nullptr;
+    YRGraphics* Game::vk = nullptr;
     Window* Game::window = nullptr;
     void* Game::hd = nullptr;
 
@@ -117,6 +117,8 @@ namespace onart{
         back.scrollY = y;
     }
 
+    bool loaded = false; // async 테스트용
+
     int Game::start(void* hd, Window::CreationOptions* opt){
         if(window) {
             LOGWITH("Warning: already started");
@@ -133,7 +135,7 @@ namespace onart{
             Window::terminate();
             return 1;
         }
-        vk = new VkMachine(window);
+        vk = new YRGraphics(window);
         if(!init()){
             delete window;
             Window::terminate();
@@ -156,27 +158,30 @@ namespace onart{
                 _tp = longDt.count();
                 _dt = static_cast<float>(ddt);
                 _idt = static_cast<float>(iddt);
-                auto off = VkMachine::getRenderPass(0);
-                auto rp2s = VkMachine::getRenderPass2Screen(1);
-                auto vb = VkMachine::getMesh(0);
-                auto tx = VkMachine::getTexture(0);
+                YRGraphics::handle();
+                auto off = YRGraphics::getRenderPass(0);
+                auto rp2s = YRGraphics::getRenderPass2Screen(1);
+                auto vb = YRGraphics::getMesh(0);
+                auto tx = YRGraphics::getTexture(0);
                 int x, y;
                 window->getFramebufferSize(&x, &y);
                 float aspect = (float)x / y;
                 float pushed = std::abs(std::sin((double)_tp * 0.000000001));
-                mat4 rot = VkMachine::preTransform() * mat4(1,0,0,0,0,aspect,0,0,0,0,1,0,0,0,0,1) * mat4::rotate(0,0,(double)_tp * 0.000000001);
+                mat4 rot = YRGraphics::preTransform() * mat4(1,0,0,0,0,aspect,0,0,0,0,1,0,0,0,0,1) * mat4::rotate(0,0,(double)_tp * 0.000000001);
                 if(vk->swapchain.handle){
                     off->start();
-                    off->push(&rot, 0, 64);
-                    off->push(&pushed,64,68);
-                    off->bind(0, tx);
-                    off->invoke(vb);
+                    if (loaded) {
+                        off->push(&rot, 0, 64);
+                        off->push(&pushed, 64, 68);
+                        off->bind(0, tx);
+                        off->invoke(vb);
+                    }
                     off->start();
-                    off->invoke(VkMachine::getMesh(1));
+                    off->invoke(YRGraphics::getMesh(1));
                     off->execute();
                     rp2s->start();
-                    rp2s->bind(0, VkMachine::getRenderTarget(1), 0);
-                    rp2s->invoke(VkMachine::getMesh(1));
+                    rp2s->bind(0, YRGraphics::getRenderTarget(1), 0);
+                    rp2s->invoke(YRGraphics::getMesh(1));
                     rp2s->execute(off);
                 }
             }
@@ -254,35 +259,36 @@ namespace onart{
         window->windowSizeCallback = recordSizeEvent;
         window->scrollCallback = recordScrollEvent;
 #endif
-        VkMachine::RenderTarget* targets[2] = {
-            VkMachine::createRenderTarget2D(512, 512, 0, VkMachine::RenderTargetType::COLOR1, false),
-            VkMachine::createRenderTarget2D(512, 512, 1, VkMachine::RenderTargetType::COLOR1, true)
+        YRGraphics::RenderTarget* targets[2] = {
+            YRGraphics::createRenderTarget2D(512, 512, 0, YRGraphics::RenderTargetType::COLOR1, false),
+            YRGraphics::createRenderTarget2D(512, 512, 1, YRGraphics::RenderTargetType::COLOR1, true)
         };
-        VkMachine::createRenderPass2Cube(512, 512, 123, false, true);
-        auto rtt = VkMachine::RenderTargetType::COLOR1;
-        auto offrp = VkMachine::createRenderPass(targets, 2, 0);
-        auto rp2s = VkMachine::createRenderPass2Screen(nullptr, 1, 1, false);
-        VkDescriptorSetLayout texLayout = VkMachine::getTextureLayout(0);
-        VkDescriptorSetLayout iaLayout = VkMachine::getInputAttachmentLayout(0);
-        auto lo = VkMachine::createPipelineLayout(&texLayout, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0);
-        auto lo2 = VkMachine::createPipelineLayout(&iaLayout, 1, 0, 1);
+        YRGraphics::createRenderPass2Cube(512, 512, 123, false, true);
+        auto rtt = YRGraphics::RenderTargetType::COLOR1;
+        auto offrp = YRGraphics::createRenderPass(targets, 2, 0);
+        auto rp2s = YRGraphics::createRenderPass2Screen(nullptr, 1, 1, false);
+        VkDescriptorSetLayout texLayout = YRGraphics::getTextureLayout(0);
+        VkDescriptorSetLayout iaLayout = YRGraphics::getInputAttachmentLayout(0);
+        auto lo = YRGraphics::createPipelineLayout(&texLayout, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0);
+        auto lo2 = YRGraphics::createPipelineLayout(&iaLayout, 1, 0, 1);
         VkVertexInputAttributeDescription desc[2];
-        using testv_t = VkMachine::Vertex<vec3, vec2>;
+        using testv_t = YRGraphics::Vertex<vec3, vec2>;
         testv_t::info(desc, 0);
-        auto vs = VkMachine::createShader(TEST_VERT, sizeof(TEST_VERT),0);
-        auto fs = VkMachine::createShader(TEST_FRAG, sizeof(TEST_FRAG),1);
-        VkMachine::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, offrp, 0, 0, lo, vs, fs, 0);
-        vs = VkMachine::createShader(TEST_IA_VERT, sizeof(TEST_IA_VERT), 2);
-        fs = VkMachine::createShader(TEST_IA_FRAG, sizeof(TEST_IA_FRAG), 3);
-        VkMachine::createPipeline(nullptr, 0, 0, nullptr, 0, 0, offrp, 1, 0, lo2, vs, fs, 1);
-        vs = VkMachine::createShader(TEST_TX_VERT, sizeof(TEST_TX_VERT), 4);
-        fs = VkMachine::createShader(TEST_TX_FRAG, sizeof(TEST_TX_FRAG), 5);
-        VkMachine::createPipeline(nullptr, 0, 0, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, 2);
+        auto vs = YRGraphics::createShader(TEST_VERT, sizeof(TEST_VERT),0);
+        auto fs = YRGraphics::createShader(TEST_FRAG, sizeof(TEST_FRAG),1);
+        YRGraphics::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, offrp, 0, 0, lo, vs, fs, 0);
+        vs = YRGraphics::createShader(TEST_IA_VERT, sizeof(TEST_IA_VERT), 2);
+        fs = YRGraphics::createShader(TEST_IA_FRAG, sizeof(TEST_IA_FRAG), 3);
+        YRGraphics::createPipeline(nullptr, 0, 0, nullptr, 0, 0, offrp, 1, 0, lo2, vs, fs, 1);
+        vs = YRGraphics::createShader(TEST_TX_VERT, sizeof(TEST_TX_VERT), 4);
+        fs = YRGraphics::createShader(TEST_TX_FRAG, sizeof(TEST_TX_FRAG), 5);
+        YRGraphics::createPipeline(nullptr, 0, 0, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, 2);
         testv_t verts[]{{{-1,-1,0},{0,0}},{{-1,1,0},{0,1}},{{1,-1,0},{1,0}},{{1,1,0},{1,1}}};
         uint16_t inds[]{0,1,2,2,1,3};
-        VkMachine::createNullMesh(3, 1);
-        VkMachine::createMesh(verts,sizeof(testv_t),4,inds,2,6,0);
-        VkMachine::createTexture(TEX0, sizeof(TEX0), 4, 0, VkMachine::isSurfaceSRGB());
+        YRGraphics::createNullMesh(3, 1);
+        YRGraphics::createMesh(verts,sizeof(testv_t),4,inds,2,6,0);
+        YRGraphics::asyncCreateTexture(TEX0, sizeof(TEX0), 4, [](void*) { loaded = true; }, 0, YRGraphics::isSurfaceSRGB());
+        //loaded = true; YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB());
         return true;
     }
 

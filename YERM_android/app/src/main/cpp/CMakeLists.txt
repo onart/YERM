@@ -13,7 +13,7 @@ find_package(game-activity REQUIRED CONFIG)
 find_package(games-controller REQUIRED CONFIG)
 find_package(games-frame-pacing REQUIRED CONFIG)
 find_package(games-performance-tuner REQUIRED CONFIG)
-find_package(oboe REQUIRED CONFIG)
+#find_package(oboe REQUIRED CONFIG)
 
 # Creates and names a library, sets it as either STATIC
 # or SHARED, and provides the relative paths to its source code.
@@ -37,6 +37,7 @@ add_library( # Sets the name of the library.
              ../../../../../YERM_PC/yr_bits.hpp
              ../../../../../YERM_PC/yr_constants.hpp
              ../../../../../YERM_PC/yr_threadpool.hpp
+             ../../../../../YERM_PC/yr_graphics.h
 
              ../../../../../YERM_PC/yr_sys.h
              ../../../../../YERM_PC/yr_sys.cpp

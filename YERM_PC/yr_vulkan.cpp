@@ -95,6 +95,7 @@ namespace onart {
         vkGetDeviceQueue(device, physicalDevice.gq, 0, &graphicsQueue);
         vkGetDeviceQueue(device, physicalDevice.pq, 0, &presentQueue);
         vkGetDeviceQueue(device, physicalDevice.subq, physicalDevice.subqIndex, &transferQueue);
+        gqIsTq = (graphicsQueue == transferQueue);
         //LOGRAW(physicalDevice.subqIndex, graphicsQueue, transferQueue, presentQueue);
         //LOGRAW(physicalDevice.gq, physicalDevice.pq, physicalDevice.subq);
 
@@ -212,10 +213,18 @@ namespace onart {
         else return VK_NULL_HANDLE;
     }
 
-    VkMachine::pTexture VkMachine::getTexture(int32_t name){
-        auto it = singleton->textures.find(name);
-        if(it != singleton->textures.end()) return it->second;
-        else return pTexture();
+    VkMachine::pTexture VkMachine::getTexture(int32_t name, bool lock){
+        if(lock){
+            std::unique_lock<std::mutex> _(singleton->textureGuard);
+            auto it = singleton->textures.find(name);
+            if(it != singleton->textures.end()) return it->second;
+            else return pTexture();
+        }
+        else{
+            auto it = singleton->textures.find(name);
+            if(it != singleton->textures.end()) return it->second;
+            else return pTexture();
+        }
     }
 
     void VkMachine::allocateCommandBuffers(int count, bool isPrimary, bool fromGraphics, VkCommandBuffer* buffers){
@@ -415,6 +424,10 @@ namespace onart {
         instance = VK_NULL_HANDLE;
     }
 
+    void VkMachine::handle() {
+        singleton->loadThread.handleCompleted();
+    }
+
     void VkMachine::allocateDescriptorSets(VkDescriptorSetLayout* layouts, uint32_t count, VkDescriptorSet* output){
         VkDescriptorSetAllocateInfo dsAllocInfo{};
         dsAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -427,6 +440,14 @@ namespace onart {
             LOGWITH("Failed to allocate descriptor sets:",result,resultAsString(result));
             output[0] = VK_NULL_HANDLE;
         }
+    }
+
+    VkResult VkMachine::qSubmit(bool gq_or_tq, uint32_t submitCount, const VkSubmitInfo* submitInfos, VkFence fence){
+        bool shouldLock = gqIsTq && loadThread.waiting(); // 스레드 풀에 포스트를 한 스레드에서만 하는 경우라면 이걸로 안전, 아닌 경우 낮은 확률로 큐에 동시 제출
+        if(shouldLock) { qGuard.lock(); }
+        VkResult ret = vkQueueSubmit(gq_or_tq ? graphicsQueue : transferQueue, submitCount, submitInfos, fence);
+        if(shouldLock) { qGuard.unlock(); }
+        return ret;
     }
 
     bool VkMachine::createSamplers(){
@@ -473,6 +494,7 @@ namespace onart {
         pMesh m = getMesh(name);
         if(m) { return m; }
         struct publicmesh:public Mesh{publicmesh(VkBuffer _1, VmaAllocation _2, size_t _3, size_t _4,size_t _5,void* _6,bool _7):Mesh(_1,_2,_3,_4,_5,_6,_7){}};
+        if(name == INT32_MIN) return std::make_shared<publicmesh>(VK_NULL_HANDLE,VK_NULL_HANDLE,vcount,0,0,nullptr,false);
         return singleton->meshes[name] = std::make_shared<publicmesh>(VK_NULL_HANDLE,VK_NULL_HANDLE,vcount,0,0,nullptr,false);
     }
 
@@ -519,6 +541,7 @@ namespace onart {
         vmaFlushAllocation(singleton->allocator, sba, 0, VK_WHOLE_SIZE);
         
         if(!stage){
+            if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
         }
 
@@ -535,6 +558,7 @@ namespace onart {
         vmaGetAllocationMemoryProperties(singleton->allocator, viba, &props);
         if(props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
             vmaDestroyBuffer(singleton->allocator, vib, viba);
+            if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
         }
 
@@ -543,6 +567,7 @@ namespace onart {
         if(!copycb) {
             LOGHERE;
             vmaDestroyBuffer(singleton->allocator, vib, viba);
+            if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
         }
         VkCommandBufferBeginInfo cbInfo{};
@@ -556,6 +581,7 @@ namespace onart {
             LOGWITH("Failed to begin command buffer:",result,resultAsString(result));
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
+            if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
         }
         vkCmdCopyBuffer(copycb, sb, vib, 1, &copyRegion);
@@ -563,6 +589,7 @@ namespace onart {
             LOGWITH("Failed to end command buffer:",result,resultAsString(result));
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
+            if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
         }
         VkSubmitInfo submitInfo{};
@@ -574,18 +601,21 @@ namespace onart {
             LOGHERE;
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
+            if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
         }
-        if((result = vkQueueSubmit(singleton->transferQueue, 1, &submitInfo, fence)) != VK_SUCCESS){
+        if((result = singleton->qSubmit(false, 1, &submitInfo, fence)) != VK_SUCCESS){
             LOGWITH("Failed to submit copy command");
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
+            if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
         }
         vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, UINT64_MAX);
         vkDestroyFence(singleton->device, fence, nullptr);
         vmaDestroyBuffer(singleton->allocator, sb, sba);
         vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
+        if(name == INT32_MIN) return std::make_shared<publicmesh>(vib,viba,vcount,icount,VBSIZE,nullptr,isize==4);
         return singleton->meshes[name] = std::make_shared<publicmesh>(vib,viba,vcount,icount,VBSIZE,nullptr,isize==4);
     }
 
@@ -760,6 +790,7 @@ namespace onart {
             wr.dstSet = dsets[nim];
             vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr); // 입력 첨부물 기술자를 위한 이미지 뷰에서는 DEPTH, STENCIL을 동시에 명시할 수 없음. 솔직히 깊이를 입력첨부물로는 안 쓸 것 같긴 한데 
         }
+        if(name == INT32_MIN) return new RenderTarget(type, width, height, color1, color2, color3, ds, sampled, mmap, dsets);
         return singleton->renderTargets[name] = new RenderTarget(type, width, height, color1, color2, color3, ds, sampled, mmap, dsets);
     }
 
@@ -785,6 +816,7 @@ namespace onart {
             LOGWITH("Failed to create shader moudle:", result,resultAsString(result));
             return VK_NULL_HANDLE;
         }
+        if(name == INT32_MIN) return ret;
         return singleton->shaders[name] = ret;
     }
 
@@ -944,7 +976,7 @@ namespace onart {
             vmaDestroyBuffer(allocator, newBuffer, newAlloc);
             return pTexture();
         }
-        if((result = vkQueueSubmit(transferQueue, 1, &submitInfo, fence)) != VK_SUCCESS){
+        if((result = qSubmit(false, 1, &submitInfo, fence)) != VK_SUCCESS){
             LOGWITH("Failed to submit copy command:",result,resultAsString(result));
             ktxTexture_Destroy(ktxTexture(texture));
             vkFreeCommandBuffers(device, tCommandPool, 1, &copyCmd);
@@ -1002,6 +1034,7 @@ namespace onart {
         vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
 
         struct txtr:public Texture{ inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint32_t _5):Texture(_1,_2,_3,_4,_5){} };
+        if(key == INT32_MIN) return std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0);
         return textures[key] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0);
     }
 
@@ -1038,6 +1071,41 @@ namespace onart {
             return pTexture();
         }
         return singleton->createTexture(texture, key, nChannels, srgb, hq);
+    }
+
+    void VkMachine::asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(void*)> handler, bool srgb, bool hq){
+        if(key == INT32_MIN) {
+            LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
+            return;
+        }
+        bool already = (bool)getTexture(key, true);
+        singleton->loadThread.post([fileName, key, nChannels, handler, srgb, hq, already](){
+            if(!already){
+                pTexture ret = singleton->createTexture(fileName, INT32_MIN, nChannels, srgb, hq);
+                singleton->textureGuard.lock();
+                singleton->textures[key] = std::move(ret);
+                singleton->textureGuard.unlock();
+            }
+            return (void*)key;
+        }, handler, vkm_strand::GENERAL);
+    }
+
+    void VkMachine::asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(void*)> handler, int32_t key, bool srgb, bool hq) {
+        if(key == INT32_MIN) {
+            LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
+            return;
+        }
+        bool already = (bool)getTexture(key, true);
+        singleton->loadThread.post([mem, size, key, nChannels, handler, srgb, hq, already](){
+            if(!already){
+                pTexture ret = singleton->createTexture(mem, size, nChannels, INT32_MIN, srgb, hq);
+                std::this_thread::sleep_for(std::chrono::seconds(3)); // async 테스트용
+                singleton->textureGuard.lock();
+                singleton->textures[key] = std::move(ret);
+                singleton->textureGuard.unlock();
+            }
+            return (void*)key;
+        }, handler, vkm_strand::GENERAL);
     }
 
     VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding):img(img), view(view), alloc(alloc), dset(dset), binding(binding){ }
@@ -1190,7 +1258,7 @@ namespace onart {
         wr.pBufferInfo = &dsNBuffer;
         wr.dstSet = dset;
         vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
-
+        if(name == INT32_MIN) return new UniformBuffer(length, individual, buffer, layout, dset, alloc, mmap, binding);
         return singleton->uniformBuffers[name] = new UniformBuffer(length, individual, buffer, layout, dset, alloc, mmap, binding);
     }
 
@@ -1513,7 +1581,6 @@ namespace onart {
                 for(RenderTarget* t:targets) delete t;
                 return nullptr;
             }
-            singleton->renderTargets.erase(INT32_MIN);
         }
 
         VkImage dsImage = VK_NULL_HANDLE;
@@ -1693,6 +1760,7 @@ namespace onart {
                 return nullptr;
             }
         }
+        if(name == INT32_MIN) return new RenderPass2Screen(newPass, std::move(targets), std::move(fbs), dsImage, dsImageView, dsAlloc);
         RenderPass2Screen* ret = singleton->finalPasses[name] = new RenderPass2Screen(newPass, std::move(targets), std::move(fbs), dsImage, dsImageView, dsAlloc);
         return ret;
     }
@@ -1804,11 +1872,12 @@ namespace onart {
             return nullptr;
         }
 
-        RenderPass* ret = singleton->renderPasses[name] = new RenderPass(newPass, fb, subpassCount);
+        RenderPass* ret = new RenderPass(newPass, fb, subpassCount);
         for(uint32_t i = 0; i < subpassCount; i++){ ret->targets[i] = targets[i]; }
         ret->setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
         ret->setScissor(targets[0]->width, targets[0]->height, 0, 0);
-        return ret;
+        if(name == INT32_MIN) return ret;
+        return singleton->renderPasses[name] = ret;
     }
 
     VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr,
@@ -1853,6 +1922,7 @@ namespace onart {
             return VK_NULL_HANDLE;
         }
         pass->usePipeline(ret, layout, subpass);
+        if(name == INT32_MIN) return ret;
         return singleton->pipelines[name] = ret;
     }
 
@@ -1908,6 +1978,7 @@ namespace onart {
             return VK_NULL_HANDLE;
         }
         pass->usePipeline(ret, layout, subpass);
+        if(name == INT32_MIN) return ret;
         return singleton->pipelines[name] = ret;
     }
 
@@ -1934,6 +2005,7 @@ namespace onart {
             LOGWITH("Failed to create pipeline layout:",result,resultAsString(result));
             return VK_NULL_HANDLE;
         }
+        if(name == INT32_MIN) return ret;
         return singleton->pipelineLayouts[name] = ret;
     }
 
@@ -2186,7 +2258,7 @@ namespace onart {
             return;
         }
 
-        if ((result = vkQueueSubmit(singleton->graphicsQueue, 1, &submitInfo, fence)) != VK_SUCCESS) {
+        if ((result = singleton->qSubmit(true, 1, &submitInfo, fence)) != VK_SUCCESS) {
             LOGWITH("Failed to submit command buffer");
             return;
         }
@@ -2464,7 +2536,7 @@ namespace onart {
             return;
         }
 
-        if ((result = vkQueueSubmit(singleton->graphicsQueue, 1, &submitInfo, fence)) != VK_SUCCESS) {
+        if ((result = singleton->qSubmit(true, 1, &submitInfo, fence)) != VK_SUCCESS) {
             LOGWITH("Failed to submit command buffer");
             return;
         }
@@ -2583,7 +2655,6 @@ namespace onart {
             SHALLOW_SWAP(viewport);
             SHALLOW_SWAP(scissor);
 #undef SHALLOW_SWAP
-            singleton->finalPasses.erase(INT32_MIN);
             delete newDat; // 문제점: 의미없이 펜스, 세마포어 등이 생성되었다 없어짐
             return true;
         }
@@ -2865,7 +2936,7 @@ namespace onart {
             return;
         }
 
-        if ((result = vkQueueSubmit(singleton->graphicsQueue, 1, &submitInfo, fences[currentCB])) != VK_SUCCESS) {
+        if ((result = singleton->qSubmit(true, 1, &submitInfo, fences[currentCB])) != VK_SUCCESS) {
             LOGWITH("Failed to submit command buffer:",result,resultAsString(result));
             return;
         }

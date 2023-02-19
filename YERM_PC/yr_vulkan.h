@@ -22,6 +22,7 @@
 #include "../externals/vulkan/vk_mem_alloc.h"
 
 #include "yr_math.hpp"
+#include "yr_threadpool.hpp"
 
 #include <type_traits>
 #include <vector>
@@ -56,6 +57,7 @@ namespace onart {
     class VkMachine{
         friend class Game;
         public:
+            constexpr static bool VULKAN_GRAPHICS = true, D3D12_GRAPHICS = false, D3D11_GRAPHICS = false, OPENGL_GRAPHICS = false, OPENGLES_GRAPHICS = false, METAL_GRAPHICS = false;
             /// @brief Vulkan 확인 계층을 사용하려면 이것을 활성화해 주세요. 사용하려면 Vulkan "SDK"가 컴퓨터에 깔려 있어야 합니다.
             constexpr static bool USE_VALIDATION_LAYER = false;
             /// @brief 그리기 대상입니다. 텍스처로 사용하거나 메모리 맵으로 데이터에 접근할 수 있습니다. 
@@ -100,6 +102,8 @@ namespace onart {
                 USE_STENCIL = 0b10,
                 CULL_BACK = 0b100,
             };
+            /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
+            static void handle();
             /// @brief 스왑체인 회전 변동 관련 최적의 처리를 위해 응용단에서 추가로 가해야 할 회전입니다. PC 버전에서는 반드시 단위행렬이 리턴됩니다.
             static mat4 preTransform();
             /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
@@ -109,6 +113,8 @@ namespace onart {
             /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
             /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
             static pTexture createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb = true, bool hq = true);
+            /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 key입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
+            static void asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(void*)> handler, bool srgb = true, bool hq = true);
             /// @brief 메모리 상의 ktx2 파일을 통해 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param mem 이미지 시작 주소
             /// @param size mem 배열의 길이(바이트)
@@ -117,6 +123,8 @@ namespace onart {
             /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
             /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
             static pTexture createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb = true, bool hq = true);
+            /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 key입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
+            static void asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(void*)> handler, int32_t key, bool srgb = true, bool hq = true);
             /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다. 이것을 해제하는 수단은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
             /// @param width 가로 길이(px).
             /// @param height 세로 길이(px).
@@ -217,10 +225,6 @@ namespace onart {
             /// @param vcount 정점의 수
             /// @param name 프로그램 내에서 사용할 이름입니다.
             static pMesh createNullMesh(size_t vcount, int32_t key);
-            /// @brief 큐브맵 렌더 타겟을 생성하고 핸들을 리턴합니다. 한 번 부여된 핸들 번호는 같은 프로세스에서 다시는 사용되지 않습니다.
-            /// @param size 각 면의 가로/세로 길이(px)
-            /// @return 핸들입니다. 이것을 통해 렌더 패스를 생성할 수 있습니다.
-            static int createRenderTargetCube(int size, int32_t key);
             /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.
             static RenderPass2Screen* getRenderPass2Screen(int32_t key);
             /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.
@@ -238,7 +242,7 @@ namespace onart {
             /// @brief 만들어 둔 셰이더 모듈을 리턴합니다. 없으면 nullptr를 리턴합니다.
             static VkShaderModule getShader(int32_t key);
             /// @brief 올려 둔 텍스처 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
-            static pTexture getTexture(int32_t key);
+            static pTexture getTexture(int32_t key, bool lock = false);
             /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pMesh getMesh(int32_t key);
             /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
@@ -285,6 +289,12 @@ namespace onart {
             VkSemaphore createSemaphore();
             /// @brief ktxTexture2 객체로 텍스처를 생성합니다.
             pTexture createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq);
+            /// @brief 그래픽스 또는 전송 큐에 명령을 제출합니다. 필요한 경우 cpu단 동기화를 수행합니다.
+            /// @param gq_or_tq true면 그래픽스, false면 전송 큐에 제출합니다.
+            /// @param submitCount submitInfos의 길이
+            /// @param submitInfos 제출할 명령 정보
+            /// @param fence 제출된 것이 종료하면 신호가 주어질 펜스
+            VkResult qSubmit(bool gq_or_tq, uint32_t submitCount, const VkSubmitInfo* submitInfos, VkFence fence);
             /// @brief vulkan 객체를 없앱니다.
             void free();
             ~VkMachine();
@@ -292,6 +302,7 @@ namespace onart {
             inline void operator delete(void*){}
         private:
             static VkMachine* singleton;
+            ThreadPool loadThread;
             VkInstance instance = VK_NULL_HANDLE;
             struct{
                 VkSurfaceKHR handle;
@@ -309,6 +320,7 @@ namespace onart {
             VkQueue graphicsQueue = VK_NULL_HANDLE;
             VkQueue presentQueue = VK_NULL_HANDLE;
             VkQueue transferQueue = VK_NULL_HANDLE;
+            bool gqIsTq;
             VkCommandPool gCommandPool = VK_NULL_HANDLE;
             VkCommandPool tCommandPool = VK_NULL_HANDLE;
             VkCommandBuffer baseBuffer[1]={};
@@ -333,6 +345,10 @@ namespace onart {
             std::map<int32_t, VkPipeline> pipelines;
             std::map<int32_t, pMesh> meshes;
             std::map<int32_t, pTexture> textures;
+
+            std::mutex textureGuard;
+            std::mutex qGuard; // gq와 tq에 동시 제출을 시도하는데 gq == tq일 때는 동기화가 필요함
+
             struct ImageSet{
                 VkImage img = VK_NULL_HANDLE;
                 VkImageView view = VK_NULL_HANDLE;
@@ -342,6 +358,10 @@ namespace onart {
             std::set<ImageSet*> images;
             std::vector<std::shared_ptr<RenderPass>> passes;
             VmaAllocator allocator = nullptr;
+            enum vkm_strand { 
+                NONE = 0,
+                GENERAL = 1,
+            };
         private:
             /// @brief 렌더 타겟에 부여된 이미지 셋을 제거합니다.
             void removeImageSet(ImageSet*);

@@ -22,6 +22,7 @@ else()
         YERM_PC/yr_constants.hpp
         YERM_PC/yr_bits.hpp
         YERM_PC/yr_threadpool.hpp
+        YERM_PC/yr_graphics.h
 
         YERM_PC/yr_sys.h
         YERM_PC/yr_sys.cpp
