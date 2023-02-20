@@ -20,6 +20,14 @@ find_package(games-performance-tuner REQUIRED CONFIG)
 # You can define multiple libraries, and CMake builds them for you.
 # Gradle automatically packages shared libraries with your APK.
 
+# ON: USE VULKAN, OFF: USE GL ES
+set(YERM_VULKAN ON)
+if(${YERM_VULKAN})
+    set(YERM_GRAPHICS YERM_PC/yr_vulkan.h YERM_PC/yr_vulkan.cpp)
+else()
+    set(YERM_GRAPHICS YERM_PC/yr_opengles.h YERM_PC/yr_opengles.cpp)
+endif()
+
 add_library( # Sets the name of the library.
              yerm_android
 
