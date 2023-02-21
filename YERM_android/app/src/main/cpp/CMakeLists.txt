@@ -24,8 +24,10 @@ find_package(games-performance-tuner REQUIRED CONFIG)
 set(YERM_VULKAN ON)
 if(${YERM_VULKAN})
     set(YERM_GRAPHICS YERM_PC/yr_vulkan.h YERM_PC/yr_vulkan.cpp)
+    add_compile_definitions(YR_USE_VULKAN)
 else()
     set(YERM_GRAPHICS YERM_PC/yr_opengles.h YERM_PC/yr_opengles.cpp)
+    add_compile_definitions(YR_USE_GLES)
 endif()
 
 add_library( # Sets the name of the library.
