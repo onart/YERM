@@ -295,6 +295,8 @@ namespace onart {
             /// @param submitInfos 제출할 명령 정보
             /// @param fence 제출된 것이 종료하면 신호가 주어질 펜스
             VkResult qSubmit(bool gq_or_tq, uint32_t submitCount, const VkSubmitInfo* submitInfos, VkFence fence);
+            /// @brief 표시 큐에 명령을 제출합니다. 필요한 경우 cpu단 동기화를 수행합니다.
+            VkResult qSubmit(const VkPresentInfoKHR* present);
             /// @brief vulkan 객체를 없앱니다.
             void free();
             ~VkMachine();
@@ -321,6 +323,7 @@ namespace onart {
             VkQueue presentQueue = VK_NULL_HANDLE;
             VkQueue transferQueue = VK_NULL_HANDLE;
             bool gqIsTq;
+            bool pqIsTq;
             VkCommandPool gCommandPool = VK_NULL_HANDLE;
             VkCommandPool tCommandPool = VK_NULL_HANDLE;
             VkCommandBuffer baseBuffer[1]={};

@@ -96,6 +96,7 @@ namespace onart {
         vkGetDeviceQueue(device, physicalDevice.pq, 0, &presentQueue);
         vkGetDeviceQueue(device, physicalDevice.subq, physicalDevice.subqIndex, &transferQueue);
         gqIsTq = (graphicsQueue == transferQueue);
+        pqIsTq = (graphicsQueue == transferQueue);
         //LOGRAW(physicalDevice.subqIndex, graphicsQueue, transferQueue, presentQueue);
         //LOGRAW(physicalDevice.gq, physicalDevice.pq, physicalDevice.subq);
 
@@ -446,6 +447,14 @@ namespace onart {
         bool shouldLock = gqIsTq && loadThread.waiting(); // 스레드 풀에 포스트를 한 스레드에서만 하는 경우라면 이걸로 안전, 아닌 경우 낮은 확률로 큐에 동시 제출
         if(shouldLock) { qGuard.lock(); }
         VkResult ret = vkQueueSubmit(gq_or_tq ? graphicsQueue : transferQueue, submitCount, submitInfos, fence);
+        if(shouldLock) { qGuard.unlock(); }
+        return ret;
+    }
+
+    VkResult VkMachine::qSubmit(const VkPresentInfoKHR* present){
+        bool shouldLock = pqIsTq && loadThread.waiting(); // 스레드 풀에 포스트를 한 스레드에서만 하는 경우라면 이걸로 안전, 아닌 경우 낮은 확률로 큐에 동시 제출
+        if(shouldLock) { qGuard.lock(); }
+        VkResult ret = vkQueuePresentKHR(presentQueue, present);
         if(shouldLock) { qGuard.unlock(); }
         return ret;
     }
@@ -2953,7 +2962,7 @@ namespace onart {
         currentCB = (currentCB + 1) % COMMANDBUFFER_COUNT;
         currentPass = -1;
 
-        if((result = vkQueuePresentKHR(singleton->presentQueue, &presentInfo)) != VK_SUCCESS){
+        if((result = singleton->qSubmit(&presentInfo)) != VK_SUCCESS){
             LOGWITH("Failed to submit command present operation:",result, resultAsString(result));
             return;
         }
