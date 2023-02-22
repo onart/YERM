@@ -17,6 +17,7 @@
 #include "yr_sys.h"
 
 #include "../externals/boost/predef/platform.h"
+#include "../externals/single_header/stb_image.h"
 
 #if !BOOST_PLAT_ANDROID
 #define KHRONOS_STATIC
@@ -1044,7 +1045,97 @@ namespace onart {
 
         struct txtr:public Texture{ inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint32_t _5):Texture(_1,_2,_3,_4,_5){} };
         if(key == INT32_MIN) return std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0);
+        if(loadThread.waiting()){
+            std::unique_lock<std::mutex> _(textureGuard);
+            return textures[key] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0);
+        }
         return textures[key] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0);
+    }
+
+    static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, VkMachine::ImageTextureFormatOptions& option){
+        ktxTexture2* texture;
+        ktx_error_code_e k2result;
+        ktxTextureCreateInfo texInfo{};
+        texInfo.baseDepth = 1;
+        texInfo.baseWidth = x;
+        texInfo.baseHeight = y;
+        texInfo.numFaces = 1;
+        texInfo.numLevels = 1;
+        texInfo.numDimensions = 2;
+        texInfo.numLayers = 1;
+        switch (nChannels)
+        {
+        case 1:
+            texInfo.vkFormat = srgb ? VK_FORMAT_R8_SRGB : VK_FORMAT_R8_UNORM;
+            break;
+        case 2:
+            texInfo.vkFormat = srgb ? VK_FORMAT_R8G8_SRGB : VK_FORMAT_R8G8_UNORM;
+            break;
+        case 3:
+            texInfo.vkFormat = srgb ? VK_FORMAT_R8G8B8_SRGB : VK_FORMAT_R8G8B8_UNORM;
+            break;
+        case 4:
+            texInfo.vkFormat = srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+            break;
+        default:
+            LOGWITH("nChannels should be 1~4");
+            return nullptr;
+        }
+        if((k2result = ktxTexture2_Create(&texInfo, ktxTextureCreateStorageEnum::KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture)) != KTX_SUCCESS){
+            LOGWITH("Failed to create texture:",k2result);
+            return nullptr;
+        }
+        if((k2result = ktxTexture_SetImageFromMemory(ktxTexture(texture),0,0,0,pix,x*y*nChannels)) != KTX_SUCCESS){
+            LOGWITH("Failed to set texture image data:",k2result);
+            ktxTexture_Destroy(ktxTexture(texture));
+            return nullptr;
+        }
+        if(option == VkMachine::ImageTextureFormatOptions::IT_USE_HQCOMPRESS || option == VkMachine::ImageTextureFormatOptions::IT_USE_COMPRESS){
+            ktxBasisParams params{};
+            params.compressionLevel = KTX_ETC1S_DEFAULT_COMPRESSION_LEVEL;
+            params.uastc = KTX_TRUE;
+            params.verbose = KTX_FALSE;
+            params.structSize = sizeof(params);
+
+            k2result = ktxTexture2_CompressBasisEx(texture, &params);
+            if(k2result != KTX_SUCCESS){
+                LOGWITH("Compress failed:",k2result);
+                option = VkMachine::ImageTextureFormatOptions::IT_USE_ORIGINAL;
+            }
+        }
+        return texture;
+    }
+
+    VkMachine::pTexture VkMachine::createTextureFromImage(const char* fileName, int32_t key, bool srgb, ImageTextureFormatOptions option) {
+        int x, y, nChannels;
+        uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 0);
+        if(!pix) {
+            LOGWITH("Failed to load image:",stbi_failure_reason());
+            return pTexture();
+        }
+        ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, srgb, option);
+        stbi_image_free(pix);
+        if(!texture) {
+            LOGHERE;
+            return pTexture();
+        }
+        return singleton->createTexture(texture, key, nChannels, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS);
+    }
+
+    VkMachine::pTexture VkMachine::createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb, ImageTextureFormatOptions option){
+        int x, y, nChannels;
+        uint8_t* pix = stbi_load_from_memory(mem, size, &x, &y, &nChannels, 0);
+        if(!pix) {
+            LOGWITH("Failed to load image:",stbi_failure_reason());
+            return pTexture();
+        }
+        ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, srgb, option);
+        stbi_image_free(pix);
+        if(!texture) {
+            LOGHERE;
+            return pTexture();
+        }
+        return singleton->createTexture(texture, key, nChannels, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS);
     }
 
     VkMachine::pTexture VkMachine::createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb, bool hq){
@@ -1091,6 +1182,40 @@ namespace onart {
         singleton->loadThread.post([fileName, key, nChannels, handler, srgb, hq, already](){
             if(!already){
                 pTexture ret = singleton->createTexture(fileName, INT32_MIN, nChannels, srgb, hq);
+                singleton->textureGuard.lock();
+                singleton->textures[key] = std::move(ret);
+                singleton->textureGuard.unlock();
+            }
+            return (void*)key;
+        }, handler, vkm_strand::GENERAL);
+    }
+
+    void VkMachine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(void*)> handler, bool srgb, ImageTextureFormatOptions option){
+        if(key == INT32_MIN) {
+            LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
+            return;
+        }
+        bool already = (bool)getTexture(key, true);
+        singleton->loadThread.post([already, fileName, key, handler, srgb, option](){
+            if(!already){
+                pTexture ret = singleton->createTextureFromImage(fileName, INT32_MIN, srgb, option);
+                singleton->textureGuard.lock();
+                singleton->textures[key] = std::move(ret);
+                singleton->textureGuard.unlock();
+            }
+            return (void*)key;
+        }, handler, vkm_strand::GENERAL);
+    }
+
+    void VkMachine::asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(void*)> handler, bool srgb, ImageTextureFormatOptions option){
+        if(key == INT32_MIN) {
+            LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
+            return;
+        }
+        bool already = (bool)getTexture(key, true);
+        singleton->loadThread.post([already, mem, size, key, handler, srgb, option](){
+            if(!already){
+                pTexture ret = singleton->createTextureFromImage(mem, size, INT32_MIN, srgb, option);
                 singleton->textureGuard.lock();
                 singleton->textures[key] = std::move(ret);
                 singleton->textureGuard.unlock();

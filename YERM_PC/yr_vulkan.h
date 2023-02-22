@@ -102,10 +102,36 @@ namespace onart {
                 USE_STENCIL = 0b10,
                 CULL_BACK = 0b100,
             };
+            /// @brief 이미지 파일로부터 텍스처를 생성할 때 줄 수 있는 옵션입니다.
+            enum ImageTextureFormatOptions {
+                /// @brief 이미지 원본 형식을 사용합니다.
+                IT_USE_ORIGINAL = 0,
+                /// @brief 가능하면 품질을 최대한 유지하는 압축 텍스처를 사용합니다.
+                IT_USE_HQCOMPRESS = 1,
+                /// @brief 가능하면 압축 텍스처를 사용합니다.
+                IT_USE_COMPRESS = 2
+            };
             /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
             static void handle();
             /// @brief 스왑체인 회전 변동 관련 최적의 처리를 위해 응용단에서 추가로 가해야 할 회전입니다. PC 버전에서는 반드시 단위행렬이 리턴됩니다.
             static mat4 preTransform();
+            /// @brief 보통 이미지 파일을 불러와 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
+            /// @param fileName 파일 이름
+            /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
+            /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
+            /// @param option 이미지를 압축 텍스처 형식으로 바꿀지 결정할 수 있습니다.
+            static pTexture createTextureFromImage(const char* fileName, int32_t key, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL);
+            /// @brief createTextureFromImage를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 key입니다(key를 가리키는 포인터가 아닌 그냥 key). 매개변수 설명은 createTextureFromImage를 참고하세요.
+            static void asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(void*)> handler, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL);
+            /// @brief 보통 이미지 데이터를 메모리에서 불러와 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
+            /// @param mem 이미지 시작 주소
+            /// @param size mem 배열의 길이(바이트)
+            /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
+            /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
+            /// @param option 이미지를 압축 텍스처 형식으로 바꿀지 결정할 수 있습니다.
+            static pTexture createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL);
+            /// @brief createTextureFromImage를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 key입니다(key를 가리키는 포인터가 아닌 그냥 key). 매개변수 설명은 createTextureFromImage를 참고하세요.
+            static void asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(void*)> handler, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL);
             /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param fileName 파일 이름
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
