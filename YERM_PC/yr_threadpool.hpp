@@ -71,18 +71,36 @@ namespace onart{
             else{
                 T* ret = &data[head].v;
                 ind.push_back(head);
+                uint32_t formerHead = head;
                 head = data[head].next;
+                data[formerHead].next = ~0u;
                 if(empty()) tail = ~0u;
                 return *ret;
             }
         }
-        inline const T& peek() const{
+        inline const T* peek() const{
             if(empty()){
-                return {};
+                return nullptr;
             }
             else{
-                return data[head].v;
+                return &data[head].v;
             }
+        }
+        inline const T* next(const T* node) const {
+            if((void*)node > (void*)(data.data() + data.size()) || (void*)node < (void*)data.data()) return nullptr;
+            uint32_t next = reinterpret_cast<const Node*>(node)->next;
+            if(next == ~0u) return nullptr;
+            return &data[next].v;
+        }
+        inline void erase(const T* oneBeforeTarget) {
+            if(oneBeforeTarget == nullptr) return (void)dequeue();
+            if((void*)oneBeforeTarget > (void*)(data.data() + data.size()) || (void*)oneBeforeTarget < data.data()) return;
+            Node* obt = const_cast<Node*>(reinterpret_cast<const Node*>(oneBeforeTarget));
+            uint32_t next = obt->next;
+            if(next == ~0u) return;
+            data[next].next = ~0u;
+            obt->next = data[next].next;
+            ind.push_back(next);
         }
         private:
         uint32_t head = ~0u;
@@ -91,7 +109,7 @@ namespace onart{
         std::vector<uint32_t> ind;
     };
 
-    /// @brief 작업을 비동기적으로 수행하기 위한 스레드 풀입니다. 스레스 수는 런타임에 정할 수 있으며 최대 스레드 수는 8입니다. 스레드 수를 0으로 정할 수도 있으며 이때 
+    /// @brief 작업을 비동기적으로 수행하기 위한 스레드 풀입니다. 스레드 수는 런타임에 정할 수 있으며 최대 스레드 수는 8입니다. 스레드 수를 0으로 정할 수도 있으며 이때는 post를 해도 아무 동작도 하지 않습니다.
     class ThreadPool{
         public:
             inline ThreadPool(size_t n = 1) {
@@ -110,8 +128,13 @@ namespace onart{
                 for(std::thread& t: workers) t.join();
             }
             /// @brief 스레드 풀에 진행 중이거나 대기 중인 작업이 있는지 리턴합니다.
-            inline bool waiting() const {
-                return workCount.load();
+            inline bool waiting(uint8_t strand = 0) const {
+                if(strand){
+                    return holders[strand] & 0xffff;
+                }
+                else{
+                    return workCount.load();
+                }
             }
             /// @brief 풀에 특정 함수를 요청합니다.
             /// @param work 스레드에서 실행할 함수입니다.
@@ -122,8 +145,7 @@ namespace onart{
                 workCount++;
                 std::unique_lock<std::mutex> _(queueGuard);
                 const bool toSignal = works.empty();
-                works.enqueue({work, strand});
-                completion.enqueue(completionHandler);
+                works.enqueue({work, completionHandler, strand});
                 if(toSignal) cond.notify_one();
             }
             /// @brief 완료된 동작에 대하여 등록한 후처리를 수행합니다.
@@ -144,39 +166,51 @@ namespace onart{
             inline static void execute(ThreadPool* pool, const size_t tid) {
                 while(!pool->stop){
                     std::unique_lock<std::mutex> _(pool->queueGuard);
-                    if(pool->works.empty()) {
+                    WorkWithStrand wws = pool->getWork(tid);
+                    if (!wws.work) {
                         pool->cond.wait(_);
-                        if(pool->stop) return;
+                        if (pool->stop) return;
+                        continue;
                     }
-                    uint32_t strand = pool->hold(tid);
-                    if(strand < 256){
-                        std::function<void(void*)> handler = pool->completion.dequeue();
-                        std::function<void*()> work = pool->works.dequeue().work;
-                        _.unlock();
-                        void* result = work();
-                        pool->release(strand, tid);
-                        if(handler){
+                    _.unlock();
+                    if(wws.work){
+                        void* result = wws.work();
+                        pool->release(wws.strand, tid);
+                        if(wws.handler){
                             std::unique_lock<std::mutex> _(pool->asGuard);
-                            pool->afterService.push_back({handler, result});
+                            pool->afterService.push_back({wws.handler, result});
                         }
                     }
                 }
             }
-            inline uint32_t hold(size_t tid){
-                uint32_t strand = works.peek().strand;
-                if(strand) {
-                    std::unique_lock<std::mutex> _(strandGuard);
-                    if((holders[strand] >> 16) == tid) {
-                        holders[strand]++;
-                    }
-                    else if((holders[strand] & 0xffff) == 0){
-                        holders[strand] = ((uint32_t)tid << 16) + 1;
+            struct WorkWithStrand;
+            inline WorkWithStrand getWork(size_t tid){
+                const WorkWithStrand* prev = nullptr;
+                const WorkWithStrand* node = works.peek();
+                while(node){
+                    if(node->strand) {
+                        std::unique_lock<std::mutex> _(strandGuard);
+                        if((holders[node->strand] >> 16) == tid) {
+                            holders[node->strand]++;
+                            works.erase(prev);
+                            return *node;
+                        }
+                        else if((holders[node->strand] & 0xffff) == 0){
+                            holders[node->strand] = ((uint32_t)tid << 16) + 1;
+                            works.erase(prev);
+                            return *node;
+                        }
+                        else{
+                            prev = node;
+                            node = works.next(node);
+                        }
                     }
                     else{
-                        return 256;
+                        works.erase(prev);
+                        return *node;
                     }
                 }
-                return strand;
+                return {};
             }
             inline void release(uint32_t strand, size_t tid) {
                 workCount--;
@@ -191,6 +225,7 @@ namespace onart{
             std::condition_variable cond;
             struct WorkWithStrand{
                 std::function<void*()> work;
+                std::function<void(void*)> handler;
                 uint32_t strand;
             };
             struct WorkCompleteHandler{
@@ -198,7 +233,6 @@ namespace onart{
                 void* param;
             };
             ReservedQueue<WorkWithStrand> works;
-            ReservedQueue<std::function<void(void*)>> completion;
             std::vector<WorkCompleteHandler> afterService;
             std::vector<WorkCompleteHandler> afterService2;
             std::vector<std::thread> workers;
