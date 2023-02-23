@@ -57,6 +57,7 @@ namespace onart {
 
 
     VkMachine* VkMachine::singleton = nullptr;
+    thread_local VkResult VkMachine::reason = VK_SUCCESS;
 
     VkMachine::VkMachine(Window* window){
         if(singleton) {
@@ -68,9 +69,8 @@ namespace onart {
             return;
         }
 
-        VkResult result;
-        if((result = window->createWindowSurface(instance, &surface.handle)) != VK_SUCCESS){
-            LOGWITH("Failed to create Window surface:", result,resultAsString(result));
+        if((reason = window->createWindowSurface(instance, &surface.handle)) != VK_SUCCESS){
+            LOGWITH("Failed to create Window surface:", reason,resultAsString(reason));
             free();
             return;
         }
@@ -79,6 +79,7 @@ namespace onart {
         if(!(physicalDevice.card = findPhysicalDevice(instance, surface.handle, &isCpu, &physicalDevice.gq, &physicalDevice.pq, &physicalDevice.subq, &physicalDevice.subqIndex, &physicalDevice.minUBOffsetAlignment))) { // TODO: 모든 가용 graphics/transfer 큐 정보를 저장해 두고 버퍼/텍스처 등 자원 세팅은 다른 큐를 사용하게 만들자
             LOGWITH("Couldn\'t find any appropriate graphics device");
             free();
+            reason = VK_RESULT_MAX_ENUM;
             return;
         }
         if(isCpu) LOGWITH("Warning: this device is CPU");
@@ -141,9 +142,9 @@ namespace onart {
         fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         if(signaled) fenceInfo.flags = VkFenceCreateFlagBits::VK_FENCE_CREATE_SIGNALED_BIT;
         VkFence ret;
-        VkResult result = vkCreateFence(device, &fenceInfo, VK_NULL_HANDLE, &ret);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create fence:",result,resultAsString(result));
+        reason = vkCreateFence(device, &fenceInfo, VK_NULL_HANDLE, &ret);
+        if(reason != VK_SUCCESS){
+            LOGWITH("Failed to create fence:",reason,resultAsString(reason));
             return VK_NULL_HANDLE;
         }
         return ret;
@@ -153,9 +154,9 @@ namespace onart {
         VkSemaphoreCreateInfo smInfo{};
         smInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
         VkSemaphore ret;
-        VkResult result = vkCreateSemaphore(device, &smInfo, VK_NULL_HANDLE, &ret);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create fence:",result,resultAsString(result));
+        reason = vkCreateSemaphore(device, &smInfo, VK_NULL_HANDLE, &ret);
+        if(reason != VK_SUCCESS){
+            LOGWITH("Failed to create fence:",reason,resultAsString(reason));
             return VK_NULL_HANDLE;
         }
         return ret;
@@ -235,9 +236,8 @@ namespace onart {
         bufferInfo.level = isPrimary ? VK_COMMAND_BUFFER_LEVEL_PRIMARY : VK_COMMAND_BUFFER_LEVEL_SECONDARY;
         bufferInfo.commandPool = fromGraphics ? gCommandPool : tCommandPool;
         bufferInfo.commandBufferCount = count;
-        VkResult result;
-        if((result = vkAllocateCommandBuffers(device, &bufferInfo, buffers))!=VK_SUCCESS){
-            LOGWITH("Failed to allocate command buffers:", result,resultAsString(result));
+        if((reason = vkAllocateCommandBuffers(device, &bufferInfo, buffers))!=VK_SUCCESS){
+            LOGWITH("Failed to allocate command buffers:", reason,resultAsString(reason));
             buffers[0] = VK_NULL_HANDLE;
         }
     }
@@ -318,9 +318,8 @@ namespace onart {
             scInfo.pQueueFamilyIndices = qfi;
         }
 
-        VkResult result;
-        if((result = vkCreateSwapchainKHR(device, &scInfo, nullptr, &swapchain.handle))!=VK_SUCCESS){
-            LOGWITH("Failed to create swapchain:",result,resultAsString(result));
+        if((reason = vkCreateSwapchainKHR(device, &scInfo, nullptr, &swapchain.handle))!=VK_SUCCESS){
+            LOGWITH("Failed to create swapchain:",reason,resultAsString(reason));
             return;
         }
         swapchain.extent = scInfo.imageExtent;
@@ -363,9 +362,9 @@ namespace onart {
         layoutInfo.pBindings = &txBinding;
 
         for(txBinding.binding = 0; txBinding.binding < 4; txBinding.binding++){
-            VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &textureLayout[txBinding.binding]);
-            if(result != VK_SUCCESS){
-                LOGWITH("Failed to create texture descriptor set layout binding ",txBinding.binding,':', result,resultAsString(result));
+            reason = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &textureLayout[txBinding.binding]);
+            if(reason != VK_SUCCESS){
+                LOGWITH("Failed to create texture descriptor set layout binding ",txBinding.binding,':', reason,resultAsString(reason));
                 return false;
             }
         }
@@ -373,9 +372,9 @@ namespace onart {
         txBinding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
 
         for(txBinding.binding = 0; txBinding.binding < 4; txBinding.binding++){
-            VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &inputAttachmentLayout[txBinding.binding]);
-            if(result != VK_SUCCESS){
-                LOGWITH("Failed to create input attachment descriptor set layout binding ",txBinding.binding,':', result,resultAsString(result));
+            reason = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &inputAttachmentLayout[txBinding.binding]);
+            if(reason != VK_SUCCESS){
+                LOGWITH("Failed to create input attachment descriptor set layout binding ",txBinding.binding,':', reason,resultAsString(reason));
                 return false;
             }
         }
@@ -437,9 +436,9 @@ namespace onart {
         dsAllocInfo.descriptorSetCount = count;
         dsAllocInfo.descriptorPool = descriptorPool;
 
-        VkResult result = vkAllocateDescriptorSets(device, &dsAllocInfo, output);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to allocate descriptor sets:",result,resultAsString(result));
+        reason = vkAllocateDescriptorSets(device, &dsAllocInfo, output);
+        if(reason != VK_SUCCESS){
+            LOGWITH("Failed to allocate descriptor sets:",reason,resultAsString(reason));
             output[0] = VK_NULL_HANDLE;
         }
     }
@@ -473,19 +472,18 @@ namespace onart {
         samplerInfo.maxLod = 1.0f;
         samplerInfo.maxAnisotropy = 1.0f;
         samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
-        VkResult result;
         for(int i = 0; i < sizeof(textureSampler)/sizeof(textureSampler[0]);i++, samplerInfo.maxLod++){
-            result = vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler[i]);
-            if(result != VK_SUCCESS){
-                LOGWITH("Failed to create texture sampler:", result,resultAsString(result));
+            reason = vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler[i]);
+            if(reason != VK_SUCCESS){
+                LOGWITH("Failed to create texture sampler:", reason,resultAsString(reason));
                 return false;
             }
         }
         samplerInfo.maxLod = 1.0f;
         samplerInfo.magFilter = VK_FILTER_NEAREST;
-        result = vkCreateSampler(device, &samplerInfo, nullptr, &nearestSampler);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create texture sampler:", result,resultAsString(result));
+        reason = vkCreateSampler(device, &samplerInfo, nullptr, &nearestSampler);
+        if(reason != VK_SUCCESS){
+            LOGWITH("Failed to create texture sampler:", reason,resultAsString(reason));
             return false;
         }
         return true;
@@ -518,7 +516,6 @@ namespace onart {
 
         VkBuffer vib, sb;
         VmaAllocation viba, sba;
-        VkResult result;
 
         const size_t VBSIZE = vsize*vcount, IBSIZE = isize * icount;
 
@@ -540,9 +537,9 @@ namespace onart {
             vbInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
         }
         VmaAllocationInfo mapInfoV;
-        result = vmaCreateBuffer(singleton->allocator, &vbInfo, &vbaInfo, &sb, &sba, &mapInfoV);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create stage buffer for vertex:",result,resultAsString(result));
+        reason = vmaCreateBuffer(singleton->allocator, &vbInfo, &vbaInfo, &sb, &sba, &mapInfoV);
+        if(reason != VK_SUCCESS){
+            LOGWITH("Failed to create stage buffer for vertex:",reason,resultAsString(reason));
             return pMesh();
         }
         if(vdata) std::memcpy(mapInfoV.pMappedData, vdata, VBSIZE);
@@ -558,9 +555,9 @@ namespace onart {
         vbInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         vbInfo.size = VBSIZE + IBSIZE;
         vbaInfo.flags = 0;
-        result = vmaCreateBuffer(singleton->allocator, &vbInfo, &vbaInfo, &vib, &viba, nullptr);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create vertex buffer:",result,resultAsString(result));
+        reason = vmaCreateBuffer(singleton->allocator, &vbInfo, &vbaInfo, &vib, &viba, nullptr);
+        if(reason != VK_SUCCESS){
+            LOGWITH("Failed to create vertex buffer:",reason,resultAsString(reason));
             vmaDestroyBuffer(singleton->allocator, sb, sba);
             return pMesh();
         }
@@ -587,16 +584,16 @@ namespace onart {
         copyRegion.srcOffset=0;
         copyRegion.dstOffset=0;
         copyRegion.size = VBSIZE + IBSIZE;
-        if((result = vkBeginCommandBuffer(copycb, &cbInfo)) != VK_SUCCESS){
-            LOGWITH("Failed to begin command buffer:",result,resultAsString(result));
+        if((reason = vkBeginCommandBuffer(copycb, &cbInfo)) != VK_SUCCESS){
+            LOGWITH("Failed to begin command buffer:",reason,resultAsString(reason));
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
             if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
         }
         vkCmdCopyBuffer(copycb, sb, vib, 1, &copyRegion);
-        if((result = vkEndCommandBuffer(copycb)) != VK_SUCCESS){
-            LOGWITH("Failed to end command buffer:",result,resultAsString(result));
+        if((reason = vkEndCommandBuffer(copycb)) != VK_SUCCESS){
+            LOGWITH("Failed to end command buffer:",reason,resultAsString(reason));
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
             if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
@@ -614,7 +611,7 @@ namespace onart {
             if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
             return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
         }
-        if((result = singleton->qSubmit(false, 1, &submitInfo, fence)) != VK_SUCCESS){
+        if((reason = singleton->qSubmit(false, 1, &submitInfo, fence)) != VK_SUCCESS){
             LOGWITH("Failed to submit copy command");
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
@@ -658,17 +655,15 @@ namespace onart {
         VmaAllocationCreateInfo allocInfo{};
         allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
         if(mmap) allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-        else allocInfo.preferredFlags = VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-
-        VkResult result;
+        else allocInfo.preferredFlags = VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;        
 
         if((int)type & 0b1){
             color1 = new ImageSet;
             imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
             imgInfo.format = singleton->surface.format.format;
-            result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color1->img, &color1->alloc, nullptr);
-            if(result != VK_SUCCESS) {
-                LOGWITH("Failed to create image:", result,resultAsString(result));
+            reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color1->img, &color1->alloc, nullptr);
+            if(reason != VK_SUCCESS) {
+                LOGWITH("Failed to create image:", reason,resultAsString(reason));
                 delete color1;
                 return nullptr;
             }
@@ -680,9 +675,9 @@ namespace onart {
             }
             if((int)type & 0b10){
                 color2 = new ImageSet;
-                result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color2->img, &color2->alloc, nullptr);
-                if(result != VK_SUCCESS) {
-                    LOGWITH("Failed to create image:", result,resultAsString(result));
+                reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color2->img, &color2->alloc, nullptr);
+                if(reason != VK_SUCCESS) {
+                    LOGWITH("Failed to create image:", reason,resultAsString(reason));
                     color1->free();
                     delete color1;
                     delete color2;
@@ -698,9 +693,9 @@ namespace onart {
                 }
                 if((int)type & 0b100){
                     color3 = new ImageSet;
-                    result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color3->img, &color3->alloc, nullptr);
-                    if(result != VK_SUCCESS) {
-                        LOGWITH("Failed to create image:", result,resultAsString(result));
+                    reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color3->img, &color3->alloc, nullptr);
+                    if(reason != VK_SUCCESS) {
+                        LOGWITH("Failed to create image:", reason,resultAsString(reason));
                         color1->free();
                         color2->free();
                         delete color1;
@@ -725,9 +720,9 @@ namespace onart {
             ds = new ImageSet;
             imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : (useDepthInput ? VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT : 0));
             imgInfo.format = VkFormat::VK_FORMAT_D24_UNORM_S8_UINT;
-            result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &ds->img, &ds->alloc, nullptr);
-            if(result != VK_SUCCESS) {
-                LOGWITH("Failed to create image: ", result,resultAsString(result));
+            reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &ds->img, &ds->alloc, nullptr);
+            if(reason != VK_SUCCESS) {
+                LOGWITH("Failed to create image: ", reason,resultAsString(reason));
                 if(color1) {color1->free(); delete color1;}
                 if(color2) {color2->free(); delete color2;}
                 if(color3) {color3->free(); delete color3;}
@@ -821,9 +816,9 @@ namespace onart {
         smInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         smInfo.codeSize = size;
         smInfo.pCode = spv;
-        VkResult result = vkCreateShaderModule(singleton->device, &smInfo, nullptr, &ret);
-        if(result != VK_SUCCESS) {
-            LOGWITH("Failed to create shader moudle:", result,resultAsString(result));
+        reason = vkCreateShaderModule(singleton->device, &smInfo, nullptr, &ret);
+        if(reason != VK_SUCCESS) {
+            LOGWITH("Failed to create shader moudle:", reason,resultAsString(reason));
             return VK_NULL_HANDLE;
         }
         if(name == INT32_MIN) return ret;
@@ -876,17 +871,16 @@ namespace onart {
         VmaAllocationCreateInfo allocInfo{};
         allocInfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO;
         allocInfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-        VkResult result;
-        result = vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &newBuffer, &newAlloc, nullptr);
-        if(result != VK_SUCCESS) {
-            LOGWITH("Failed to create buffer:",result,resultAsString(result));
+        reason = vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &newBuffer, &newAlloc, nullptr);
+        if(reason != VK_SUCCESS) {
+            LOGWITH("Failed to create buffer:",reason,resultAsString(reason));
             ktxTexture_Destroy(ktxTexture(texture));
             return pTexture();
         }
         void* mmap;
-        result = vmaMapMemory(allocator, newAlloc, &mmap);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to map memory to buffer:",result,resultAsString(result));
+        reason = vmaMapMemory(allocator, newAlloc, &mmap);
+        if(reason != VK_SUCCESS){
+            LOGWITH("Failed to map memory to buffer:",reason,resultAsString(reason));
             vmaDestroyBuffer(allocator, newBuffer, newAlloc);
             ktxTexture_Destroy(ktxTexture(texture));
             return pTexture();
@@ -949,8 +943,8 @@ namespace onart {
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
-        if((result = vkBeginCommandBuffer(copyCmd, &beginInfo)) != VK_SUCCESS){
-            LOGWITH("Failed to begin command buffer:",result,resultAsString(result));
+        if((reason = vkBeginCommandBuffer(copyCmd, &beginInfo)) != VK_SUCCESS){
+            LOGWITH("Failed to begin command buffer:",reason,resultAsString(reason));
             ktxTexture_Destroy(ktxTexture(texture));
             vkFreeCommandBuffers(device, tCommandPool, 1, &copyCmd);
             vmaDestroyImage(allocator, newImg, newAlloc2);
@@ -965,8 +959,8 @@ namespace onart {
         imgBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         vkCmdPipelineBarrier(copyCmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imgBarrier);
 
-        if((result = vkEndCommandBuffer(copyCmd)) != VK_SUCCESS){
-            LOGWITH("Failed to end command buffer:",result,resultAsString(result));
+        if((reason = vkEndCommandBuffer(copyCmd)) != VK_SUCCESS){
+            LOGWITH("Failed to end command buffer:",reason,resultAsString(reason));
             ktxTexture_Destroy(ktxTexture(texture));
             vkFreeCommandBuffers(device, tCommandPool, 1, &copyCmd);
             vmaDestroyImage(allocator, newImg, newAlloc2);
@@ -986,8 +980,8 @@ namespace onart {
             vmaDestroyBuffer(allocator, newBuffer, newAlloc);
             return pTexture();
         }
-        if((result = qSubmit(false, 1, &submitInfo, fence)) != VK_SUCCESS){
-            LOGWITH("Failed to submit copy command:",result,resultAsString(result));
+        if((reason = qSubmit(false, 1, &submitInfo, fence)) != VK_SUCCESS){
+            LOGWITH("Failed to submit copy command:",reason,resultAsString(reason));
             ktxTexture_Destroy(ktxTexture(texture));
             vkFreeCommandBuffers(device, tCommandPool, 1, &copyCmd);
             vmaDestroyImage(allocator, newImg, newAlloc2);
@@ -1006,15 +1000,15 @@ namespace onart {
         viewInfo.subresourceRange = imgBarrier.subresourceRange;
         ktxTexture_Destroy(ktxTexture(texture));
 
-        result = vkCreateImageView(device, &viewInfo, nullptr, &newView);
+        reason = vkCreateImageView(device, &viewInfo, nullptr, &newView);
 
         vkWaitForFences(device, 1, &fence, VK_FALSE, UINT64_MAX);
         vkDestroyFence(device, fence, nullptr);
         vkFreeCommandBuffers(device, tCommandPool, 1, &copyCmd);
         vmaDestroyBuffer(allocator, newBuffer, newAlloc);
 
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create image view:",result,resultAsString(result));
+        if(reason != VK_SUCCESS){
+            LOGWITH("Failed to create image view:",reason,resultAsString(reason));
             vmaDestroyImage(allocator, newImg, newAlloc2);
             return pTexture();
         }
@@ -1182,6 +1176,10 @@ namespace onart {
         singleton->loadThread.post([fileName, key, nChannels, handler, srgb, hq, already](){
             if(!already){
                 pTexture ret = singleton->createTexture(fileName, INT32_MIN, nChannels, srgb, hq);
+                if (!ret) {
+                    size_t _k = key | ((uint64_t)VkMachine::reason << 32);
+                    return (void*)_k;
+                }
                 singleton->textureGuard.lock();
                 singleton->textures[key] = std::move(ret);
                 singleton->textureGuard.unlock();
@@ -1199,6 +1197,10 @@ namespace onart {
         singleton->loadThread.post([already, fileName, key, handler, srgb, option](){
             if(!already){
                 pTexture ret = singleton->createTextureFromImage(fileName, INT32_MIN, srgb, option);
+				if (!ret) {
+					size_t _k = key | ((uint64_t)VkMachine::reason << 32);
+					return (void*)_k;
+				}
                 singleton->textureGuard.lock();
                 singleton->textures[key] = std::move(ret);
                 singleton->textureGuard.unlock();
@@ -1216,6 +1218,10 @@ namespace onart {
         singleton->loadThread.post([already, mem, size, key, handler, srgb, option](){
             if(!already){
                 pTexture ret = singleton->createTextureFromImage(mem, size, INT32_MIN, srgb, option);
+				if (!ret) {
+					size_t _k = key | ((uint64_t)VkMachine::reason << 32);
+					return (void*)_k;
+				}
                 singleton->textureGuard.lock();
                 singleton->textures[key] = std::move(ret);
                 singleton->textureGuard.unlock();
@@ -1233,6 +1239,10 @@ namespace onart {
         singleton->loadThread.post([mem, size, key, nChannels, handler, srgb, hq, already](){
             if(!already){
                 pTexture ret = singleton->createTexture(mem, size, nChannels, INT32_MIN, srgb, hq);
+				if (!ret) {
+					size_t _k = key | ((uint64_t)VkMachine::reason << 32);
+					return (void*)_k;
+				}
                 std::this_thread::sleep_for(std::chrono::seconds(3)); // async 테스트용
                 singleton->textureGuard.lock();
                 singleton->textures[key] = std::move(ret);
@@ -1339,10 +1349,8 @@ namespace onart {
         uboInfo.bindingCount = 1;
         uboInfo.pBindings = &uboBinding;
 
-        VkResult result;
-
-        if((result = vkCreateDescriptorSetLayout(singleton->device, &uboInfo, nullptr, &layout)) != VK_SUCCESS){
-            LOGWITH("Failed to create descriptor set layout:",result,resultAsString(result));
+        if((reason = vkCreateDescriptorSetLayout(singleton->device, &uboInfo, nullptr, &layout)) != VK_SUCCESS){
+            LOGWITH("Failed to create descriptor set layout:",reason,resultAsString(reason));
             return nullptr;
         }
 
@@ -1364,18 +1372,18 @@ namespace onart {
         bainfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 
         if(length > 1){
-            result = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
+            reason = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
         }
         else{
-            result = vmaCreateBuffer(singleton->allocator, &bufferInfo, &bainfo, &buffer, &alloc, nullptr);
+            reason = vmaCreateBuffer(singleton->allocator, &bufferInfo, &bainfo, &buffer, &alloc, nullptr);
         }
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create buffer:", result,resultAsString(result));
+        if(reason != VK_SUCCESS){
+            LOGWITH("Failed to create buffer:", reason,resultAsString(reason));
             return nullptr;
         }
 
-        if((result = vmaMapMemory(singleton->allocator, alloc, &mmap)) != VK_SUCCESS){
-            LOGWITH("Failed to map memory:", result,resultAsString(result));
+        if((reason = vmaMapMemory(singleton->allocator, alloc, &mmap)) != VK_SUCCESS){
+            LOGWITH("Failed to map memory:", reason,resultAsString(reason));
             return nullptr;
         }
 
@@ -1468,13 +1476,13 @@ namespace onart {
         VmaAllocation colorAlloc = {}, depthAlloc = {};
         VkImageView targets[12]{}; // 앞 6개는 컬러, 뒤 6개는 깊이
         VkImageView texture = VK_NULL_HANDLE; // 컬러가 있으면 컬러, 깊이만 있으면 깊이. (큐브맵 텍스처가 가능한 경우에 한해서)
-        VkResult result;
+
         if(useColor) {
             imgInfo.format = singleton->surface.format.format;
             imgInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-            result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &colorImage, &colorAlloc, nullptr);
-            if(result != VK_SUCCESS) {
-                LOGWITH("Failed to create image:",result,resultAsString(result));
+            reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &colorImage, &colorAlloc, nullptr);
+            if(reason != VK_SUCCESS) {
+                LOGWITH("Failed to create image:",reason,resultAsString(reason));
                 return nullptr;
             }
         }
@@ -1482,9 +1490,9 @@ namespace onart {
             imgInfo.format = VK_FORMAT_D32_SFLOAT;
             imgInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
             if(!useColor) imgInfo.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
-            result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &depthImage, &depthAlloc, nullptr);
-            if(result != VK_SUCCESS) {
-                LOGWITH("Failed to create image:",result,resultAsString(result));
+            reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &depthImage, &depthAlloc, nullptr);
+            if(reason != VK_SUCCESS) {
+                LOGWITH("Failed to create image:",reason,resultAsString(reason));
                 vmaDestroyImage(singleton->allocator, colorImage, colorAlloc);
                 return nullptr;
             }
@@ -1502,9 +1510,9 @@ namespace onart {
             viewInfo.format = singleton->surface.format.format;
             viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             for(int i = 0; i < 6; i++){
-                result = vkCreateImageView(singleton->device, &viewInfo, nullptr, &targets[i]);
-                if(result != VK_SUCCESS) {
-                    LOGWITH("Failed to create image view:",result,resultAsString(result));
+                reason = vkCreateImageView(singleton->device, &viewInfo, nullptr, &targets[i]);
+                if(reason != VK_SUCCESS) {
+                    LOGWITH("Failed to create image view:",reason,resultAsString(reason));
                     for(int j = 0; j < i; j++) {
                         vkDestroyImageView(singleton->device, targets[j], nullptr);
                     }
@@ -1520,9 +1528,9 @@ namespace onart {
             viewInfo.format = VK_FORMAT_D32_SFLOAT;
             viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
             for(int i = 6; i < 12; i++){
-                result = vkCreateImageView(singleton->device, &viewInfo, nullptr, &targets[i]);
-                if(result != VK_SUCCESS) {
-                    LOGWITH("Failed to create image view:",result,resultAsString(result));
+                reason = vkCreateImageView(singleton->device, &viewInfo, nullptr, &targets[i]);
+                if(reason != VK_SUCCESS) {
+                    LOGWITH("Failed to create image view:",reason,resultAsString(reason));
                     for(int j = 0; j < i; j++) {
                         vkDestroyImageView(singleton->device, targets[j], nullptr);
                     }
@@ -1538,9 +1546,9 @@ namespace onart {
         viewInfo.image = useColor ? colorImage : depthImage;
         viewInfo.format = useColor ? singleton->surface.format.format : VK_FORMAT_D32_SFLOAT;
         viewInfo.subresourceRange.aspectMask = useColor ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT; // ??
-        result = vkCreateImageView(singleton->device, &viewInfo, nullptr, &texture);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create cube image view:",result,resultAsString(result));
+        reason = vkCreateImageView(singleton->device, &viewInfo, nullptr, &texture);
+        if(reason != VK_SUCCESS){
+            LOGWITH("Failed to create cube image view:",reason,resultAsString(reason));
             for(int j = 0; j < 12; j++) {
                 vkDestroyImageView(singleton->device, targets[j], nullptr);
             }
@@ -1593,9 +1601,9 @@ namespace onart {
         VkRenderPass rp{};
         VkFramebuffer fb[6]{};
 
-        result = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &rp);
-        if(result != VK_SUCCESS) {
-            LOGWITH("Failed to create render pass:", result, resultAsString(result));
+        reason = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &rp);
+        if(reason != VK_SUCCESS) {
+            LOGWITH("Failed to create render pass:", reason, resultAsString(reason));
             for(int j = 0; j < 12; j++) {
                 vkDestroyImageView(singleton->device, targets[j], nullptr);
             }
@@ -1616,9 +1624,9 @@ namespace onart {
         for(int i = 0; i < 6; i++){
             fbatt[1] = targets[i+6];
             fbatt[0] = useColor ? targets[i] : targets[i+6];
-            result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb[i]);
-            if(result != VK_SUCCESS){
-                LOGWITH("Failed to create framebuffer:", result, resultAsString(result));
+            reason = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb[i]);
+            if(reason != VK_SUCCESS){
+                LOGWITH("Failed to create framebuffer:", reason, resultAsString(reason));
                 for(int j = 0; j < i; j++){
                     vkDestroyFramebuffer(singleton->device, fb[j], nullptr);
                 }
@@ -1720,7 +1728,7 @@ namespace onart {
         VkImage dsImage = VK_NULL_HANDLE;
         VmaAllocation dsAlloc = VK_NULL_HANDLE;
         VkImageView dsImageView = VK_NULL_HANDLE;
-        VkResult result;
+
         if(subpassCount == 1 && useDepth) {
             VkImageCreateInfo imgInfo{};
             imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1739,7 +1747,7 @@ namespace onart {
             VmaAllocationCreateInfo allocInfo{};
             allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
             
-            if((result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &dsImage, &dsAlloc, nullptr)) != VK_SUCCESS){
+            if((reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &dsImage, &dsAlloc, nullptr)) != VK_SUCCESS){
                 LOGWITH("Failed to create depth/stencil image for last one");
                 for(RenderTarget* t:targets) delete t;
                 return nullptr;
@@ -1865,8 +1873,8 @@ namespace onart {
         rpInfo.pDependencies = &dependencies[0];
         VkRenderPass newPass;
 
-        if((result = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
-            LOGWITH("Failed to create renderpass:",result,resultAsString(result));
+        if((reason = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
+            LOGWITH("Failed to create renderpass:",reason,resultAsString(reason));
             for(RenderTarget* t:targets) delete t;
             vmaDestroyImage(singleton->allocator, dsImage, dsAlloc);
             return nullptr;
@@ -1884,8 +1892,8 @@ namespace onart {
         uint32_t i = 0;
         for(VkFramebuffer& fb: fbs){
             swapchainImageViewPlace = singleton->swapchain.imageView[i++];
-            if((result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
-                LOGWITH("Failed to create framebuffer:",result,resultAsString(result));
+            if((reason = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
+                LOGWITH("Failed to create framebuffer:",reason,resultAsString(reason));
                 for(VkFramebuffer d: fbs) vkDestroyFramebuffer(singleton->device, d, nullptr);
                 vkDestroyRenderPass(singleton->device, newPass, nullptr);
                 vkDestroyImageView(singleton->device, dsImageView, nullptr);
@@ -1986,9 +1994,8 @@ namespace onart {
         rpInfo.dependencyCount = subpassCount; // 스왑체인 의존성은 이 함수를 통해 만들지 않기 때문에 이대로 사용
         rpInfo.pDependencies = &dependencies[0];
         VkRenderPass newPass;
-        VkResult result;
-        if((result = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
-            LOGWITH("Failed to create renderpass:",result,resultAsString(result));
+        if((reason = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
+            LOGWITH("Failed to create renderpass:",reason,resultAsString(reason));
             return nullptr;
         }
 
@@ -2001,8 +2008,8 @@ namespace onart {
         fbInfo.width = targets[0]->width;
         fbInfo.height = targets[0]->height;
         fbInfo.layers = 1; // 큐브맵이면 6인데 일단 그건 다른 함수로 한다고 침
-        if((result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
-            LOGWITH("Failed to create framebuffer:",result,resultAsString(result));
+        if((reason = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
+            LOGWITH("Failed to create framebuffer:",reason,resultAsString(reason));
             return nullptr;
         }
 
@@ -2134,9 +2141,9 @@ namespace onart {
             layoutInfo.pPushConstantRanges = &pushRange;
         }
 
-        VkResult result = vkCreatePipelineLayout(singleton->device, &layoutInfo, nullptr, &ret);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create pipeline layout:",result,resultAsString(result));
+        reason = vkCreatePipelineLayout(singleton->device, &layoutInfo, nullptr, &ret);
+        if(reason != VK_SUCCESS){
+            LOGWITH("Failed to create pipeline layout:",reason,resultAsString(reason));
             return VK_NULL_HANDLE;
         }
         if(name == INT32_MIN) return ret;
@@ -2239,9 +2246,9 @@ namespace onart {
         fbInfo.layers = 1;
         fbInfo.pAttachments = ivs.data();
         fbInfo.attachmentCount = ivs.size();
-        VkResult result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create framebuffer:", result,resultAsString(result));
+        reason = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb);
+        if(reason != VK_SUCCESS){
+            LOGWITH("Failed to create framebuffer:", reason,resultAsString(reason));
         }
         setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
         setScissor(targets[0]->width, targets[0]->height, 0, 0);
@@ -2369,9 +2376,9 @@ namespace onart {
         }
         vkCmdEndRenderPass(cb);
         bound = nullptr;
-        VkResult result;
-        if((result = vkEndCommandBuffer(cb)) != VK_SUCCESS){
-            LOGWITH("Failed to end command buffer:",result);
+
+        if((reason = vkEndCommandBuffer(cb)) != VK_SUCCESS){
+            LOGWITH("Failed to end command buffer:",reason);
             return;
         }
         VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
@@ -2387,12 +2394,12 @@ namespace onart {
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = &semaphore;
 
-        if((result = vkResetFences(singleton->device, 1, &fence)) != VK_SUCCESS){
+        if((reason = vkResetFences(singleton->device, 1, &fence)) != VK_SUCCESS){
             LOGWITH("Failed to reset fence. waiting or other operations will play incorrect");
             return;
         }
 
-        if ((result = singleton->qSubmit(true, 1, &submitInfo, fence)) != VK_SUCCESS) {
+        if ((reason = singleton->qSubmit(true, 1, &submitInfo, fence)) != VK_SUCCESS) {
             LOGWITH("Failed to submit command buffer");
             return;
         }
@@ -2416,16 +2423,16 @@ namespace onart {
             currentPass--;
             return;
         }
-        VkResult result;
+
         if(currentPass == 0){
             wait();
             vkResetCommandBuffer(cb, 0);
             VkCommandBufferBeginInfo cbInfo{};
             cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             cbInfo.flags = VkCommandBufferUsageFlagBits::VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            result = vkBeginCommandBuffer(cb, &cbInfo);
-            if(result != VK_SUCCESS){
-                LOGWITH("Failed to begin command buffer:",result,resultAsString(result));
+            reason = vkBeginCommandBuffer(cb, &cbInfo);
+            if(reason != VK_SUCCESS){
+                LOGWITH("Failed to begin command buffer:",reason,resultAsString(reason));
                 currentPass = -1;
                 return;
             }
@@ -2492,9 +2499,9 @@ namespace onart {
         cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         cbInfo.flags = VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
         cbInfo.pInheritanceInfo = &ciInfo;
-        VkResult result;
-        if((result = vkBeginCommandBuffer(facewise[pass], &cbInfo)) != VK_SUCCESS){
-            LOGWITH("Failed to begin command buffer:",result,resultAsString(result));
+        
+        if((reason = vkBeginCommandBuffer(facewise[pass], &cbInfo)) != VK_SUCCESS){
+            LOGWITH("Failed to begin command buffer:",reason,resultAsString(reason));
         }
     }
 
@@ -2610,9 +2617,9 @@ namespace onart {
             return;
         }
 
-        VkResult result = vkEndCommandBuffer(scb);
-        if(result != VK_SUCCESS){ // 호스트/GPU 메모리 부족 문제만 존재
-            LOGWITH("Secondary command buffer begin failed:",result, resultAsString(result));
+        reason = vkEndCommandBuffer(scb);
+        if(reason != VK_SUCCESS){ // 호스트/GPU 메모리 부족 문제만 존재
+            LOGWITH("Secondary command buffer begin failed:",reason, resultAsString(reason));
             return;
         }
 
@@ -2620,8 +2627,8 @@ namespace onart {
         cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         cbInfo.flags = VkCommandBufferUsageFlagBits::VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         vkBeginCommandBuffer(cb, &cbInfo);
-        if(result != VK_SUCCESS){ // 호스트/GPU 메모리 부족 문제만 존재
-            LOGWITH("Primary Command buffer begin failed:",result,resultAsString(result));
+        if(reason != VK_SUCCESS){ // 호스트/GPU 메모리 부족 문제만 존재
+            LOGWITH("Primary Command buffer begin failed:",reason,resultAsString(reason));
             return;
         }
 
@@ -2646,8 +2653,8 @@ namespace onart {
             vkCmdEndRenderPass(cb);
         }
         bound = nullptr;
-        if((result = vkEndCommandBuffer(scb)) != VK_SUCCESS){
-            LOGWITH("Failed to end command buffer:",result);
+        if((reason = vkEndCommandBuffer(scb)) != VK_SUCCESS){
+            LOGWITH("Failed to end command buffer:",reason);
             return;
         }
         
@@ -2665,12 +2672,12 @@ namespace onart {
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = &semaphore;
 
-        if((result = vkResetFences(singleton->device, 1, &fence)) != VK_SUCCESS){
+        if((reason = vkResetFences(singleton->device, 1, &fence)) != VK_SUCCESS){
             LOGWITH("Failed to reset fence. waiting or other operations will play incorrect");
             return;
         }
 
-        if ((result = singleton->qSubmit(true, 1, &submitInfo, fence)) != VK_SUCCESS) {
+        if ((reason = singleton->qSubmit(true, 1, &submitInfo, fence)) != VK_SUCCESS) {
             LOGWITH("Failed to submit command buffer");
             return;
         }
@@ -2692,7 +2699,6 @@ namespace onart {
             LOGWITH("Pipeline not set:",this);
             return;
         }
-        VkResult result;
         wait();
         recording = true;
         vkResetCommandBuffer(cb, 0);
@@ -2706,10 +2712,10 @@ namespace onart {
         VkCommandBufferBeginInfo cbInfo{};
         cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         cbInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-        result = vkBeginCommandBuffer(scb, &cbInfo);
-        if(result != VK_SUCCESS){
+        reason = vkBeginCommandBuffer(scb, &cbInfo);
+        if(reason != VK_SUCCESS){
             recording = false;
-            LOGWITH("Failed to begin secondary command buffer:",result, resultAsString(result));
+            LOGWITH("Failed to begin secondary command buffer:",reason, resultAsString(reason));
             return;
         }
         
@@ -2831,11 +2837,10 @@ namespace onart {
             fbInfo.height = height;
             fbInfo.layers = 1;
             uint32_t i = 0;
-            VkResult result;
             for(VkFramebuffer& fb: fbs){
                 swapchainImageViewPlace = singleton->swapchain.imageView[i++];
-                if((result = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
-                    LOGWITH("Failed to create framebuffer:",result,resultAsString(result));
+                if((reason = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
+                    LOGWITH("Failed to create framebuffer:",reason,resultAsString(reason));
                     this->~RenderPass2Screen();
                     return false;
                 }
@@ -2967,11 +2972,10 @@ namespace onart {
             currentPass--;
             return;
         }
-        VkResult result;
         if(currentPass == 0){
-            result = vkAcquireNextImageKHR(singleton->device, singleton->swapchain.handle, UINT64_MAX, acquireSm[currentCB], VK_NULL_HANDLE, &imgIndex);
-            if(result != VK_SUCCESS) {
-                LOGWITH("Failed to acquire swapchain image:",result,resultAsString(result),"\nThis message can be ignored safely if the rendering goes fine after now");
+            reason = vkAcquireNextImageKHR(singleton->device, singleton->swapchain.handle, UINT64_MAX, acquireSm[currentCB], VK_NULL_HANDLE, &imgIndex);
+            if(reason != VK_SUCCESS) {
+                LOGWITH("Failed to acquire swapchain image:",reason,resultAsString(reason),"\nThis message can be ignored safely if the rendering goes fine after now");
                 currentPass = -1;
                 return;
             }
@@ -2981,9 +2985,9 @@ namespace onart {
             VkCommandBufferBeginInfo cbInfo{};
             cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             cbInfo.flags = VkCommandBufferUsageFlagBits::VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            result = vkBeginCommandBuffer(cbs[currentCB], &cbInfo);
-            if(result != VK_SUCCESS){
-                LOGWITH("Failed to begin command buffer:",result,resultAsString(result));
+            reason = vkBeginCommandBuffer(cbs[currentCB], &cbInfo);
+            if(reason != VK_SUCCESS){
+                LOGWITH("Failed to begin command buffer:",reason,resultAsString(reason));
                 currentPass = -1;
                 return;
             }
@@ -3037,9 +3041,8 @@ namespace onart {
         }
         vkCmdEndRenderPass(cbs[currentCB]);
         bound = nullptr;
-        VkResult result;
-        if((result = vkEndCommandBuffer(cbs[currentCB])) != VK_SUCCESS){
-            LOGWITH("Failed to end command buffer:",result,resultAsString(result));
+        if((reason = vkEndCommandBuffer(cbs[currentCB])) != VK_SUCCESS){
+            LOGWITH("Failed to end command buffer:",reason,resultAsString(reason));
             return;
         }
 
@@ -3065,13 +3068,13 @@ namespace onart {
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = &drawSm[currentCB];
 
-        if((result = vkResetFences(singleton->device, 1, &fences[currentCB])) != VK_SUCCESS){
-            LOGWITH("Failed to reset fence. waiting or other operations will play incorrect:",result, resultAsString(result));
+        if((reason = vkResetFences(singleton->device, 1, &fences[currentCB])) != VK_SUCCESS){
+            LOGWITH("Failed to reset fence. waiting or other operations will play incorrect:",reason, resultAsString(reason));
             return;
         }
 
-        if ((result = singleton->qSubmit(true, 1, &submitInfo, fences[currentCB])) != VK_SUCCESS) {
-            LOGWITH("Failed to submit command buffer:",result,resultAsString(result));
+        if ((reason = singleton->qSubmit(true, 1, &submitInfo, fences[currentCB])) != VK_SUCCESS) {
+            LOGWITH("Failed to submit command buffer:",reason,resultAsString(reason));
             return;
         }
 
@@ -3087,8 +3090,8 @@ namespace onart {
         currentCB = (currentCB + 1) % COMMANDBUFFER_COUNT;
         currentPass = -1;
 
-        if((result = singleton->qSubmit(&presentInfo)) != VK_SUCCESS){
-            LOGWITH("Failed to submit command present operation:",result, resultAsString(result));
+        if((reason = singleton->qSubmit(&presentInfo)) != VK_SUCCESS){
+            LOGWITH("Failed to submit command present operation:",reason, resultAsString(reason));
             return;
         }
     }
@@ -3168,7 +3171,6 @@ namespace onart {
         mmap = nullptr;
         alloc = nullptr;
 
-        VkResult result;
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
@@ -3179,9 +3181,9 @@ namespace onart {
         bainfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO;
         bainfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 
-        result = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create VkBuffer:", result,resultAsString(result));
+        reason = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
+        if(reason != VK_SUCCESS){
+            LOGWITH("Failed to create VkBuffer:", reason,resultAsString(reason));
             return;
         }
 
@@ -3198,8 +3200,8 @@ namespace onart {
         wr.pBufferInfo = &dsNBuffer;
         vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
 
-        if((result = vmaMapMemory(singleton->allocator, alloc, &mmap)) != VK_SUCCESS){
-            LOGWITH("Failed to map memory:", result,resultAsString(result));
+        if((reason = vmaMapMemory(singleton->allocator, alloc, &mmap)) != VK_SUCCESS){
+            LOGWITH("Failed to map memory:", reason,resultAsString(reason));
             return;
         }
     }
@@ -3214,7 +3216,6 @@ namespace onart {
     // static함수들 구현
 
     VkInstance createInstance(Window* window){
-        VkResult result;
         VkInstance instance;
         VkInstanceCreateInfo instInfo{};
 
@@ -3239,10 +3240,14 @@ namespace onart {
             instInfo.enabledLayerCount = 1;
         }
 
+        VkResult result;
+
         if((result = vkCreateInstance(&instInfo, nullptr, &instance)) != VK_SUCCESS){
             LOGWITH("Failed to create vulkan instance:", result,resultAsString(result));
+            VkMachine::reason = result;
             return VK_NULL_HANDLE;
         }
+        VkMachine::reason = result;
         return instance;
     }
 
@@ -3412,8 +3417,10 @@ namespace onart {
         VkResult result;
         if((result = vkCreateDevice(card, &deviceInfo, nullptr, &ret)) != VK_SUCCESS){
             LOGWITH("Failed to create Vulkan device:", result,resultAsString(result));
+            VkMachine::reason = result;
             return VK_NULL_HANDLE;
         }
+        VkMachine::reason = result;
         return ret;
     }
 
@@ -3428,8 +3435,10 @@ namespace onart {
         VkResult result;
         if((result = vmaCreateAllocator(&allocInfo, &ret)) != VK_SUCCESS){
             LOGWITH("Failed to create VMA object:",result,resultAsString(result));
+            VkMachine::reason = result;
             return nullptr;
         }
+        VkMachine::reason = result;
         return ret;
     }
 
@@ -3442,8 +3451,10 @@ namespace onart {
         VkResult result;
         if((result = vkCreateCommandPool(device, &poolInfo, nullptr, &ret)) != VK_SUCCESS){
             LOGWITH("Failed to create command pool:", result,resultAsString(result));
+            VkMachine::reason = result;
             return 0;
         }
+        VkMachine::reason = result;
         return ret;
     }
 
@@ -3463,8 +3474,10 @@ namespace onart {
         VkResult result;
         if((result = vkCreateImageView(device, &ivInfo, nullptr, &ret)) != VK_SUCCESS){
             LOGWITH("Failed to create image view:",result,resultAsString(result));
+            VkMachine::reason = result;
             return 0;
         }
+        VkMachine::reason = result;
         return ret;
     }
 
@@ -3488,8 +3501,10 @@ namespace onart {
         VkResult result;
         if((result = vkCreateDescriptorPool(device, &dPoolInfo, nullptr, &ret)) != VK_SUCCESS){
             LOGWITH("Failed to create descriptor pool:",result,resultAsString(result));
+            VkMachine::reason = result;
             return VK_NULL_HANDLE;
         }
+        VkMachine::reason = result;
         return ret;
     }
 
@@ -3719,7 +3734,9 @@ namespace onart {
         if(result != VK_SUCCESS){
             LOGWITH("Failed to create pipeline:",result,resultAsString(result));
             return VK_NULL_HANDLE;
+            VkMachine::reason = result;
         }
+        VkMachine::reason = result;
         return ret;
     }
 
