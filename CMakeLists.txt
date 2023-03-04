@@ -63,6 +63,8 @@ else()
         YERM_PC/yr_audio.h
         YERM_PC/yr_audio.cpp
         YERM_PC/yr_constants.cpp
+        YERM_PC/yr_model.h
+        YERM_PC/yr_model.cpp
     )
     set_target_properties(yerm PROPERTIES BUILD_RPATH ".")
     target_include_directories(yerm PUBLIC externals)

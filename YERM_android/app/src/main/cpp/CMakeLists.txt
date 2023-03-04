@@ -23,10 +23,10 @@ find_package(games-performance-tuner REQUIRED CONFIG)
 # ON: USE VULKAN, OFF: USE GL ES
 set(YERM_VULKAN ON)
 if(${YERM_VULKAN})
-    set(YERM_GRAPHICS YERM_PC/yr_vulkan.h YERM_PC/yr_vulkan.cpp)
+    set(YERM_GRAPHICS ../../../../../YERM_PC/yr_vulkan.h ../../../../../YERM_PC/yr_vulkan.cpp)
     add_compile_definitions(YR_USE_VULKAN)
 else()
-    set(YERM_GRAPHICS YERM_PC/yr_opengles.h YERM_PC/yr_opengles.cpp)
+    set(YERM_GRAPHICS ../../../../../YERM_PC/yr_opengles.h ../../../../../YERM_PC/yr_opengles.cpp)
     add_compile_definitions(YR_USE_GLES)
 endif()
 
@@ -53,14 +53,15 @@ add_library( # Sets the name of the library.
              ../../../../../YERM_PC/yr_sys.cpp
              ../../../../../YERM_PC/yr_game.h
              ../../../../../YERM_PC/yr_game.cpp
-             ../../../../../YERM_PC/yr_vulkan.h
-             ../../../../../YERM_PC/yr_vulkan.cpp
+             ${YERM_GRAPHICS}
              ../../../../../YERM_PC/yr_input.h
              ../../../../../YERM_PC/yr_input.cpp
              ../../../../../YERM_PC/yr_audio.h
              ../../../../../YERM_PC/yr_audio.cpp
              ../../../../../YERM_PC/yr_singleheader.cpp
              ../../../../../YERM_PC/yr_constants.cpp
+             ../../../../../YERM_PC/yr_model.h
+             ../../../../../YERM_PC/yr_model.cpp
         )
 
 # Searches for a specified prebuilt library and stores the path as a
