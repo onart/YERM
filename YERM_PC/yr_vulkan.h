@@ -460,12 +460,17 @@ namespace onart {
             /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
             void push(void* input, uint32_t start, uint32_t end);
             /// @brief 메시를 그립니다. 정점 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
-            void invoke(const pMesh&);
+            /// @param start 정점 시작 위치 (주어진 메시에 인덱스 버퍼가 있는 경우 그것을 기준으로 합니다.)
+            /// @param count 정점 수. 0이 주어진 경우 주어진 start부터 끝까지 그립니다.
+            void invoke(const pMesh&, uint32_t start = 0, uint32_t count = 0);
             /// @brief 메시를 그립니다. 정점 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
             /// @param mesh 기본 정점버퍼
             /// @param instanceInfo 인스턴스 속성 버퍼
             /// @param instanceCount 인스턴스 수
-            void invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount);
+            /// @param istart 인스턴스 시작 위치
+            /// @param start 정점 시작 위치 (주어진 메시에 인덱스 버퍼가 있는 경우 그것을 기준으로 합니다.)
+            /// @param count 정점 수. 0이 주어진 경우 주어진 start부터 끝까지 그립니다.
+            void invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart = 0, uint32_t start = 0, uint32_t count = 0);
             /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다. 주어진 파이프라인이 없으면 동작이 실패합니다.
             /// @param pos 이전 서브패스의 결과인 입력 첨부물을 바인드할 위치의 시작점입니다. 예를 들어, pos=0이고 이전 타겟이 색 첨부물 2개, 깊이 첨부물 1개였으면 0, 1, 2번에 바인드됩니다. 셰이더를 그에 맞게 만들어야 합니다.
             void start(uint32_t pos = 0);
@@ -529,9 +534,9 @@ namespace onart {
             /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
             void push(void* input, uint32_t start, uint32_t end);
             /// @brief 메시를 그립니다. 정점 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
-            void invoke(const pMesh&);
+            void invoke(const pMesh&, uint32_t start = 0, uint32_t count = 0);
             /// @brief 메시를 그립니다. 정점/인스턴스 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
-            void invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount);
+            void invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart = 0, uint32_t start = 0, uint32_t count = 0);
             /// @brief 서브패스를 시작합니다. 이미 시작된 상태인 경우 아무 동작도 하지 않습니다.
             void start(); 
             /// @brief draw 수행 이후에 호출되면 가장 최근에 제출된 그리기 및 화면 표시 명령이 끝나고 나서 리턴합니다. 그 외의 경우는 그냥 리턴합니다.
@@ -619,12 +624,12 @@ namespace onart {
             /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
             void push(void* input, uint32_t start, uint32_t end);
             /// @brief 메시를 그립니다. 정점 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
-            void invoke(const pMesh&);
+            void invoke(const pMesh&, uint32_t start = 0, uint32_t count = 0);
             /// @brief 메시를 그립니다. 정점/인스턴스 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
             /// @param mesh 
             /// @param instanceInfo 
             /// @param instanceCount 
-            void invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount);
+            void invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart = 0, uint32_t start = 0, uint32_t count = 0);
             /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다. 주어진 파이프라인이 없으면 동작이 실패합니다.
             /// @param pos 이전 서브패스의 결과인 입력 첨부물을 바인드할 위치의 시작점입니다. 예를 들어, pos=0이고 이전 타겟이 색 첨부물 2개, 깊이 첨부물 1개였으면 0, 1, 2번에 바인드됩니다. 셰이더를 그에 맞게 만들어야 합니다.
             void start(uint32_t pos = 0);

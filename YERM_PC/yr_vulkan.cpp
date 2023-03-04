@@ -1243,7 +1243,6 @@ namespace onart {
 					size_t _k = key | ((uint64_t)VkMachine::reason << 32);
 					return (void*)_k;
 				}
-                std::this_thread::sleep_for(std::chrono::seconds(3)); // async 테스트용
                 singleton->textureGuard.lock();
                 singleton->textures[key] = std::move(ret);
                 singleton->textureGuard.unlock();
@@ -2336,7 +2335,7 @@ namespace onart {
         vkCmdPushConstants(cb, pipelineLayouts[currentPass], VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT | VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
     }
 
-    void VkMachine::RenderPass::invoke(const pMesh& mesh){
+    void VkMachine::RenderPass::invoke(const pMesh& mesh, uint32_t start, uint32_t count){
          if(currentPass == -1){
             LOGWITH("Invalid call: render pass not begun");
             return;
@@ -2346,12 +2345,32 @@ namespace onart {
             vkCmdBindVertexBuffers(cb, 0, 1, &mesh->vb, &offs);
             if(mesh->icount) vkCmdBindIndexBuffer(cb, mesh->vb, mesh->ioff, mesh->idxType);
         }
-        if(mesh->icount) vkCmdDrawIndexed(cb, mesh->icount, 1, 0, 0, 0);
-        else vkCmdDraw(cb, mesh->vcount, 1, 0, 0);
+        if(mesh->icount) {
+            if((uint64_t)start + count > mesh->icount){
+                LOGWITH("Invalid call: this mesh has",mesh->icount,"indices but",start,"~",(uint64_t)start+count,"requested to be drawn");
+                bound = nullptr;
+                return;
+            }
+            if(count == 0){
+                count = mesh->icount - start;
+            }
+            vkCmdDrawIndexed(cb, count, 1, start, 0, 0);
+        }
+        else {
+            if((uint64_t)start + count > mesh->vcount){
+                LOGWITH("Invalid call: this mesh has",mesh->vcount,"vertices but",start,"~",(uint64_t)start+count,"requested to be drawn");
+                bound = nullptr;
+                return;
+            }
+            if(count == 0){
+                count = mesh->vcount - start;
+            }
+            vkCmdDraw(cb, count, 1, start, 0);
+        }
         bound = mesh.get();
     }
 
-    void VkMachine::RenderPass::invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount){
+    void VkMachine::RenderPass::invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart, uint32_t start, uint32_t count){
          if(currentPass == -1){
             LOGWITH("Invalid call: render pass not begun");
             return;
@@ -2360,11 +2379,27 @@ namespace onart {
         VkBuffer buffs[2] = {mesh->vb, instanceInfo->vb};
         vkCmdBindVertexBuffers(cb, 0, 2, buffs, offs);
         if(mesh->icount) {
+            if((uint64_t)start + count > mesh->icount){
+                LOGWITH("Invalid call: this mesh has",mesh->icount,"indices but",start,"~",(uint64_t)start+count,"requested to be drawn");
+                bound = nullptr;
+                return;
+            }
+            if(count == 0){
+                count = mesh->icount - start;
+            }
             vkCmdBindIndexBuffer(cb, mesh->vb, mesh->ioff, mesh->idxType);
-            vkCmdDrawIndexed(cb, mesh->icount, instanceCount, 0, 0, 0);
+            vkCmdDrawIndexed(cb, count, instanceCount, start, 0, istart);
         }
         else{
-            vkCmdDraw(cb, mesh->vcount, instanceCount, 0, 0);
+            if((uint64_t)start + count > mesh->vcount){
+                LOGWITH("Invalid call: this mesh has",mesh->vcount,"vertices but",start,"~",(uint64_t)start+count,"requested to be drawn");
+                bound = nullptr;
+                return;
+            }
+            if(count == 0){
+                count = mesh->vcount - start;
+            }
+            vkCmdDraw(cb, count, instanceCount, start, istart);
         }
         bound = nullptr;
     }
@@ -2578,7 +2613,7 @@ namespace onart {
         vkCmdPushConstants(scb, pipelineLayout, VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT | VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
     }
 
-    void VkMachine::RenderPass2Cube::invoke(const pMesh& mesh){
+    void VkMachine::RenderPass2Cube::invoke(const pMesh& mesh, uint32_t start, uint32_t count){
          if(!recording){
             LOGWITH("Invalid call: render pass not begun");
             return;
@@ -2588,12 +2623,32 @@ namespace onart {
             vkCmdBindVertexBuffers(scb, 0, 1, &mesh->vb, &offs);
             if(mesh->icount) vkCmdBindIndexBuffer(scb, mesh->vb, mesh->ioff, mesh->idxType);
         }
-        if(mesh->icount) vkCmdDrawIndexed(scb, mesh->icount, 1, 0, 0, 0);
-        else vkCmdDraw(scb, mesh->vcount, 1, 0, 0);
+        if(mesh->icount) {
+            if((uint64_t)start + count > mesh->icount){
+                LOGWITH("Invalid call: this mesh has",mesh->icount,"indices but",start,"~",(uint64_t)start+count,"requested to be drawn");
+                bound = nullptr;
+                return;
+            }
+            if(count == 0){
+                count = mesh->icount - start;
+            }
+            vkCmdDrawIndexed(scb, count, 1, start, 0, 0);
+        }
+        else {
+            if((uint64_t)start + count > mesh->vcount){
+                LOGWITH("Invalid call: this mesh has",mesh->vcount,"vertices but",start,"~",(uint64_t)start+count,"requested to be drawn");
+                bound = nullptr;
+                return;
+            }
+            if(count == 0){
+                count = mesh->vcount - start;
+            }
+            vkCmdDraw(scb, count, 1, start, 0);
+        }
         bound = mesh.get();
     }
 
-    void VkMachine::RenderPass2Cube::invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount){
+    void VkMachine::RenderPass2Cube::invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart, uint32_t start, uint32_t count){
          if(!recording){
             LOGWITH("Invalid call: render pass not begun");
             return;
@@ -2602,11 +2657,27 @@ namespace onart {
         VkBuffer buffs[2] = {mesh->vb, instanceInfo->vb};
         vkCmdBindVertexBuffers(scb, 0, 2, buffs, offs);
         if(mesh->icount) {
+            if((uint64_t)start + count > mesh->icount){
+                LOGWITH("Invalid call: this mesh has",mesh->icount,"indices but",start,"~",(uint64_t)start+count,"requested to be drawn");
+                bound = nullptr;
+                return;
+            }
+            if(count == 0){
+                count = mesh->icount - start;
+            }
             vkCmdBindIndexBuffer(scb, mesh->vb, mesh->ioff, mesh->idxType);
-            vkCmdDrawIndexed(scb, mesh->icount, instanceCount, 0, 0, 0);
+            vkCmdDrawIndexed(scb, count, instanceCount, start, 0, istart);
         }
         else{
-            vkCmdDraw(scb, mesh->vcount, instanceCount, 0, 0);
+            if((uint64_t)start + count > mesh->vcount){
+                LOGWITH("Invalid call: this mesh has",mesh->vcount,"vertices but",start,"~",(uint64_t)start+count,"requested to be drawn");
+                bound = nullptr;
+                return;
+            }
+            if(count == 0){
+                count = mesh->vcount - start;
+            }
+            vkCmdDraw(scb, count, instanceCount, start, istart);
         }
         bound = nullptr;
     }
@@ -2923,7 +2994,7 @@ namespace onart {
         vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &dset, 0, nullptr);
     }
 
-     void VkMachine::RenderPass2Screen::invoke(const pMesh& mesh){
+     void VkMachine::RenderPass2Screen::invoke(const pMesh& mesh, uint32_t start, uint32_t count){
          if(currentPass == -1){
             LOGWITH("Invalid call: render pass not begun");
             return;
@@ -2934,12 +3005,32 @@ namespace onart {
             vkCmdBindVertexBuffers(cbs[currentCB], 0, 1, &mesh->vb, &offs);
             if(mesh->icount) vkCmdBindIndexBuffer(cbs[currentCB], mesh->vb, mesh->ioff, mesh->idxType);
         }
-        if(mesh->icount) vkCmdDrawIndexed(cbs[currentCB], mesh->icount, 1, 0, 0, 0);
-        else vkCmdDraw(cbs[currentCB], mesh->vcount, 1, 0, 0);
+        if(mesh->icount) {
+            if((uint64_t)start + count > mesh->icount){
+                LOGWITH("Invalid call: this mesh has",mesh->icount,"indices but",start,"~",(uint64_t)start+count,"requested to be drawn");
+                bound = nullptr;
+                return;
+            }
+            if(count == 0){
+                count = mesh->icount - start;
+            }
+            vkCmdDrawIndexed(cbs[currentCB], count, 1, start, 0, 0);
+        }
+        else {
+            if((uint64_t)start + count > mesh->vcount){
+                LOGWITH("Invalid call: this mesh has",mesh->vcount,"vertices but",start,"~",(uint64_t)start+count,"requested to be drawn");
+                bound = nullptr;
+                return;
+            }
+            if(count == 0){
+                count = mesh->vcount - start;
+            }
+            vkCmdDraw(cbs[currentCB], count, 1, start, 0);
+        }
         bound = mesh.get();
     }
 
-    void VkMachine::RenderPass2Screen::invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount){
+    void VkMachine::RenderPass2Screen::invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart, uint32_t start, uint32_t count){
          if(currentPass == -1){
             LOGWITH("Invalid call: render pass not begun");
             return;
@@ -2948,11 +3039,27 @@ namespace onart {
         VkBuffer buffs[2] = {mesh->vb, instanceInfo->vb};
         vkCmdBindVertexBuffers(cbs[currentCB], 0, 2, buffs, offs);
         if(mesh->icount) {
+            if((uint64_t)start + count > mesh->icount){
+                LOGWITH("Invalid call: this mesh has",mesh->icount,"indices but",start,"~",(uint64_t)start+count,"requested to be drawn");
+                bound = nullptr;
+                return;
+            }
+            if(count == 0){
+                count = mesh->icount - start;
+            }
             vkCmdBindIndexBuffer(cbs[currentCB], mesh->vb, mesh->ioff, mesh->idxType);
-            vkCmdDrawIndexed(cbs[currentCB], mesh->icount, instanceCount, 0, 0, 0);
+            vkCmdDrawIndexed(cbs[currentCB], count, instanceCount, start, 0, istart);
         }
         else{
-            vkCmdDraw(cbs[currentCB], mesh->vcount, instanceCount, 0, 0);
+            if((uint64_t)start + count > mesh->vcount){
+                LOGWITH("Invalid call: this mesh has",mesh->vcount,"vertices but",start,"~",(uint64_t)start+count,"requested to be drawn");
+                bound = nullptr;
+                return;
+            }
+            if(count == 0){
+                count = mesh->vcount - start;
+            }
+            vkCmdDraw(cbs[currentCB], count, instanceCount, start, istart);
         }
         bound = nullptr;
     }
