@@ -6,5 +6,5 @@ layout(input_attachment_index = 0, binding = 0) uniform subpassInput inColor;
 
 void main() {
     vec4 inp = subpassLoad(inColor);
-    outColor = vec4(vec3(1.0) - inp.xyz, inp.w);
+    outColor = vec4(sqrt(inp.xyz), inp.w);
 }
