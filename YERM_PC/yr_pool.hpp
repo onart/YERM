@@ -25,7 +25,7 @@
 
 namespace onart{
     /// @brief 일정량의 데이터를 보유하는 메모리 풀입니다. shared_ptr를 하나씩 꺼낼 수 있으며, 더 꺼낼 것이 없는 경우 빈 포인터를 리턴합니다. 여기서 꺼낸 포인터에 대하여 명시적으로 delete를 수행할 수 없습니다.
-    /// 풀은 복사와 이동이 불가능합니다. 풀은 스레드 안전합니다.
+    /// 풀은 복사와 이동이 불가능합니다. 풀은 스레드 안전하지 않습니다.
     /// @tparam T 개별 객체의 타입입니다.
     /// @tparam CAPACITY 최대 크기입니다. 런타임에 변할 수 없으며, 합리적인 최대 수가 정해져 있지 않은 경우 @ref DynamicPool 클래스를 사용합니다.
     template <class T, size_t CAPACITY = 256>
@@ -49,7 +49,7 @@ namespace onart{
         }
 
         /// @brief 풀이 가득 찬 상태인지 확인합니다.
-        bool isFull() { std::unique_lock<std::mutex> _(lock); return tail == (CAPACITY - 1);}
+        bool isFull() { return tail == (CAPACITY - 1);}
 
         Pool(const Pool&) = delete;
         Pool(Pool&& src) = delete;
@@ -60,7 +60,6 @@ namespace onart{
         /// @return 풀이 비어 있어서 실패하면 빈 포인터를 리턴합니다.
         template <class... Args>
         inline std::shared_ptr<T> get(Args&&... args){
-            std::unique_lock<std::mutex> _(lock);
             if(tail == (size_t) - 1) return std::shared_ptr<T>();
             new (&v[stack[tail]]) T(args...);
             return std::shared_ptr<T>(&v[stack[tail--]],[this](T* p){
@@ -72,13 +71,11 @@ namespace onart{
         inline void ret(T* p){
             if(v == nullptr) return;
             size_t idx = p - v;
-            std::unique_lock<std::mutex> _(lock);
             stack[++tail] = idx;
         }
         T* v = nullptr;
         size_t* stack = nullptr;
         size_t tail = CAPACITY - 1;
-        std::mutex lock;
     };
 
     /// @brief 
@@ -92,13 +89,11 @@ namespace onart{
                 Node* next = nullptr;
             };
             Node* head;
-            std::mutex lock;
         public:
             inline DynamicPool() { head = new Node; }
 
         template<class... Args>
         inline std::shared_ptr<T> get(Args&&... args){
-            std::unique_lock<std::mutex> _(lock);
             Node* node = head;
             while(true){
                 std::shared_ptr<T> p = node->pool.get(args...);
@@ -113,7 +108,6 @@ namespace onart{
         }
         /// @brief 미사용 풀을 해제합니다.
         inline void shrink() {
-            std::unique_lock<std::mutex> _(lock);
             Node* node = head;
             while(node->next){
                 if(node->next->pool.isFull()) {
