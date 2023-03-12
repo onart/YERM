@@ -118,6 +118,7 @@ namespace onart{
     }
 
     bool loaded = false; // async 테스트용
+    static float thr = 0.5f;
 
     int Game::start(void* hd, Window::CreationOptions* opt){
         if(window) {
@@ -164,10 +165,21 @@ namespace onart{
                 auto vb = YRGraphics::getMesh(0);
                 auto tx = YRGraphics::getTexture(0);
                 int x, y;
+                ivec2 scr(x, y);
+                if (Input::isKeyDown(Input::KeyCode::down)) {
+                    thr -= 0.01f;
+                    if (thr < 0) thr = 0.0f;
+                    
+                }
+                if (Input::isKeyDown(Input::KeyCode::up)) {
+                    thr += 0.01f;
+                    if (thr > 4)  thr = 4.0f;
+                }
+                printf("%f\r",thr);
                 window->getFramebufferSize(&x, &y);
                 float aspect = (float)x / y;
-                float pushed = std::abs(std::sin((double)_tp * 0.000000001));
-                mat4 rot = YRGraphics::preTransform() * mat4(1,0,0,0,0,aspect,0,0,0,0,1,0,0,0,0,1) * mat4::rotate(0,0,(double)_tp * 0.000000001);
+                float pushed = PI<float> / 2;// std::abs(std::sin((double)_tp * 0.000000001));
+                mat4 rot = YRGraphics::preTransform() * mat4(1, 0, 0, 0, 0, aspect, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);// *mat4::rotate(0, 0, (double)_tp * 0.000000001);
                 if(vk->swapchain.handle){
                     off->start();
                     if (loaded) {
@@ -180,6 +192,8 @@ namespace onart{
                     off->invoke(YRGraphics::getMesh(1));
                     off->execute();
                     rp2s->start();
+                    rp2s->push(&scr, 0, 8);
+                    rp2s->push(&thr, 8, 12);
                     rp2s->bind(0, YRGraphics::getRenderTarget(1), 0);
                     rp2s->invoke(YRGraphics::getMesh(1));
                     rp2s->execute(off);
@@ -260,8 +274,8 @@ namespace onart{
         window->scrollCallback = recordScrollEvent;
 #endif
         YRGraphics::RenderTarget* targets[2] = {
-            YRGraphics::createRenderTarget2D(512, 512, 0, YRGraphics::RenderTargetType::COLOR1, false),
-            YRGraphics::createRenderTarget2D(512, 512, 1, YRGraphics::RenderTargetType::COLOR1, true)
+            YRGraphics::createRenderTarget2D(128, 128, 0, YRGraphics::RenderTargetType::COLOR1, YRGraphics::RenderTargetInputOption::INPUT_ATTACHMENT),
+            YRGraphics::createRenderTarget2D(128, 128, 1, YRGraphics::RenderTargetType::COLOR1, YRGraphics::RenderTargetInputOption::SAMPLED_NEAREST)
         };
         YRGraphics::createRenderPass2Cube(512, 512, 123, false, true);
         auto rtt = YRGraphics::RenderTargetType::COLOR1;
@@ -281,13 +295,14 @@ namespace onart{
         fs = YRGraphics::createShader(TEST_IA_FRAG, sizeof(TEST_IA_FRAG), 3);
         YRGraphics::createPipeline(nullptr, 0, 0, nullptr, 0, 0, offrp, 1, 0, lo2, vs, fs, 1);
         vs = YRGraphics::createShader(TEST_TX_VERT, sizeof(TEST_TX_VERT), 4);
-        fs = YRGraphics::createShader(TEST_TX_FRAG, sizeof(TEST_TX_FRAG), 5);
+        fs = YRGraphics::createShader((uint32_t*)SCALEPX, sizeof(SCALEPX), 5);
         YRGraphics::createPipeline(nullptr, 0, 0, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, 2);
         testv_t verts[]{{{-1,-1,0},{0,0}},{{-1,1,0},{0,1}},{{1,-1,0},{1,0}},{{1,1,0},{1,1}}};
         uint16_t inds[]{0,1,2,2,1,3};
         YRGraphics::createNullMesh(3, 1);
         YRGraphics::createMesh(verts,sizeof(testv_t),4,inds,2,6,0);
         YRGraphics::asyncCreateTexture(TEX0, sizeof(TEX0), 4, [](void*) { loaded = true; }, 0, YRGraphics::isSurfaceSRGB());
+        //YRGraphics::createTextureFromImage("g256.png", 0,YRGraphics::isSurfaceSRGB(),YRGraphics::IT_USE_ORIGINAL,false); loaded = true;
         //loaded = true; YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB());
         return true;
     }

@@ -98,6 +98,12 @@ namespace onart {
                 /// @brief 색 버퍼 3개와 깊이/스텐실 버퍼를 보유합니다.
                 COLOR3DEPTH = 0b1111
             };
+            /// @brief 렌더타겟을 텍스처, 입력 첨부물 중 어떤 것으로 사용할지 결정합니다.
+            enum class RenderTargetInputOption {
+                INPUT_ATTACHMENT = 0,
+                SAMPLED_LINEAR = 1,
+                SAMPLED_NEAREST = 2
+            };
             /// @brief 파이프라인 생성 시 줄 수 있는 옵션입니다. 여기의 성분들을 비트 or하여 생성 함수에 전달합니다.
             enum PipelineOptions: uint32_t {
                 USE_DEPTH = 0b1,
@@ -122,27 +128,27 @@ namespace onart {
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
             /// @param option 이미지를 압축 텍스처 형식으로 바꿀지 결정할 수 있습니다.
-            static pTexture createTextureFromImage(const char* fileName, int32_t key, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL);
+            static pTexture createTextureFromImage(const char* fileName, int32_t key, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true);
             /// @brief createTextureFromImage를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아닌 그냥 key). 매개변수 설명은 createTextureFromImage를 참고하세요.
-            static void asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(void*)> handler, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL);
+            static void asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(void*)> handler, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true);
             /// @brief 보통 이미지 데이터를 메모리에서 불러와 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
             /// @param mem 이미지 시작 주소
             /// @param size mem 배열의 길이(바이트)
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
             /// @param option 이미지를 압축 텍스처 형식으로 바꿀지 결정할 수 있습니다.
-            static pTexture createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL);
+            static pTexture createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true);
             /// @brief createTextureFromImage를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아닌 그냥 key). 매개변수 설명은 createTextureFromImage를 참고하세요.
-            static void asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(void*)> handler, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL);
+            static void asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(void*)> handler, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true);
             /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param fileName 파일 이름
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param nChannels 채널 수(색상)
             /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
             /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
-            static pTexture createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb = true, bool hq = true);
+            static pTexture createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb = true, bool hq = true, bool linearSampler = true);
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
-            static void asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(void*)> handler, bool srgb = true, bool hq = true);
+            static void asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(void*)> handler, bool srgb = true, bool hq = true, bool linearSampler = true);
             /// @brief 메모리 상의 ktx2 파일을 통해 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param mem 이미지 시작 주소
             /// @param size mem 배열의 길이(바이트)
@@ -150,9 +156,9 @@ namespace onart {
             /// @param key 프로그램 내부에서 사용할 이름입니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
             /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
-            static pTexture createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb = true, bool hq = true);
+            static pTexture createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb = true, bool hq = true, bool linearSampler = true);
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
-            static void asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(void*)> handler, int32_t key, bool srgb = true, bool hq = true);
+            static void asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(void*)> handler, int32_t key, bool srgb = true, bool hq = true, bool linearSampler = true);
             /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다. 이것을 해제하는 수단은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
             /// @param width 가로 길이(px).
             /// @param height 세로 길이(px).
@@ -163,7 +169,7 @@ namespace onart {
             /// @param useStencil true면 깊이 이미지에 더불어 스텐실 버퍼를 사용합니다.
             /// @param mmap 이것이 true라면 픽셀 데이터에 순차로 접근할 수 있습니다. 단, 렌더링 성능이 낮아질 가능성이 매우 높습니다.
             /// @return 이것을 통해 렌더 패스를 생성할 수 있습니다.
-            static RenderTarget* createRenderTarget2D(int width, int height, int32_t key, RenderTargetType type = RenderTargetType::COLOR1DEPTH, bool sampled = true, bool useDepthInput = false, bool useStencil = false, bool mmap = false);
+            static RenderTarget* createRenderTarget2D(int width, int height, int32_t key, RenderTargetType type = RenderTargetType::COLOR1DEPTH, RenderTargetInputOption sampled = RenderTargetInputOption::SAMPLED_LINEAR, bool useDepthInput = false, bool useStencil = false, bool mmap = false);
             /// @brief SPIR-V 컴파일된 셰이더를 VkShaderModule 형태로 저장하고 가져옵니다.
             /// @param spv SPIR-V 코드
             /// @param size 주어진 SPIR-V 코드의 길이(바이트)
@@ -316,7 +322,7 @@ namespace onart {
             /// @brief 세마포어를 생성합니다. (해제는 알아서)
             VkSemaphore createSemaphore();
             /// @brief ktxTexture2 객체로 텍스처를 생성합니다.
-            pTexture createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq);
+            pTexture createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler = true);
             /// @brief 그래픽스 또는 전송 큐에 명령을 제출합니다. 필요한 경우 cpu단 동기화를 수행합니다.
             /// @param gq_or_tq true면 그래픽스, false면 전송 큐에 제출합니다.
             /// @param submitCount submitInfos의 길이

@@ -465,7 +465,7 @@ namespace onart {
         samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
         samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
         samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-        samplerInfo.magFilter = VK_FILTER_LINEAR; // TODO: NEAREST랑 선택권
+        samplerInfo.magFilter = VK_FILTER_LINEAR;
         samplerInfo.minFilter = VK_FILTER_LINEAR;
         samplerInfo.mipLodBias = VK_SAMPLER_MIPMAP_MODE_LINEAR;
         samplerInfo.minLod = 0.0f;
@@ -481,6 +481,7 @@ namespace onart {
         }
         samplerInfo.maxLod = 1.0f;
         samplerInfo.magFilter = VK_FILTER_NEAREST;
+        samplerInfo.minFilter = VK_FILTER_NEAREST;
         reason = vkCreateSampler(device, &samplerInfo, nullptr, &nearestSampler);
         if(reason != VK_SUCCESS){
             LOGWITH("Failed to create texture sampler:", reason,resultAsString(reason));
@@ -626,7 +627,7 @@ namespace onart {
         return singleton->meshes[name] = std::make_shared<publicmesh>(vib,viba,vcount,icount,VBSIZE,nullptr,isize==4);
     }
 
-    VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, int32_t name, RenderTargetType type, bool sampled, bool useDepthInput, bool useStencil, bool mmap){
+    VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, int32_t name, RenderTargetType type, RenderTargetInputOption sampled, bool useDepthInput, bool useStencil, bool mmap){
         if(!singleton->allocator) {
             LOGWITH("Warning: Tried to create image before initialization");
             return nullptr;
@@ -659,7 +660,7 @@ namespace onart {
 
         if((int)type & 0b1){
             color1 = new ImageSet;
-            imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
+            imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | ((sampled != RenderTargetInputOption::INPUT_ATTACHMENT) ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
             imgInfo.format = singleton->surface.format.format;
             reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color1->img, &color1->alloc, nullptr);
             if(reason != VK_SUCCESS) {
@@ -718,7 +719,7 @@ namespace onart {
         }
         if((int)type & 0b1000) {
             ds = new ImageSet;
-            imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : (useDepthInput ? VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT : 0));
+            imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | ((sampled != RenderTargetInputOption::INPUT_ATTACHMENT) ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : (useDepthInput ? VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT : 0));
             imgInfo.format = VkFormat::VK_FORMAT_D24_UNORM_S8_UINT;
             reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &ds->img, &ds->alloc, nullptr);
             if(reason != VK_SUCCESS) {
@@ -746,7 +747,7 @@ namespace onart {
         if(color3) {singleton->images.insert(color3); nim++;}
         if(ds) {singleton->images.insert(ds); if(useDepthInput) nim++;}
 
-        VkDescriptorSetLayout layout = sampled ? singleton->textureLayout[0] : singleton->inputAttachmentLayout[0];
+        VkDescriptorSetLayout layout = (sampled != RenderTargetInputOption::INPUT_ATTACHMENT) ? singleton->textureLayout[0] : singleton->inputAttachmentLayout[0];
         VkDescriptorSetLayout layouts[4] = {layout, layout, layout, layout};
         VkDescriptorSet dsets[4]{};
 
@@ -767,8 +768,12 @@ namespace onart {
         wr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         wr.descriptorCount = 1;
         wr.pImageInfo = &imageInfo;
-        if(sampled) {
+        if(sampled == RenderTargetInputOption::SAMPLED_LINEAR) {
             imageInfo.sampler = singleton->textureSampler[0];
+            wr.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        }
+        else if (sampled == RenderTargetInputOption::SAMPLED_NEAREST) {
+            imageInfo.sampler = singleton->nearestSampler;
             wr.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         }
         else {
@@ -795,8 +800,8 @@ namespace onart {
             wr.dstSet = dsets[nim];
             vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr); // 입력 첨부물 기술자를 위한 이미지 뷰에서는 DEPTH, STENCIL을 동시에 명시할 수 없음. 솔직히 깊이를 입력첨부물로는 안 쓸 것 같긴 한데 
         }
-        if(name == INT32_MIN) return new RenderTarget(type, width, height, color1, color2, color3, ds, sampled, mmap, dsets);
-        return singleton->renderTargets[name] = new RenderTarget(type, width, height, color1, color2, color3, ds, sampled, mmap, dsets);
+        if(name == INT32_MIN) return new RenderTarget(type, width, height, color1, color2, color3, ds, (bool)sampled, mmap, dsets);
+        return singleton->renderTargets[name] = new RenderTarget(type, width, height, color1, color2, color3, ds, (bool)sampled, mmap, dsets);
     }
 
     void VkMachine::removeImageSet(VkMachine::ImageSet* set) {
@@ -825,7 +830,7 @@ namespace onart {
         return singleton->shaders[name] = ret;
     }
 
-    VkMachine::pTexture VkMachine::createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq){
+    VkMachine::pTexture VkMachine::createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler){
         ktxTexture2* texture = reinterpret_cast<ktxTexture2*>(ktxObj);
         if (texture->numLevels == 0) return pTexture();
         VkFormat availableFormat;
@@ -1029,7 +1034,12 @@ namespace onart {
         VkDescriptorImageInfo dsImageInfo{};
         dsImageInfo.imageView = newView;
         dsImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        dsImageInfo.sampler = textureSampler[imgInfo.mipLevels - 1];
+        if (linearSampler) {
+            dsImageInfo.sampler = textureSampler[imgInfo.mipLevels - 1];
+        }
+        else {
+            dsImageInfo.sampler = nearestSampler;
+        }
 
         VkWriteDescriptorSet descriptorWrite{};
         descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1104,7 +1114,7 @@ namespace onart {
         return texture;
     }
 
-    VkMachine::pTexture VkMachine::createTextureFromImage(const char* fileName, int32_t key, bool srgb, ImageTextureFormatOptions option) {
+    VkMachine::pTexture VkMachine::createTextureFromImage(const char* fileName, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler) {
         int x, y, nChannels;
         uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 4);
         if(!pix) {
@@ -1117,10 +1127,10 @@ namespace onart {
             LOGHERE;
             return pTexture();
         }
-        return singleton->createTexture(texture, key, 4, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS);
+        return singleton->createTexture(texture, key, 4, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS, linearSampler);
     }
 
-    VkMachine::pTexture VkMachine::createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb, ImageTextureFormatOptions option){
+    VkMachine::pTexture VkMachine::createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler){
         int x, y, nChannels;
         uint8_t* pix = stbi_load_from_memory(mem, size, &x, &y, &nChannels, 0);
         if(!pix) {
@@ -1133,10 +1143,10 @@ namespace onart {
             LOGHERE;
             return pTexture();
         }
-        return singleton->createTexture(texture, key, nChannels, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS);
+        return singleton->createTexture(texture, key, nChannels, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS, linearSampler);
     }
 
-    VkMachine::pTexture VkMachine::createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb, bool hq){
+    VkMachine::pTexture VkMachine::createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler){
         if(nChannels > 4 || nChannels == 0) {
             LOGWITH("Invalid channel count. nChannels must be 1~4");
             return pTexture();
@@ -1151,10 +1161,10 @@ namespace onart {
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }
-        return singleton->createTexture(texture, key, nChannels, srgb, hq);
+        return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler);
     }
 
-    VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb, bool hq){
+    VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb, bool hq, bool linearSampler){
         if(nChannels > 4 || nChannels == 0) {
             LOGWITH("Invalid channel count. nChannels must be 1~4");
             return pTexture();
@@ -1168,18 +1178,18 @@ namespace onart {
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }
-        return singleton->createTexture(texture, key, nChannels, srgb, hq);
+        return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler);
     }
 
-    void VkMachine::asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(void*)> handler, bool srgb, bool hq){
+    void VkMachine::asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(void*)> handler, bool srgb, bool hq, bool linearSampler){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
         bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([fileName, key, nChannels, handler, srgb, hq, already](){
+        singleton->loadThread.post([fileName, key, nChannels, handler, srgb, hq, already, linearSampler](){
             if(!already){
-                pTexture ret = singleton->createTexture(fileName, INT32_MIN, nChannels, srgb, hq);
+                pTexture ret = singleton->createTexture(fileName, INT32_MIN, nChannels, srgb, hq, linearSampler);
                 if (!ret) {
                     size_t _k = key | ((uint64_t)VkMachine::reason << 32);
                     return (void*)_k;
@@ -1192,13 +1202,13 @@ namespace onart {
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(void*)> handler, bool srgb, ImageTextureFormatOptions option){
+    void VkMachine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(void*)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
         bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([already, fileName, key, handler, srgb, option](){
+        singleton->loadThread.post([already, fileName, key, handler, srgb, option, linearSampler](){
             if(!already){
                 pTexture ret = singleton->createTextureFromImage(fileName, INT32_MIN, srgb, option);
 				if (!ret) {
@@ -1213,15 +1223,15 @@ namespace onart {
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(void*)> handler, bool srgb, ImageTextureFormatOptions option){
+    void VkMachine::asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(void*)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
         bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([already, mem, size, key, handler, srgb, option](){
+        singleton->loadThread.post([already, mem, size, key, handler, srgb, option, linearSampler](){
             if(!already){
-                pTexture ret = singleton->createTextureFromImage(mem, size, INT32_MIN, srgb, option);
+                pTexture ret = singleton->createTextureFromImage(mem, size, INT32_MIN, srgb, option, linearSampler);
 				if (!ret) {
 					size_t _k = key | ((uint64_t)VkMachine::reason << 32);
 					return (void*)_k;
@@ -1234,15 +1244,15 @@ namespace onart {
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(void*)> handler, int32_t key, bool srgb, bool hq) {
+    void VkMachine::asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(void*)> handler, int32_t key, bool srgb, bool hq, bool linearSampler) {
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
         bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([mem, size, key, nChannels, handler, srgb, hq, already](){
+        singleton->loadThread.post([mem, size, key, nChannels, handler, srgb, hq, already, linearSampler](){
             if(!already){
-                pTexture ret = singleton->createTexture(mem, size, nChannels, INT32_MIN, srgb, hq);
+                pTexture ret = singleton->createTexture(mem, size, nChannels, INT32_MIN, srgb, hq, linearSampler);
 				if (!ret) {
 					size_t _k = key | ((uint64_t)VkMachine::reason << 32);
 					return (void*)_k;
@@ -1720,7 +1730,7 @@ namespace onart {
         if(subpassCount == 0) return nullptr;
         std::vector<RenderTarget*> targets(subpassCount - 1);
         for(uint32_t i = 0; i < subpassCount - 1; i++){
-            targets[i] = createRenderTarget2D(singleton->swapchain.extent.width, singleton->swapchain.extent.height, INT32_MIN, tgs[i], false, useDepthAsInput ? useDepthAsInput[i] : false);
+            targets[i] = createRenderTarget2D(singleton->swapchain.extent.width, singleton->swapchain.extent.height, INT32_MIN, tgs[i], RenderTargetInputOption::INPUT_ATTACHMENT, useDepthAsInput ? useDepthAsInput[i] : false);
             if(!targets[i]){
                 LOGHERE;
                 for(RenderTarget* t:targets) delete t;
