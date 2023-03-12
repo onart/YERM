@@ -48,8 +48,8 @@ bool convert(const char* fileName, int mip, bool uastc, bool loadSRGB) {
 
     ktxTexture2* texture;
     ktxTextureCreateInfo info{};
-    constexpr uint32_t FORMAT[] = {~0, VK_FORMAT_R8_UINT, VK_FORMAT_R8G8_UINT, VK_FORMAT_R8G8B8_UINT, VK_FORMAT_R8G8B8A8_UINT}; // 13, 20, 27, 41
-    constexpr uint32_t SRGB_FORMAT[] = {~0, VK_FORMAT_R8_SRGB, VK_FORMAT_R8G8_SRGB, VK_FORMAT_R8G8B8_SRGB, VK_FORMAT_R8G8B8A8_SRGB}; // 15, 22, 29, 43
+    constexpr uint32_t FORMAT[] = {~0u, VK_FORMAT_R8_UINT, VK_FORMAT_R8G8_UINT, VK_FORMAT_R8G8B8_UINT, VK_FORMAT_R8G8B8A8_UINT}; // 13, 20, 27, 41
+    constexpr uint32_t SRGB_FORMAT[] = {~0u, VK_FORMAT_R8_SRGB, VK_FORMAT_R8G8_SRGB, VK_FORMAT_R8G8B8_SRGB, VK_FORMAT_R8G8B8A8_SRGB}; // 15, 22, 29, 43
     info.vkFormat = loadSRGB ? SRGB_FORMAT[ch] : FORMAT[ch];
     info.baseWidth = x;
     info.baseHeight = y;

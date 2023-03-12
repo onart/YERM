@@ -39,6 +39,9 @@ else()
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     add_compile_options("$<$<C_COMPILER_ID:MSVC>:/utf-8>")
     add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
+    if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+        add_compile_options("-Wno-nullability-completeness")
+    endif()
     add_executable(yerm
         YERM_PC/main.cpp
         YERM_PC/logger.hpp

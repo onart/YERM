@@ -29,7 +29,7 @@ else()
     set(YERM_GRAPHICS ../../../../../YERM_PC/yr_opengles.h ../../../../../YERM_PC/yr_opengles.cpp)
     add_compile_definitions(YR_USE_GLES)
 endif()
-
+add_compile_options("-Wno-nullability-completeness")
 add_library( # Sets the name of the library.
              yerm_android
 
