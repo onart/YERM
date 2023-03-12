@@ -49,11 +49,11 @@ namespace onart{
     void Input::keyboard(int keycode, int scancode, int action, int mod){
         if(action == KEY_DOWN) pressedKey[keycode] = Game::frame;
         else if(action == KEY_UP) pressedKey[keycode] = -Game::frame;
-        LOGWITH(keycode, action);
+        //LOGWITH(keycode, action);
     }
 
     void Input::click(int key, int action, int mods){
-        LOGWITH(key, action);
+        //LOGWITH(key, action);
         if(action == KEY_DOWN) pressedMouseKey[key] = Game::frame;
         else if(action == KEY_UP) pressedMouseKey[key] = -Game::frame;
     }
@@ -68,20 +68,20 @@ namespace onart{
         static int64_t serial = 0;
         if(id >= sizeof(_touches)/sizeof(_touches[0])) return;
         if(action == KEY_DOWN) {
-            LOGWITH("DOWN",id,x,y);
+            //LOGWITH("DOWN",id,x,y);
             _touches[id].frame = Game::frame;
             _touches[id].id = serial++;
             _touches[id].pos.x = x;
             _touches[id].pos.y = y;
         }
         else if(action == KEY_UP){
-            LOGWITH("UP",id,x,y);
+            //LOGWITH("UP",id,x,y);
             _touches[id].frame = -Game::frame;
             _touches[id].pos.x = x;
             _touches[id].pos.y = y;
         }
         else{ // move
-            LOGWITH("MOVE",id,x,y);
+            //LOGWITH("MOVE",id,x,y);
             _touches[id].pos.x = x;
             _touches[id].pos.y = y;
         }

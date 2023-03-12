@@ -889,7 +889,7 @@ namespace onart {
         vmaInvalidateAllocation(singleton->allocator, newAlloc, 0, VK_WHOLE_SIZE);
         vmaFlushAllocation(singleton->allocator, newAlloc, 0, VK_WHOLE_SIZE);
         vmaUnmapMemory(allocator, newAlloc);
-
+        
         std::vector<VkBufferImageCopy> bufferCopyRegions(texture->numLevels * texture->numFaces);
         uint32_t regionIndex = 0;
         for(uint32_t f = 0; f < texture->numFaces; f++){
@@ -925,10 +925,15 @@ namespace onart {
         VkImage newImg;
         VmaAllocation newAlloc2;
         allocInfo.flags = 0;
-        vmaCreateImage(allocator, &imgInfo, &allocInfo, &newImg, &newAlloc2, nullptr);
+        if ((reason = vmaCreateImage(allocator, &imgInfo, &allocInfo, &newImg, &newAlloc2, nullptr)) != VK_SUCCESS) {
+            LOGWITH("Failed to create image space:", reason, resultAsString(reason));
+            vmaDestroyBuffer(allocator, newBuffer, newAlloc);
+            ktxTexture_Destroy(ktxTexture(texture));
+            return pTexture();
+        }
         VkCommandBuffer copyCmd;
         allocateCommandBuffers(1, true, false, &copyCmd);
-
+        
         VkImageMemoryBarrier imgBarrier{};
         imgBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         imgBarrier.image = newImg;
@@ -958,7 +963,6 @@ namespace onart {
         imgBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         imgBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         vkCmdPipelineBarrier(copyCmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imgBarrier);
-
         if((reason = vkEndCommandBuffer(copyCmd)) != VK_SUCCESS){
             LOGWITH("Failed to end command buffer:",reason,resultAsString(reason));
             ktxTexture_Destroy(ktxTexture(texture));
@@ -1036,7 +1040,7 @@ namespace onart {
         descriptorWrite.descriptorCount = 1;
         descriptorWrite.pImageInfo = &dsImageInfo;
         vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
-
+        
         struct txtr:public Texture{ inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint32_t _5):Texture(_1,_2,_3,_4,_5){} };
         if(key == INT32_MIN) return std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0);
         if(loadThread.waiting()){
@@ -1102,18 +1106,18 @@ namespace onart {
 
     VkMachine::pTexture VkMachine::createTextureFromImage(const char* fileName, int32_t key, bool srgb, ImageTextureFormatOptions option) {
         int x, y, nChannels;
-        uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 0);
+        uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 4);
         if(!pix) {
             LOGWITH("Failed to load image:",stbi_failure_reason());
             return pTexture();
         }
-        ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, srgb, option);
+        ktxTexture2* texture = createKTX2FromImage(pix, x, y, 4, srgb, option);
         stbi_image_free(pix);
         if(!texture) {
             LOGHERE;
             return pTexture();
         }
-        return singleton->createTexture(texture, key, nChannels, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS);
+        return singleton->createTexture(texture, key, 4, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS);
     }
 
     VkMachine::pTexture VkMachine::createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb, ImageTextureFormatOptions option){
