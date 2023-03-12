@@ -5,51 +5,63 @@
 
 
 struct __imgspace{
+    constexpr static unsigned long long BUFFER_UNIT = 131072;
+    constexpr static unsigned long long BUFFER_COUNT = 16;
+    constexpr static unsigned long long BUFFER_ALLOC = BUFFER_UNIT * BUFFER_COUNT + 4096 * 4096 * 4; // 2M + 64M
     unsigned char* buf = nullptr;
-    unsigned char* pool[9]{};
+    unsigned char* pool[BUFFER_COUNT + 1]{};
     inline unsigned char* alloc(unsigned long long s){
-        if(!buf) {
-            buf = new unsigned char[1024*1024 + 4096*4096*4]; // 1M + 64M
-            for(int i=0;i<9;i++){
-                pool[i] = buf + 131072 * i;
-            }
-        }
-        if(s <= 131072) {
-            for(int i=0;i<8;i++){
+        init();
+        unsigned char* ret = nullptr;
+        if(s <= BUFFER_UNIT) {
+            for (int i = 0; i < BUFFER_COUNT; i++) {
                 if(pool[i]) {
-                    auto ret = pool[i];
-                    pool[i]=nullptr;
-                    return ret;
+                    ret = pool[i];
+                    pool[i] = nullptr;
+                    break;
                 }
             }
-            return nullptr;
         }
-        auto ret = pool[8];
-        pool[8] = nullptr;
-        return ret;
+        else {
+            ret = pool[BUFFER_COUNT];
+            pool[BUFFER_COUNT] = nullptr;
+        }
+        return ret ? ret : new unsigned char[s];
     }
 
     inline unsigned char* realloc(void* p, unsigned long long s){
         if(p == nullptr) return alloc(s);
         if(!buf) {
-            buf = new unsigned char[1024*1024 + 4096*4096*4]; // 1M + 64M
-            for(int i=0;i<9;i++){
-                pool[i] = buf + 131072 * i;
-            }
+            init();
         }
-        if(s <= 131072) {
+        if(s <= BUFFER_UNIT) {
             return (unsigned char*)p;
         }
-        auto ret = pool[8];
-        pool[8] = nullptr;
+        auto ret = pool[BUFFER_COUNT];
+        pool[BUFFER_COUNT] = nullptr;
+        if (!ret) return new unsigned char[s];
         return ret;
     }
 
     inline void free(void* p){
-        int i = ((unsigned char*)p - buf) / 131072;
+        unsigned long long offset = (unsigned long long)((unsigned char*)p - buf);
+        if (offset > BUFFER_ALLOC) {
+            delete[] (unsigned char*)p;
+            return;
+        }
+        int i = ((unsigned char*)p - buf) / BUFFER_UNIT;
         pool[i] = (unsigned char*)p;
     }
     ~__imgspace(){ delete buf; }
+private:
+    inline void init() {
+        if (!buf) {
+            buf = new unsigned char[BUFFER_ALLOC];
+            for (int i = 0; i < BUFFER_COUNT + 1; i++) {
+                pool[i] = buf + BUFFER_UNIT * i;
+            }
+        }
+    }
 };
 static thread_local __imgspace buffer;
 
