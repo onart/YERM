@@ -37,6 +37,7 @@ struct __imgspace{
         if(s <= BUFFER_UNIT) {
             return (unsigned char*)p;
         }
+        this->free(p);
         auto ret = pool[BUFFER_COUNT];
         pool[BUFFER_COUNT] = nullptr;
         if (!ret) return new unsigned char[s];

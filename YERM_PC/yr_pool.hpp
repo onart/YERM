@@ -56,7 +56,7 @@ namespace onart{
         Pool& operator=(const Pool&) = delete;
         Pool& operator=(Pool&& src) = delete;
 
-        /// @brief 풀에서 객체 하나를 초기화하여 얻어옵니다.
+        /// @brief 풀에서 객체 하나를 초기화하여 shared_ptr로 얻어옵니다.
         /// @return 풀이 비어 있어서 실패하면 빈 포인터를 리턴합니다.
         template <class... Args>
         inline std::shared_ptr<T> get(Args&&... args){
@@ -66,6 +66,41 @@ namespace onart{
                 ret(p);
             });
         }
+
+        /// @brief 풀에서 객체 하나를 초기화하여 shared_ptr로 얻어옵니다. 생성과 소멸은 스레드 안전합니다.
+        /// @return 풀이 비어 있어서 실패하면 빈 포인터를 리턴합니다.
+        template <class... Args>
+        inline std::shared_ptr<T> lockedGet(Args&&... args){
+            std::unique_lock _(lock);
+            if(tail == (size_t) - 1) return std::shared_ptr<T>();
+            new (&v[stack[tail]]) T(args...);
+            return std::shared_ptr<T>(&v[stack[tail--]],[this](T* p){
+                std::unique_lock _(lock);
+                ret(p);
+            });
+        }
+
+        /// @brief 풀에서 객체 하나를 초기화하여 기본 포인터 형태로 얻어옵니다.
+        /// @return 풀이 비어 있어서 실패하면 빈 포인터를 리턴합니다.
+        template<class... Args>
+        inline T* getRaw(Args&&... args){
+            if(tail == (size_t) - 1) return nullptr;
+            new (&v[stack[tail]]) T(args...);
+            return &v[stack[tail--]];
+        }
+
+        /// @brief 풀에 객체를 되돌려 놓습니다. 이 풀에서 나온 정상적인 포인터를 주는 경우 소멸자는 호출됩니다.
+        /// @return 되돌려 놓기에 성공하면 true를 리턴합니다.
+        inline bool returnRaw(T* p){
+            size_T idx = t - v;
+            if(idx < CAPACITY){
+                t->~T();
+                stack[++tail] = idx;
+                return true;
+            }
+            return false;
+        }
+
     private:
         /// @brief 풀에 객체를 되돌려 놓습니다.
         inline void ret(T* p){
@@ -76,6 +111,7 @@ namespace onart{
         T* v = nullptr;
         size_t* stack = nullptr;
         size_t tail = CAPACITY - 1;
+        std::mutex lock;
     };
 
     /// @brief 
@@ -92,6 +128,7 @@ namespace onart{
         public:
             inline DynamicPool() { head = new Node; }
 
+        /// @brief shared_ptr 객체를 생성하여 리턴합니다.
         template<class... Args>
         inline std::shared_ptr<T> get(Args&&... args){
             Node* node = head;
@@ -106,6 +143,32 @@ namespace onart{
                 }
             }
         }
+
+        /// @brief 객체를 생성하여 일반 포인터를 리턴합니다. 일반 포인터는 명시적으로 returnRaw를 통해 돌려놓아야 합니다.
+        template<class... Args>
+        inline T* getRaw(Args&&... args){
+            Node* node = head;
+            while(true){
+                T* p = node->pool.getRaw(args...);
+                if(p) return p;
+                else {
+                    if(node->next == nullptr) {
+                        node->next = new Node;
+                    }
+                    node = node->next;
+                }
+            }
+        }
+
+        /// @brief getRaw()로 생성된 객체를 되돌려 넣습니다. 정상적으로 되돌려 놓은 경우 소멸자는 호출됩니다.
+        inline void returnRaw(T* p){
+            Node* node = head;
+            while(node && !node->pool.returnRaw(p)){
+                node = node->next;
+            }
+        }
+
+
         /// @brief 미사용 풀을 해제합니다.
         inline void shrink() {
             Node* node = head;
@@ -122,6 +185,68 @@ namespace onart{
         }
     };
     
+    /// @brief 상호 배제 없이 작동하는 메모리 풀로, 할당 스레드 하나, 해제 스레드 하나인 경우에 사용할 수 있습니다. 그 외의 경우에는 외부에서 동기화가 필요합니다.
+    /// @tparam T 할당 객체 타입
+    /// @tparam BLOCK 한 번에 할당될 메모리 블록 수
+    template<class T, size_t BLOCK = 32>
+    struct QueuePool{
+        private:
+            union Node{
+                T t;
+                Node* next = nullptr;
+            };
+            Node* head = nullptr;
+            Node* tail = nullptr;
+            Node* space;
+            inline void alloc(){
+                Node* newSpace = new Node[BLOCK];
+                newSpace->next = space;
+                space = newSpace;
+                Node* formerHead = head;
+                head = newSpace;
+                Node* nd = newSpace;
+                for(size_t i = 0; i < BLOCK; i++){
+                    nd->next = newSpace + i;
+                    nd = nd->next;
+                }
+                nd->next = formerHead;
+            }
+            inline void dealloc(T* p){
+                tail->next = reinterpret_cast<Node*>(p);
+                tail->next->next = nullptr;
+                tail = tail->next;
+            }
+        public:
+            inline QueuePool(){
+                space = new Node[BLOCK];
+                head = space;
+                Node* nd = head;
+                for(size_t i = 0; i < BLOCK; i++){
+                    nd->next = space + i;
+                    nd = nd->next;
+                }
+                tail = nd;
+            }
+            inline ~QueuePool(){
+                Node* nd = space;
+                while(nd){
+                    Node* nx = nd->next;
+                    delete nd;
+                    nd = nx;
+                }
+                space = nullptr;
+            }
+            template<class... Args>
+            inline std::shared_ptr<T> get(Args&&... args){
+                if(!head->next){
+                    alloc();
+                }
+                new (&(head->t)) T(args...);
+                std::shared_ptr<T> ret(&(head->t),[this](T* p){ dealloc(p); });
+                head = head->next;
+                return ret;
+            }
+    };
 }
 
 #endif
