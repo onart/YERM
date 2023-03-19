@@ -92,9 +92,9 @@ namespace onart{
         /// @brief 풀에 객체를 되돌려 놓습니다. 이 풀에서 나온 정상적인 포인터를 주는 경우 소멸자는 호출됩니다.
         /// @return 되돌려 놓기에 성공하면 true를 리턴합니다.
         inline bool returnRaw(T* p){
-            size_T idx = t - v;
+            size_t idx = p - v;
             if(idx < CAPACITY){
-                t->~T();
+                p->~T();
                 stack[++tail] = idx;
                 return true;
             }
