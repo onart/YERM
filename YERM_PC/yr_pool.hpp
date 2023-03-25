@@ -15,11 +15,13 @@
 #define __YR_POOL_HPP__
 
 #include <cstdlib>
+#include <cstdint>
 #include <vector>
 #include <memory>
 #include <type_traits>
 #include <mutex>
 #include <new>
+#include <forward_list>
 
 #include "logger.hpp"
 
@@ -197,16 +199,15 @@ namespace onart{
             };
             Node* head = nullptr;
             Node* tail = nullptr;
-            Node* space;
+            std::forward_list<uint8_t*> space;
             inline void alloc(){
-                Node* newSpace = new Node[BLOCK];
-                newSpace->next = space;
-                space = newSpace;
+                uint8_t* newSpace = new uint8_t[BLOCK * sizeof(Node)];
+                space.push_front(newSpace);
                 Node* formerHead = head;
-                head = newSpace;
-                Node* nd = newSpace;
+                head = reinterpret_cast<Node*>(newSpace);
+                Node* nd = head;
                 for(size_t i = 0; i < BLOCK; i++){
-                    nd->next = newSpace + i;
+                    nd->next = head + i;
                     nd = nd->next;
                 }
                 nd->next = formerHead;
@@ -218,23 +219,20 @@ namespace onart{
             }
         public:
             inline QueuePool(){
-                space = new Node[BLOCK];
-                head = space;
+                uint8_t* newSpace = new uint8_t[BLOCK * sizeof(Node)];
+                space.push_front(newSpace);
+                head = reinterpret_cast<Node*>(newSpace);
                 Node* nd = head;
                 for(size_t i = 0; i < BLOCK; i++){
-                    nd->next = space + i;
+                    nd->next = head + i;
                     nd = nd->next;
                 }
                 tail = nd;
+                tail->next = nullptr;
             }
             inline ~QueuePool(){
-                Node* nd = space;
-                while(nd){
-                    Node* nx = nd->next;
-                    delete nd;
-                    nd = nx;
-                }
-                space = nullptr;
+                for(uint8_t* block: space) delete[] block;
+                space.clear();
             }
             template<class... Args>
             inline std::shared_ptr<T> get(Args&&... args){
