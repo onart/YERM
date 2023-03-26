@@ -37,12 +37,12 @@ namespace onart{
             head = tail = ~0u;
             ind.resize(ind.capacity());
             for(size_t i = 0 ; i < ind.size() ; i++){
-                ind[i] = ind.size() - 1 - i;
+                ind[i] = (uint32_t)(ind.size() - 1 - i);
             }
         }
         inline ReservedQueue(size_t reserve = 256):data(reserve),ind(reserve){
             for(size_t i = 0 ; i < reserve ; i++){
-                ind[i] = reserve - 1 - i;
+                ind[i] = (uint32_t)(reserve - 1 - i);
             }
         }
         inline void enqueue(const T& v) {

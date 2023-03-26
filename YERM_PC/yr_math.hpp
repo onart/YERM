@@ -16,11 +16,19 @@
 
 #include "logger.hpp"
 #include "yr_simd.hpp"
+#include "yr_compiler_specific.hpp"
+
 #include <cstring>
 #include <type_traits>
 #include <cmath>
 #include <limits>
 #include <iostream>
+
+#define OVERLOAD_NEW_DEL \
+    void* operator new(std::size_t s){ return aligned_malloc(16,s); } \
+    void* operator new[](std::size_t s) { return aligned_malloc(16,s); } \
+    void operator delete(void* p) { aligned_free(p); } \
+    void operator delete[](void* p){ aligned_free(p); }
 
 namespace onart{
 
@@ -45,6 +53,7 @@ namespace onart{
             struct { T s, t, p, q; };
             struct { T r, g, b, a; };
         };
+        OVERLOAD_NEW_DEL;
         /// @brief 영벡터를 초기화합니다.
         inline nvec() :rg(load(T{})) {}
         /// @brief SSE2 또는 그렇게 보이는 NEON 벡터를 이용해 초기화합니다.
@@ -585,6 +594,7 @@ namespace onart{
             float a[4];
             struct{ float _11,_12,_21,_22; };
         };
+        OVERLOAD_NEW_DEL;
         /// @brief 행 우선 순서로 매개변수를 주어 행렬을 생성합니다.
         inline mat2(float _11,float _12,float _21, float _22): a{_11,_12,_21,_22}{ }
         /// @brief 복사생성자입니다.
@@ -662,6 +672,7 @@ namespace onart{
             float a[9];
             struct { float _11,_12,_13,_21,_22,_23,_31,_32,_33; };
         };
+        OVERLOAD_NEW_DEL;
         /// @brief 단위행렬을 생성합니다.
         inline mat3() : a{} { _11 = _22 = _33 = 1.0f; }
         /// @brief 행 우선 순서로 매개변수를 주어 행렬을 생성합니다.
@@ -776,7 +787,7 @@ namespace onart{
             float a[9];
             struct { float _11,_21,_31,_12,_22,_32,_13,_23,_33; };
         };
-
+        OVERLOAD_NEW_DEL;
         /// @brief 단위행렬을 생성합니다.
         inline cmat3() : a{} { _11 = _22 = _33 = 1.0f; }
         /// @brief 행 우선 순서로 매개변수를 주어 행렬을 생성합니다.
@@ -891,6 +902,7 @@ namespace onart{
             float a[16];
             struct{ float _11,_12,_13,_14,_21,_22,_23,_24,_31,_32,_33,_34, _41,_42,_43,_44; };
         };
+        OVERLOAD_NEW_DEL;
         /// @brief 단위행렬을 생성합니다.
         inline mat4() { memset(a, 0, sizeof(a)); _11 = _22 = _33 = _44 = 1.0f; }
         /// @brief 행 우선 순서로 매개변수를 주어 행렬을 생성합니다.
@@ -1163,6 +1175,7 @@ namespace onart{
             float a[16];
             struct{ float _11,_21,_31,_41,_12,_22,_32,_42,_13,_23,_33,_43, _14,_24,_34,_44; };
         };
+        OVERLOAD_NEW_DEL;
         /// @brief 단위행렬을 생성합니다.
         inline cmat4() { memset(a, 0, sizeof(a)); _11 = _22 = _33 = _44 = 1.0f; }
         /// @brief 열 우선 순서로 매개변수를 주어 행렬을 생성합니다.
@@ -1435,6 +1448,7 @@ namespace onart{
             float128 rg;
             struct { float c1, ci, cj, ck; };
         };
+        OVERLOAD_NEW_DEL;
         /// @brief 사원수를 생성합니다.
         inline Quaternion(float o = 1, float i = 0, float j = 0, float k = 0) : rg(load(k, j, i, o)) {  }
         explicit inline Quaternion(float128 rg):rg(rg){}

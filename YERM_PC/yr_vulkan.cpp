@@ -1210,7 +1210,7 @@ namespace onart {
         bool already = (bool)getTexture(key, true);
         singleton->loadThread.post([already, fileName, key, handler, srgb, option, linearSampler](){
             if(!already){
-                pTexture ret = singleton->createTextureFromImage(fileName, INT32_MIN, srgb, option);
+                pTexture ret = singleton->createTextureFromImage(fileName, INT32_MIN, srgb, option, linearSampler);
 				if (!ret) {
 					size_t _k = key | ((uint64_t)VkMachine::reason << 32);
 					return (void*)_k;

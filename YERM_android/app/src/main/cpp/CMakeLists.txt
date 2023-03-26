@@ -46,6 +46,7 @@ add_library( # Sets the name of the library.
              ../../../../../YERM_PC/yr_tuple.hpp
              ../../../../../YERM_PC/yr_bits.hpp
              ../../../../../YERM_PC/yr_constants.hpp
+             ../../../../../YERM_PC/yr_compiler_specific.hpp
              ../../../../../YERM_PC/yr_threadpool.hpp
              ../../../../../YERM_PC/yr_graphics.h
 

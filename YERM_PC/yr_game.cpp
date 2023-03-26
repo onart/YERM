@@ -165,7 +165,6 @@ namespace onart{
                 auto vb = YRGraphics::getMesh(0);
                 auto tx = YRGraphics::getTexture(0);
                 int x, y;
-                ivec2 scr(x, y);
                 if (Input::isKeyDown(Input::KeyCode::down)) {
                     thr -= 0.01f;
                     if (thr < 0) thr = 0.0f;
@@ -177,6 +176,7 @@ namespace onart{
                 }
                 printf("%f\r",thr);
                 window->getFramebufferSize(&x, &y);
+                ivec2 scr(x, y);
                 float aspect = (float)x / y;
                 float pushed = PI<float> / 2;// std::abs(std::sin((double)_tp * 0.000000001));
                 mat4 rot = YRGraphics::preTransform() * mat4(1, 0, 0, 0, 0, aspect, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);// *mat4::rotate(0, 0, (double)_tp * 0.000000001);

@@ -10,8 +10,8 @@ else()
     project("yerm")
 
     option(YERM_VULKAN "Use Vulkan as the graphics API. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" ON)
-    option(YERM_OPENGL "Use OpenGL as the graphics API. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" OFF)
-    option(YERM_OPENGLES "Use OpenGL ES as the graphics API. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" OFF)
+    option(YERM_OPENGL "Use OpenGL 4.0 as the graphics API. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" OFF)
+    option(YERM_OPENGLES "Use OpenGL ES 3.0 as the graphics API. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" OFF)
     if(CMAKE_SYSTEM_NAME MATCHES "Windows")
         option(YERM_D3D12 "Use Direct3D 12 as the graphics API. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" OFF)
         option(YERM_D3D11 "Use Direct3D 11 as the graphics API. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" OFF)
@@ -20,7 +20,7 @@ else()
         set(YERM_GRAPHICS YERM_PC/yr_vulkan.h YERM_PC/yr_vulkan.cpp)
         add_compile_definitions(YR_USE_VULKAN)
     elseif(${YERM_OPENGL})
-        set(YERM_GRAPHICS YERM_PC/yr_opengl.h YERM_PC/yr_opengl.cpp)
+        set(YERM_GRAPHICS YERM_PC/yr_opengl.h YERM_PC/yr_opengl.cpp externals/glad.c)
         add_compile_definitions(YR_USE_OPENGL)
     elseif(${YERM_D3D12})
         set(YERM_GRAPHICS YERM_PC/yr_d3d12.h YERM_PC/yr_d3d12.cpp)
@@ -29,7 +29,7 @@ else()
         set(YERM_GRAPHICS YERM_PC/yr_d3d11.h YERM_PC/yr_d3d11.cpp)
         add_compile_definitions(YR_USE_D3D11)
     elseif(${YERM_OPENGLES})
-        set(YERM_GRAPHICS YERM_PC/yr_opengles.h YERM_PC/yr_opengles.cpp)
+        set(YERM_GRAPHICS YERM_PC/yr_opengles.h YERM_PC/yr_opengles.cpp externals/glad.c)
         add_compile_definitions(YR_USE_GLES)
     else()
         set(YERM_GRAPHICS YERM_PC/yr_vulkan.h YERM_PC/yr_vulkan.cpp)
@@ -51,6 +51,7 @@ else()
         YERM_PC/yr_pool.hpp
         YERM_PC/yr_tuple.hpp
         YERM_PC/yr_constants.hpp
+        YERM_PC/yr_compiler_specific.hpp
         YERM_PC/yr_bits.hpp
         YERM_PC/yr_threadpool.hpp
         YERM_PC/yr_graphics.h

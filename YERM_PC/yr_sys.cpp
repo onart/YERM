@@ -257,7 +257,7 @@ namespace onart{
     }
 
     bool Window::windowShouldClose(){
-        return _HAPP->destroyRequested; // TODO: 화면 회전 시 액티비티가 파괴되고 재생성될 때, android_main 함수가 리턴하기 전까지 액티비티가 재생성되지 않음. 따라서 컨텍스트는 스택이 아닌 힙 또는 전역 범위에 생성되어 명시적 종료에 의해서만 해제되어야 함
+        return _HAPP->destroyRequested;
     }
 
     void Window::getContentScale(float* x, float* y){
