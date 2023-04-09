@@ -3,11 +3,13 @@
 #define MA_IMPLEMENTATION
 #define MA_NO_ENCODING
 
+#include <cstdlib>
+#include <cstring>
 
 struct __imgspace{
-    constexpr static unsigned long long BUFFER_UNIT = 131072;
-    constexpr static unsigned long long BUFFER_COUNT = 16;
-    constexpr static unsigned long long BUFFER_ALLOC = BUFFER_UNIT * BUFFER_COUNT + 4096 * 4096 * 4; // 2M + 64M
+    constexpr static unsigned long long BUFFER_UNIT = 1<<22; // 4M
+    constexpr static unsigned long long BUFFER_COUNT = 4;
+    constexpr static unsigned long long BUFFER_ALLOC = BUFFER_UNIT * BUFFER_COUNT + 4096 * 4096 * 4; // 16M + 64M
     unsigned char* buf = nullptr;
     unsigned char* pool[BUFFER_COUNT + 1]{};
     inline unsigned char* alloc(unsigned long long s){
@@ -26,7 +28,7 @@ struct __imgspace{
             ret = pool[BUFFER_COUNT];
             pool[BUFFER_COUNT] = nullptr;
         }
-        return ret ? ret : new unsigned char[s];
+        return ret ? ret : (unsigned char*)std::malloc(s);
     }
 
     inline unsigned char* realloc(void* p, unsigned long long s){
@@ -34,26 +36,29 @@ struct __imgspace{
         if(!buf) {
             init();
         }
+        if(!isFromPool(p)) {
+            return (unsigned char*)std::realloc(p,s);
+        }
         if(s <= BUFFER_UNIT) {
             return (unsigned char*)p;
         }
         this->free(p);
         auto ret = pool[BUFFER_COUNT];
         pool[BUFFER_COUNT] = nullptr;
-        if (!ret) return new unsigned char[s];
+        if (!ret) { ret = (unsigned char*)std::malloc(s); }
+        std::memcpy(ret, p, BUFFER_UNIT);
         return ret;
     }
 
     inline void free(void* p){
-        unsigned long long offset = (unsigned long long)((unsigned char*)p - buf);
-        if (offset > BUFFER_ALLOC) {
-            delete[] (unsigned char*)p;
+        if(!isFromPool(p)){
+            std::free(p);
             return;
         }
         int i = ((unsigned char*)p - buf) / BUFFER_UNIT;
         pool[i] = (unsigned char*)p;
     }
-    ~__imgspace(){ delete buf; }
+    ~__imgspace(){ delete[] buf; }
 private:
     inline void init() {
         if (!buf) {
@@ -62,6 +67,10 @@ private:
                 pool[i] = buf + BUFFER_UNIT * i;
             }
         }
+    }
+    inline bool isFromPool(void* p){
+        unsigned long long offset = (unsigned long long)((unsigned char*)p - buf);
+        return offset <= BUFFER_ALLOC; // GIGO. 할당에서 머리로 돌려준 부분 주면 당연히 안 됨
     }
 };
 static thread_local __imgspace buffer;
