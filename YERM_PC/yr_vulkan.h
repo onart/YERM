@@ -335,7 +335,7 @@ namespace onart {
             void free();
             ~VkMachine();
             /// @brief 이 클래스 객체는 Game 밖에서는 생성, 소멸 호출이 불가능합니다.
-            inline void operator delete(void*){}
+            inline void operator delete(void* p){::operator delete(p);}
         private:
             static VkMachine* singleton;
             ThreadPool loadThread;
@@ -843,7 +843,7 @@ namespace onart {
             vattrs->location = LOCATION + locationPlus;
             vattrs->format = getFormat<A_TYPE>();
             vattrs->offset = ftuple<FATTR, ATTR...>::template offset<LOCATION>();
-            if constexpr(LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(vattrs + 1, binding);
+            if constexpr(LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(vattrs + 1, binding, locationPlus);
         }
         inline Vertex() {static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
         inline Vertex(const FATTR& first, const ATTR&... rest):member(first, rest...) { static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }

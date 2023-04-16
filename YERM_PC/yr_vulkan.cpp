@@ -840,15 +840,19 @@ namespace onart {
             switch (availableFormat = textureFormatFallback(physicalDevice.card, texture->baseWidth, texture->baseHeight, nChannels, srgb, hq, texture->isCubemap ? VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : (VkImageCreateFlagBits)0))
             {
             case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+            case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
                 tf = KTX_TTF_ASTC_4x4_RGBA;
                 break;
             case VK_FORMAT_BC7_SRGB_BLOCK:
+            case VK_FORMAT_BC7_UNORM_BLOCK:
                 tf = KTX_TTF_BC7_RGBA;
                 break;
             case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+            case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
                 tf = KTX_TTF_ETC2_RGBA;
                 break;
             case VK_FORMAT_BC3_SRGB_BLOCK:
+            case VK_FORMAT_BC3_UNORM_BLOCK:
                 tf = KTX_TTF_BC3_RGBA;
                 break;
             default:
