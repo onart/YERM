@@ -84,9 +84,11 @@ namespace onart{
             void setLiberal();
             /// @brief 창 닫기를 요청합니다.
             void close();
+            /// @brief 그래픽스 API 컨텍스트를 가지는 스레드를 현재 스레드로 결정합니다. Vulkan을 사용하는 경우 아무 동작도 하지 않습니다.
+            void setMainThread();
             /// @brief 객체가 정상적으로 생성되었는지 확인합니다.
             inline bool isNormal(){ return isOn; }
-            /// @brief Vulkan instance에서 활성화해야 할 확장 이름들을 얻어옵니다.
+            /// @brief Vulkan instance에서 활성화해야 할 확장 이름들을 얻어옵니다. 그 외의 플랫폼에서는 빈 벡터를 리턴합니다.
             std::vector<const char*> requiredInstanceExentsions();
             /// @brief PC 환경에서는 주어진 값을 그대로 리턴하고, 안드로이드에서는 internal data path에 상대적인 경로를 리턴합니다.
             /// @param p 255자를 넘을 수 없습니다.

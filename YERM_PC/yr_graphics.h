@@ -22,9 +22,17 @@
 #elif defined(YR_USE_D3D11)
 #error "D3D11 not ready"
 //
-#elif defined(YR_USE_GL)
+#elif defined(YR_USE_OPENGL)
 #error "OpenGL not ready"
-//
+#include "yr_opengl.h"
+namespace onart{
+    using YRGraphics = GLMachine;
+    using pipelinelayout_t = unsigned;
+    using pipeline_t = unsigned;
+    using shader_t = unsigned;
+    using descriptorSet_t = int;
+    using descriptorSetLayout_t = int;
+}
 #elif defined(YR_USE_GLES)
 #error "OpenGL ES not ready"
 //
@@ -35,6 +43,11 @@
 #include "yr_vulkan.h"
 namespace onart{
     using YRGraphics = VkMachine;
+    using pipelinelayout_t = VkPipelineLayout;
+    using pipeline_t = VkPipeline;
+    using shader_t = VkShaderModule;
+    using descriptorSet_t = VkDescriptorSet;
+    using descriptorSetLayout_t = VkDescriptorSetLayout;
 }
 #endif
 

@@ -324,6 +324,12 @@ namespace onart{
         return string255(_HAPP->activity->internalDataPath) + p;
     }
 
+    void Window::setMainThread() {
+#if defined(YR_USE_GLES)
+        // eglMakeCurrent
+#endif
+    }
+
     void Window::setSize(unsigned, unsigned){ }
     void Window::setWindowed(int,int,int,int){ }
     void Window::setFullScreen(int){ }
@@ -371,7 +377,17 @@ namespace onart{
         glfwWindowHint(GLFW_DECORATED, options->decorated);
         glfwWindowHint(GLFW_RESIZABLE, options->resizable);
         glfwWindowHint(GLFW_VISIBLE, false);
+#if defined(YR_USE_VULKAN)
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+#elif defined(YR_USE_OPENGL)
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, 1);
+		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+#elif defined(YR_USE_OPENGLES)
+
+#endif
         window = glfwCreateWindow(options->width, options->height, options->title, options->fullScreen ? glfwGetPrimaryMonitor() : nullptr, nullptr);
         if(!window) {
             const char* err; glfwGetError(&err); // 오류 발생 시점에 GLFW가 할당해 갖고 있으며 해제는 또 오류가 나거나 terminate 시점에 되는 데이터이기 때문에 밖에서 free하면 안 됨
@@ -496,6 +512,12 @@ namespace onart{
 
     void Window::terminate(){
         glfwTerminate();
+    }
+    
+    void Window::setMainThread() {
+#if defined(YR_USE_OPENGL) || defined(YR_USE_GLES)
+        glfwMakeContextCurrent((GLFWwindow*)window);
+#endif
     }
 
     string255 Window::rwPath(const string255& p){ return p; }

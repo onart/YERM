@@ -39,7 +39,7 @@ namespace onart{
     template<> struct v128<int32_t> { using RG_T = int128; };
     template<> struct v128<uint32_t> { using RG_T = uint128; };
 
-    template<class T, std::enable_if_t<std::is_floating_point_v<T>,bool> = true> constexpr inline T PI = 3.14159265358979323846;
+    template<class T, std::enable_if_t<std::is_floating_point_v<T>,bool> = true> constexpr inline T PI = (T)3.14159265358979323846;
     /// @brief 2~4차원 벡터입니다. 길이에 관계없이 상호 변환이 가능합니다. 타입은 float, int32_t, uint32_t만 사용할 수 있습니다. double은 준비중입니다.
     /// @tparam T 성분의 타입입니다. 사칙연산 및 부호 반전이 가능해야 합니다.
     /// @tparam D 벡터의 차원수입니다. 2~4차원만 사용할 수 있습니다.
