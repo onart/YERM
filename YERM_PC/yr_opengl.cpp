@@ -440,6 +440,7 @@ namespace onart {
             ktxTexture_Destroy(ktxTexture(texture));
             return pTexture();
         }
+        uint16_t width = texture->baseWidth, height = texture->baseHeight;
         ktxTexture_Destroy(ktxTexture(texture));
 
         glBindTexture(GL_TEXTURE_2D, tex);
@@ -447,9 +448,9 @@ namespace onart {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
         glBindTexture(GL_TEXTURE_2D, 0);
         
-        struct txtr:public Texture{ inline txtr(uint32_t _1, uint32_t _2):Texture(_1,_2){} };
-        if(key == INT32_MIN) return std::make_shared<txtr>(tex, 0);
-        return textures[key] = std::make_shared<txtr>(tex, 0);
+        struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
+        if (key == INT32_MIN) return std::make_shared<txtr>(tex, 0, width, height);
+        return textures[key] = std::make_shared<txtr>(tex, 0, width, height);
     }
 
     static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, GLMachine::ImageTextureFormatOptions& option){
@@ -623,9 +624,10 @@ namespace onart {
                         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
                         glBindTexture(GL_TEXTURE_2D, 0);
 
-                        struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2) :Texture(_1, _2) {} };
-                        pTexture ret = std::make_shared<txtr>(tex, 0);
+                        struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
+                        pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
                         singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
+                        ktxTexture_Destroy(ktxTexture(texture));
                         size_t p = key;
                         handler((void*)p);
                     }
@@ -689,9 +691,10 @@ namespace onart {
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
                     glBindTexture(GL_TEXTURE_2D, 0);
 
-                    struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2) :Texture(_1, _2) {} };
-                    pTexture ret = std::make_shared<txtr>(tex, 0);
+                    struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2) {} };
+                    pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
                     singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
+                    ktxTexture_Destroy(ktxTexture(texture));
                     size_t p = key;
                     handler((void*)p);
                 }
@@ -753,8 +756,9 @@ namespace onart {
                         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
                         glBindTexture(GL_TEXTURE_2D, 0);
 
-                        struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2) :Texture(_1, _2) {} };
-                        pTexture ret = std::make_shared<txtr>(tex, 0);
+                        struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
+                        pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
+                        ktxTexture_Destroy(ktxTexture(texture));
                         singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
                         size_t p = key;
                         handler((void*)p);
@@ -811,9 +815,10 @@ namespace onart {
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
                     glBindTexture(GL_TEXTURE_2D, 0);
 
-                    struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2) :Texture(_1, _2) {} };
-                    pTexture ret = std::make_shared<txtr>(tex, 0);
+                    struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
+                    pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
                     singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
+                    ktxTexture_Destroy(ktxTexture(texture));
                     size_t p = key;
                     handler((void*)p);
                 }
@@ -821,7 +826,7 @@ namespace onart {
         }, vkm_strand::GENERAL);
     }
 
-    GLMachine::Texture::Texture(uint32_t txo, uint32_t binding):txo(txo), binding(binding) { }
+    GLMachine::Texture::Texture(uint32_t txo, uint32_t binding, uint16_t width, uint16_t height) :txo(txo), binding(binding), width(width), height(height) { }
     GLMachine::Texture::~Texture(){
         glDeleteTextures(1, &txo);
     }

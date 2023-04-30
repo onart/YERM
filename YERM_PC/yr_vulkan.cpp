@@ -1055,13 +1055,13 @@ namespace onart {
         descriptorWrite.pImageInfo = &dsImageInfo;
         vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
         
-        struct txtr:public Texture{ inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint32_t _5):Texture(_1,_2,_3,_4,_5){} };
-        if(key == INT32_MIN) return std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0);
+        struct txtr:public Texture{ inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint32_t _5, uint16_t _6, uint16_t _7):Texture(_1,_2,_3,_4,_5,_6,_7){} };
+        if (key == INT32_MIN) return std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
         if(loadThread.waiting()){
             std::unique_lock<std::mutex> _(textureGuard);
-            return textures[key] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0);
+            return textures[key] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
         }
-        return textures[key] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0);
+        return textures[key] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
     }
 
     static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, VkMachine::ImageTextureFormatOptions& option){
@@ -1269,7 +1269,7 @@ namespace onart {
         }, handler, vkm_strand::GENERAL);
     }
 
-    VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding):img(img), view(view), alloc(alloc), dset(dset), binding(binding){ }
+    VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding, uint16_t width, uint16_t height) :img(img), view(view), alloc(alloc), dset(dset), binding(binding), width(width), height(height) { }
     VkMachine::Texture::~Texture(){
         //vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
         vkDestroyImageView(singleton->device, view, nullptr);

@@ -693,8 +693,10 @@ namespace onart {
             static void collect(bool removeUsing = false);
             /// @brief 주어진 이름의 텍스처 데이터를 내립니다. 사용하고 있는 텍스처 데이터는 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getTexture로 찾을 수 없습니다.)
             static void drop(int32_t name);
+            /// @brief 원본 텍스처의 크기입니다.
+            const uint16_t width, height;
         protected:
-            Texture(VkImage img, VkImageView imgView, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding);
+            Texture(VkImage img, VkImageView imgView, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding, uint16_t width, uint16_t height);
             VkDescriptorSetLayout getLayout();
             ~Texture();
         private:
