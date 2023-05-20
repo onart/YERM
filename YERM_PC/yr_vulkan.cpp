@@ -830,7 +830,7 @@ namespace onart {
         return singleton->shaders[name] = ret;
     }
 
-    VkMachine::pTexture VkMachine::createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler){
+    VkMachine::pTexture VkMachine::createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler, uint32_t binding){
         ktxTexture2* texture = reinterpret_cast<ktxTexture2*>(ktxObj);
         if (texture->numLevels == 0) return pTexture();
         VkFormat availableFormat;
@@ -1027,7 +1027,7 @@ namespace onart {
         }
 
         VkDescriptorSet newSet;
-        singleton->allocateDescriptorSets(&textureLayout[0], 1, &newSet); // TODO: 여기 바인딩 번호 선택권
+        singleton->allocateDescriptorSets(&textureLayout[binding], 1, &newSet);
         if(!newSet){
             LOGHERE;
             vkDestroyImageView(device, newView, nullptr);
@@ -1048,7 +1048,7 @@ namespace onart {
         VkWriteDescriptorSet descriptorWrite{};
         descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         descriptorWrite.dstSet = newSet;
-        descriptorWrite.dstBinding = 0; // TODO: 위의 것과 함께 선택권
+        descriptorWrite.dstBinding = binding;
         descriptorWrite.dstArrayElement = 0;
         descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         descriptorWrite.descriptorCount = 1;
@@ -1118,7 +1118,7 @@ namespace onart {
         return texture;
     }
 
-    VkMachine::pTexture VkMachine::createTextureFromImage(const char* fileName, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler) {
+    VkMachine::pTexture VkMachine::createTextureFromImage(const char* fileName, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler, uint32_t binding) {
         int x, y, nChannels;
         uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 4);
         if(!pix) {
@@ -1131,10 +1131,10 @@ namespace onart {
             LOGHERE;
             return pTexture();
         }
-        return singleton->createTexture(texture, key, 4, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS, linearSampler);
+        return singleton->createTexture(texture, key, 4, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS, linearSampler, binding);
     }
 
-    VkMachine::pTexture VkMachine::createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler){
+    VkMachine::pTexture VkMachine::createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler, uint32_t binding){
         int x, y, nChannels;
         uint8_t* pix = stbi_load_from_memory(mem, size, &x, &y, &nChannels, 0);
         if(!pix) {
@@ -1147,10 +1147,10 @@ namespace onart {
             LOGHERE;
             return pTexture();
         }
-        return singleton->createTexture(texture, key, nChannels, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS, linearSampler);
+        return singleton->createTexture(texture, key, nChannels, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS, linearSampler, binding);
     }
 
-    VkMachine::pTexture VkMachine::createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler){
+    VkMachine::pTexture VkMachine::createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler, uint32_t binding){
         if(nChannels > 4 || nChannels == 0) {
             LOGWITH("Invalid channel count. nChannels must be 1~4");
             return pTexture();
@@ -1168,7 +1168,7 @@ namespace onart {
         return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler);
     }
 
-    VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb, bool hq, bool linearSampler){
+    VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb, bool hq, bool linearSampler, uint32_t binding){
         if(nChannels > 4 || nChannels == 0) {
             LOGWITH("Invalid channel count. nChannels must be 1~4");
             return pTexture();
@@ -1182,18 +1182,18 @@ namespace onart {
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }
-        return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler);
+        return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler, binding);
     }
 
-    void VkMachine::asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(void*)> handler, bool srgb, bool hq, bool linearSampler){
+    void VkMachine::asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(void*)> handler, bool srgb, bool hq, bool linearSampler, uint32_t binding){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
         bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([fileName, key, nChannels, handler, srgb, hq, already, linearSampler](){
+        singleton->loadThread.post([fileName, key, nChannels, handler, srgb, hq, already, linearSampler, binding](){
             if(!already){
-                pTexture ret = singleton->createTexture(fileName, INT32_MIN, nChannels, srgb, hq, linearSampler);
+                pTexture ret = singleton->createTexture(fileName, INT32_MIN, nChannels, srgb, hq, linearSampler, binding);
                 if (!ret) {
                     size_t _k = key | ((uint64_t)VkMachine::reason << 32);
                     return (void*)_k;
@@ -1206,15 +1206,15 @@ namespace onart {
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(void*)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler){
+    void VkMachine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(void*)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler, uint32_t binding){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
         bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([already, fileName, key, handler, srgb, option, linearSampler](){
+        singleton->loadThread.post([already, fileName, key, handler, srgb, option, linearSampler, binding](){
             if(!already){
-                pTexture ret = singleton->createTextureFromImage(fileName, INT32_MIN, srgb, option, linearSampler);
+                pTexture ret = singleton->createTextureFromImage(fileName, INT32_MIN, srgb, option, linearSampler, binding);
 				if (!ret) {
 					size_t _k = key | ((uint64_t)VkMachine::reason << 32);
 					return (void*)_k;
@@ -1227,15 +1227,15 @@ namespace onart {
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(void*)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler){
+    void VkMachine::asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(void*)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler, uint32_t binding){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
         bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([already, mem, size, key, handler, srgb, option, linearSampler](){
+        singleton->loadThread.post([already, mem, size, key, handler, srgb, option, linearSampler, binding](){
             if(!already){
-                pTexture ret = singleton->createTextureFromImage(mem, size, INT32_MIN, srgb, option, linearSampler);
+                pTexture ret = singleton->createTextureFromImage(mem, size, INT32_MIN, srgb, option, linearSampler, binding);
 				if (!ret) {
 					size_t _k = key | ((uint64_t)VkMachine::reason << 32);
 					return (void*)_k;
@@ -1248,15 +1248,15 @@ namespace onart {
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(void*)> handler, int32_t key, bool srgb, bool hq, bool linearSampler) {
+    void VkMachine::asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(void*)> handler, int32_t key, bool srgb, bool hq, bool linearSampler, uint32_t binding) {
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
         bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([mem, size, key, nChannels, handler, srgb, hq, already, linearSampler](){
+        singleton->loadThread.post([mem, size, key, nChannels, handler, srgb, hq, already, linearSampler, binding](){
             if(!already){
-                pTexture ret = singleton->createTexture(mem, size, nChannels, INT32_MIN, srgb, hq, linearSampler);
+                pTexture ret = singleton->createTexture(mem, size, nChannels, INT32_MIN, srgb, hq, linearSampler, binding);
 				if (!ret) {
 					size_t _k = key | ((uint64_t)VkMachine::reason << 32);
 					return (void*)_k;
@@ -1271,7 +1271,7 @@ namespace onart {
 
     VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding, uint16_t width, uint16_t height) :img(img), view(view), alloc(alloc), dset(dset), binding(binding), width(width), height(height) { }
     VkMachine::Texture::~Texture(){
-        //vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
+        vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
         vkDestroyImageView(singleton->device, view, nullptr);
         vmaDestroyImage(singleton->allocator, img, alloc);
     }
@@ -1340,7 +1340,7 @@ namespace onart {
 
         VkDescriptorSetLayoutBinding uboBinding{};
         uboBinding.binding = binding;
-        uboBinding.descriptorType = (length == 1) ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboBinding.descriptorType = (length == 1) ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         uboBinding.descriptorCount = 1; // 이 카운트가 늘면 ubo 자체가 배열이 됨, 언젠가는 이를 선택으로 제공할 수도
         uboBinding.stageFlags = stages;
 
@@ -1457,10 +1457,10 @@ namespace onart {
     }
 
     VkMachine::RenderTarget::~RenderTarget(){
-        if(color1) { singleton->removeImageSet(color1); /*if(dset1) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset1);*/ }
-        if(color2) { singleton->removeImageSet(color2); /*if(dset2) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset2);*/ }
-        if(color3) { singleton->removeImageSet(color3); /*if(dset3) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset3);*/ }
-        if(depthstencil) { singleton->removeImageSet(depthstencil); /*if (dsetDS) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dsetDS);*/ }
+        if(color1) { singleton->removeImageSet(color1); if(dset1) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset1); }
+        if(color2) { singleton->removeImageSet(color2); if(dset2) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset2); }
+        if(color3) { singleton->removeImageSet(color3); if(dset3) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset3); }
+        if(depthstencil) { singleton->removeImageSet(depthstencil); if (dsetDS) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dsetDS); }
     }
 
     VkMachine::RenderPass2Cube* VkMachine::createRenderPass2Cube(uint32_t width, uint32_t height, int32_t key, bool useColor, bool useDepth) {
@@ -2538,7 +2538,7 @@ namespace onart {
         for(VkImageView& iv:ivs) { vkDestroyImageView(singleton->device, iv, nullptr); iv = VK_NULL_HANDLE; }
         vmaDestroyImage(singleton->allocator, colorTarget, colorAlloc); colorTarget = VK_NULL_HANDLE; colorAlloc = {};
         vmaDestroyImage(singleton->allocator, depthTarget, depthAlloc); depthTarget = VK_NULL_HANDLE; depthAlloc = {};
-        //vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &csamp); csamp = VK_NULL_HANDLE;
+        vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &csamp); csamp = VK_NULL_HANDLE;
     }
 
     void VkMachine::RenderPass2Cube::beginFacewise(uint32_t pass){
@@ -3332,7 +3332,7 @@ namespace onart {
     }
 
     VkMachine::UniformBuffer::~UniformBuffer(){
-        //vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
+        vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
         vkDestroyDescriptorSetLayout(singleton->device, layout, nullptr);
         vmaDestroyBuffer(singleton->allocator, buffer, alloc);
     }
@@ -3622,6 +3622,7 @@ namespace onart {
         dPoolInfo.maxSets = samplerLimit + dynUniLimit + uniLimit + intputAttachmentLimit;
         dPoolInfo.pPoolSizes = sizeInfo;
         dPoolInfo.poolSizeCount = sizeof(sizeInfo) / sizeof(VkDescriptorPoolSize);
+        dPoolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
         VkDescriptorPool ret;
         VkResult result;
         if((result = vkCreateDescriptorPool(device, &dPoolInfo, nullptr, &ret)) != VK_SUCCESS){

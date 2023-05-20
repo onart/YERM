@@ -303,7 +303,7 @@ namespace onart{
         uint16_t inds[]{0,1,2,2,1,3};
         YRGraphics::createNullMesh(3, 1);
         YRGraphics::createMesh(verts,sizeof(testv_t),4,inds,2,6,0);
-        YRGraphics::asyncCreateTexture(TEX0, sizeof(TEX0), 4, [](void*) { loaded = true; }, 0, YRGraphics::isSurfaceSRGB());
+        YRGraphics::asyncCreateTexture(TEX0, sizeof(TEX0), 4, [](void*) { loaded = true; }, 0, YRGraphics::isSurfaceSRGB(), true, false, 0);
         //YRGraphics::createTextureFromImage("g256.png", 0,YRGraphics::isSurfaceSRGB(),YRGraphics::IT_USE_ORIGINAL,false); loaded = true;
         //loaded = true; YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB());
         return true;
