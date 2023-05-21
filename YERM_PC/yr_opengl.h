@@ -63,7 +63,7 @@ namespace onart {
             /// @brief 오프스크린용 렌더 패스입니다.
             class RenderPass;
             /// @brief 화면에 그리기 위한 렌더 패스입니다. 여러 개 갖고 있을 수는 있지만 동시에 여러 개를 사용할 수는 없습니다.
-            class RenderPass2Screen;
+            using RenderPass2Screen = RenderPass;
             /// @brief 큐브맵에 그리기 위한 렌더 패스입니다.
             class RenderPass2Cube;
             /// @brief 직접 불러오는 텍스처입니다.
@@ -186,8 +186,8 @@ namespace onart {
             /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
             /// @param binding 바인딩 번호입니다.
             static UniformBuffer* createUniformBuffer(uint32_t length, uint32_t size, size_t stages, int32_t key, uint32_t binding = 0);
-            /// @brief 주어진 렌더 타겟들을 대상으로 하는 렌더패스를 구성합니다.
-            /// @param targets 렌더 타겟 포인터의 배열입니다. 마지막 것을 제외한 모든 타겟은 input attachment로 생성되었어야 하며 그렇지 않은 경우 실패합니다.
+            /// @brief 주어진 렌더 타겟들을 대상으로 하는 렌더패스를 구성합니다. OpenGL API의 경우 서브패스의 개념을 사용하지 않고 보통의 파이프라인으로 구성됩니다.
+            /// @param targets 렌더 타겟 포인터의 배열입니다.
             /// @param subpassCount targets 배열의 크기입니다.
             /// @param key 이름입니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. INT32_MIN, 즉 -2147483648은 예약된 값이기 때문에 사용할 수 없습니다.
             static RenderPass* createRenderPass(RenderTarget** targets, uint32_t subpassCount, int32_t key);
@@ -208,43 +208,13 @@ namespace onart {
             /// @brief 아무 동작도 하지 않습니다.
             static unsigned createPipelineLayout(...);
             /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 사용할 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
-            /// @param vinfo 사용되지 않습니다.
-            /// @param vsize 사용되지 않습니다.
-            /// @param vattr 사용되지 않습니다.
-            /// @param iinfo 사용되지 않습니다.
-            /// @param isize 사용되지 않습니다.
-            /// @param iattr 사용되지 않습니다.
-            /// @param pass 이 파이프라인을 사용할 렌더패스입니다. nullptr를 주어도 됩니다.
-            /// @param subpass 이 파이프라인을 사용할, 주어진 렌더패스의 서브패스 번호입니다. nullptr를 주어도 됩니다.
-            /// @param flags 파이프라인 고정 옵션의 플래그입니다. @ref PipelineOptions
             /// @param vs 정점 셰이더 모듈입니다.
             /// @param fs 조각 셰이더 모듈입니다.
             /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
-            /// @param front 앞면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
-            /// @param back 뒷면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
             /// @param tc 테셀레이션 컨트롤 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
             /// @param te 테셀레이션 계산 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
             /// @param gs 지오메트리 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
-            static unsigned createPipeline(void* vinfo, uint32_t vsize, uint32_t vattr, void* iinfo, uint32_t isize, uint32_t iattr, RenderPass* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr, VkShaderModule tc = VK_NULL_HANDLE, VkShaderModule te = VK_NULL_HANDLE, VkShaderModule gs = VK_NULL_HANDLE);
-            /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 사용할 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
-            /// @param vinfo 정점 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다.
-            /// @param vsize 개별 정점의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
-            /// @param vattr vinfo 배열의 길이, 즉 정점 속성의 수입니다.
-            /// @param iinfo 인스턴스 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다. 인스턴싱이 들어가지 않는 파이프라인인 경우 nullptr를 주면 됩니다.
-            /// @param isize 개별 인스턴스 속성 집합의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
-            /// @param iattr iinfo 배열의 길이, 즉 인스턴스 속성의 수입니다. 인스턴싱이 들어가지 않는 파이프라인인 경우 반드시 0을 주어야 합니다.
-            /// @param pass 이 파이프라인을 사용할 렌더패스입니다. 이걸 명시했다고 꼭 여기에만 사용할 수 있는 것은 아닙니다. 입/출력 첨부물의 사양이 맞기만 하면 됩니다.
-            /// @param subpass 이 파이프라인을 사용할, 주어진 렌더패스의 서브패스 번호입니다. 이걸 명시했다고 꼭 여기에만 사용할 수 있는 것은 아닙니다. 입/출력 첨부물의 사양이 맞기만 하면 됩니다.
-            /// @param flags 파이프라인 고정 옵션의 플래그입니다. @ref PipelineOptions
-            /// @param vs 정점 셰이더 모듈입니다.
-            /// @param fs 조각 셰이더 모듈입니다.
-            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
-            /// @param front 앞면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
-            /// @param back 뒷면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
-            /// @param tc 테셀레이션 컨트롤 셰이더 모듈입니다. 사용하지 않으려면 VK_NULL_HANDLE을 주면 됩니다.
-            /// @param te 테셀레이션 계산 셰이더 모듈입니다. 사용하지 않으려면 VK_NULL_HANDLE을 주면 됩니다.
-            /// @param gs 지오메트리 셰이더 모듈입니다. 사용하지 않으려면 VK_NULL_HANDLE을 주면 됩니다.
-            static VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr, VkShaderModule tc = VK_NULL_HANDLE, VkShaderModule te = VK_NULL_HANDLE, VkShaderModule gs = VK_NULL_HANDLE);
+            static unsigned createPipeline(unsigned vs, unsigned fs, int32_t name, unsigned tc, unsigned te, unsigned gs);
             /// @brief 정점 버퍼(모델) 객체를 생성합니다.
             /// @param vdata 정점 데이터
             /// @param vsize 정점 하나의 크기(바이트)
@@ -332,10 +302,11 @@ namespace onart {
             RenderTarget& operator=(const RenderTarget&) = delete;
         private:
             unsigned color1, color2, color3, depthStencil;
+            unsigned framebuffer;
             unsigned width, height;
             const bool dsTexture;
             const RenderTargetType type;
-            RenderTarget(RenderTargetType type, unsigned width, unsigned height, unsigned c1, unsigned c2, unsigned c3, unsigned ds, bool depthAsTexture);
+            RenderTarget(RenderTargetType type, unsigned width, unsigned height, unsigned c1, unsigned c2, unsigned c3, unsigned ds, bool depthAsTexture, unsigned framebuffer);
             ~RenderTarget();
     };
 
@@ -373,11 +344,10 @@ namespace onart {
             /// @param target 바인드할 타겟
             /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
             void bind(uint32_t pos, RenderTarget* target, uint32_t index);
-            /// @brief 주어진 파이프라인을 주어진 서브패스에 사용하게 합니다. 이 함수는 매번 호출할 필요는 없지만, 해당 서브패스 진행 중에 사용하면 그때부터 바로 새로 주어진 파이프라인을 사용합니다.
+            /// @brief 주어진 파이프라인을 사용하게 합니다.
             /// @param pipeline 파이프라인
-            /// @param layout 파이프라인 레이아웃
             /// @param subpass 서브패스 번호
-            void usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass);
+            void usePipeline(unsigned pipeline, unsigned subpass);
             /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
             void push(void* input, uint32_t start, uint32_t end);
             /// @brief 메시를 그립니다. 정점 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
@@ -400,28 +370,26 @@ namespace onart {
             void execute(RenderPass* other = nullptr);
             /// @brief true를 리턴합니다.
             bool wait(uint64_t timeout = UINT64_MAX);
-            /// @brief 프레임버퍼를 주어진 2D 타겟에 대하여 재구성합니다. 주어지는 타겟들은 렌더패스를 만들 때의 사양과 일치해야 합니다.
-            /// @param targets RenderTarget 포인터 배열입니다.
-            /// @param count targets의 길이로 이 값이 2 이상이면 모든 타겟의 크기가 동일해야 합니다.
-            void reconstructFB(RenderTarget** targets, uint32_t count);
+            /// @brief 아무것도 하지 않습니다.
+            inline void reconstructFB(...) {}
         private:
-            RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount); // 이후 다수의 서브패스를 쓸 수 있도록 변경
+            RenderPass(RenderTarget** fb, uint16_t stageCount); // 이후 다수의 서브패스를 쓸 수 있도록 변경
             ~RenderPass();
             const uint16_t stageCount;
-            VkFramebuffer fb = VK_NULL_HANDLE;
-            VkRenderPass rp = VK_NULL_HANDLE;
-            std::vector<VkPipeline> pipelines;
-            std::vector<VkPipelineLayout> pipelineLayouts;
+            std::vector<unsigned> pipelines;
             std::vector<RenderTarget*> targets;
             int currentPass = -1;
-            VkViewport viewport;
-            VkRect2D scissor;
-            VkCommandBuffer cb = VK_NULL_HANDLE;
-            const Mesh* bound = nullptr;
-            
-            
-            VkFence fence = VK_NULL_HANDLE;
-            VkSemaphore semaphore = VK_NULL_HANDLE;
+            struct {
+                float    x;
+                float    y;
+                float    width;
+                float    height;
+                float    minDepth;
+                float    maxDepth;
+            }viewport;
+            struct {
+                int x, y, width, height;
+            }scissor;
     };
 
     /// @brief 큐브맵 대상의 렌더패스입니다.
@@ -499,102 +467,6 @@ namespace onart {
             VkRect2D scissor;
     };
 
-    class GLMachine::RenderPass2Screen{
-        friend class VkMachine;
-        public:
-            RenderPass2Screen& operator=(const RenderPass2Screen&) = delete;
-            /// @brief 뷰포트를 설정합니다. 기본 상태는 프레임버퍼 생성 당시의 크기들입니다. (즉 @ref reconstructFB 를 사용 시 여기서 수동으로 정한 값은 리셋됩니다.)
-            /// 이것은 패스 내의 모든 파이프라인이 공유합니다.
-            /// @param width 뷰포트 가로 길이(px)
-            /// @param height 뷰포트 세로 길이(px)
-            /// @param x 뷰포트 좌측 좌표(px, 맨 왼쪽이 0)
-            /// @param y 뷰포트 상단 좌표(px, 맨 위쪽이 0)
-            /// @param applyNow 이 값이 참이면 변경된 값이 파이프라인에 즉시 반영됩니다.
-            void setViewport(float width, float height, float x, float y, bool applyNow = false);
-            /// @brief 시저를 설정합니다. 기본 상태는 자름 없음입니다.
-            /// 이것은 패스 내의 모든 파이프라인이 공유합니다.
-            /// @param width 살릴 직사각형의 가로 길이(px)
-            /// @param height 살릴 직사각형의 세로 길이(px)
-            /// @param x 살릴 직사각형의 좌측 좌표(px, 맨 왼쪽이 0)
-            /// @param y 살릴 직사각형의 상단 좌표(px, 맨 위쪽이 0)
-            /// @param applyNow 이 값이 참이면 변경된 값이 파이프라인에 즉시 반영됩니다.
-            void setScissor(uint32_t width, uint32_t height, int32_t x, int32_t y, bool applyNow = false);
-            /// @brief 주어진 유니폼버퍼를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
-            /// @param pos 바인드할 set 번호
-            /// @param ub 바인드할 버퍼
-            /// @param ubPos 버퍼가 동적 공유 버퍼인 경우, 그것의 몇 번째 성분을 바인드할지 정합니다. 아닌 경우 이 값은 무시됩니다.
-            void bind(uint32_t pos, UniformBuffer* ub, uint32_t ubPos = 0);
-            /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
-            /// @param pos 바인드할 set 번호
-            /// @param tx 바인드할 텍스처
-            void bind(uint32_t pos, const pTexture& tx);
-            /// @brief 주어진 렌더 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다. 이 패스의 프레임버퍼에서 사용 중인 렌더타겟은 (어차피 접근도 불가능하지만) 사용할 수 없습니다.
-            /// @param pos 바인드할 set 번호
-            /// @param target 바인드할 타겟
-            /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
-            void bind(uint32_t pos, RenderTarget* target, uint32_t index);
-            /// @brief 주어진 파이프라인을 주어진 서브패스에 사용하게 합니다. 이 함수는 매번 호출할 필요는 없지만, 해당 서브패스 진행 중에 사용하면 그때부터 바로 새로 주어진 파이프라인을 사용합니다.
-            /// @param pipeline 파이프라인
-            /// @param layout 파이프라인 레이아웃
-            /// @param subpass 서브패스 번호
-            void usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass);
-            /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
-            void push(void* input, uint32_t start, uint32_t end);
-            /// @brief 메시를 그립니다. 정점 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
-            void invoke(const pMesh&, uint32_t start = 0, uint32_t count = 0);
-            /// @brief 메시를 그립니다. 정점/인스턴스 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
-            /// @param mesh 
-            /// @param instanceInfo 
-            /// @param instanceCount 
-            void invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart = 0, uint32_t start = 0, uint32_t count = 0);
-            /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다. 주어진 파이프라인이 없으면 동작이 실패합니다.
-            /// @param pos 이전 서브패스의 결과인 입력 첨부물을 바인드할 위치의 시작점입니다. 예를 들어, pos=0이고 이전 타겟이 색 첨부물 2개, 깊이 첨부물 1개였으면 0, 1, 2번에 바인드됩니다. 셰이더를 그에 맞게 만들어야 합니다.
-            void start(uint32_t pos = 0);
-            /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
-            /// @param other 이 패스가 시작하기 전에 기다릴 다른 렌더패스입니다. 전후 의존성이 존재할 경우 사용하는 것이 좋습니다. (Vk세마포어 동기화를 사용) 현재 버전에서 기다리는 단계는 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT 하나로 고정입니다.
-            void execute(RenderPass* other = nullptr);
-            /// @brief draw 수행 이후에 호출되면 가장 최근에 제출된 그리기 및 화면 표시 명령이 끝나고 나서 리턴합니다. 그 외의 경우는 그냥 리턴합니다.
-            /// @param timeout 기다릴 최대 시간(ns), UINT64_MAX (~0) 값이 입력되면 무한정 기다립니다.
-            /// @return 렌더패스 동작이 실제로 끝나서 리턴했으면 true입니다.
-            bool wait(uint64_t timeout = UINT64_MAX);
-            /// @brief 이 패스가 사용 가능한 상태인지 확인합니다. 사용 불가능하게 된 패스를 다시 사용할 수 있게 만들 방법은 없습니다.
-            inline bool isAvailable() { return rp; }
-        private:
-            /// @brief 프레임버퍼 이미지를 처음부터 다시 만들어 프레임버퍼를 다시 생성합니다.
-            /// @param width 가로 길이
-            /// @param height 세로 길이
-            /// @return 성공 여부 (실패 시 내부의 모든 데이터는 해제됨)
-            bool reconstructFB(uint32_t width, uint32_t height);
-            RenderPass2Screen(VkRenderPass rp, std::vector<RenderTarget*>&& targets, std::vector<VkFramebuffer>&& fbs, VkImage dsImage, VkImageView dsView, VmaAllocation dsAlloc);
-            ~RenderPass2Screen();
-            constexpr static uint32_t COMMANDBUFFER_COUNT = 4; // 트리플버퍼링 상정
-            VkRenderPass rp = VK_NULL_HANDLE;
-
-            std::vector<VkFramebuffer> fbs; // 스왑체인 이미지마다 하나씩
-            std::vector<RenderTarget*> targets; // 마지막 단계 제외 서브패스마다 하나씩
-            std::vector<VkPipeline> pipelines; // 서브패스마다 하나씩
-            std::vector<VkPipelineLayout> pipelineLayouts; // 서브패스마다 하나씩
-
-            VkImage dsImage;
-            VkImageView dsView;
-            VmaAllocation dsAlloc;
-
-            VkCommandBuffer cbs[COMMANDBUFFER_COUNT] = {};
-            VkFence fences[COMMANDBUFFER_COUNT] = {};
-            VkSemaphore acquireSm[COMMANDBUFFER_COUNT] = {};
-            VkSemaphore drawSm[COMMANDBUFFER_COUNT] = {}; // 하나로 같이 쓰면 낮은 확률로 화면 프레젠트가 먼저 실행될 수도 있음
-            const Mesh* bound = nullptr;
-
-            uint32_t currentCB = 0;
-            uint32_t recently = 3;
-            uint32_t width, height;
-            
-            int currentPass = -1;
-            uint32_t imgIndex;
-            VkViewport viewport;
-            VkRect2D scissor;
-    };
-
     class GLMachine::Texture{
         friend class GLMachine;
         friend class RenderPass;
@@ -634,7 +506,8 @@ namespace onart {
             /// @brief 주어진 타입으로 OpenGL VAO를 생성합니다. 단 한 번만 호출할 수 있으며 VkMachine에는 없는 함수이므로 주의가 필요합니다. 타입은 템플릿 매개변수로 주거나 일반 매개변수로 줄 수 있습니다.
             /// @tparam ...T 
             template<class... T>
-            void setVAO(const Vertex<T...>& _={});
+            void setVAO(unsigned locationPlus = 0, const Vertex<T...>& _={});
+            void(*vaoBinder)(size_t, uint32_t, uint32_t);
         private:
             Mesh(unsigned vb, unsigned ib, size_t vcount, size_t icount, bool use32);
             ~Mesh();
@@ -748,11 +621,10 @@ namespace onart {
         template<unsigned LOCATION = 0>
         inline static constexpr void info(size_t _unused, uint32_t binding = 0, uint32_t locationPlus = 0){
             using A_TYPE = std::remove_reference_t<decltype(Vertex().get<LOCATION>())>;
-            glEnableVertexAttribArray(LOCATION + locationPlus);
             size_t offset = ftuple<FATTR, ATTR...>::template offset<LOCATION>();
             _vattr att = getFormat<A_TYPE>();
             enableAttribute(LOCATION + locationPlus, sizeof(Vertex), offset, att);
-            if constexpr(LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(vattrs + 1, binding, locationPlus);
+            if constexpr(LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(0, 0, locationPlus);
         }
         inline Vertex() {static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
         inline Vertex(const FATTR& first, const ATTR&... rest):member(first, rest...) { static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
@@ -763,9 +635,9 @@ namespace onart {
     };
 
     template<class... T>
-    void GLMachine::Mesh::setVAO(const GLMachine::Vertex<T...>&){
+    void GLMachine::Mesh::setVAO(unsigned locationPlus, const GLMachine::Vertex<T...>&){
         vao = createVA(vb, ib);
-        GLMachine::Vertex<T...>::info();
+        GLMachine::Vertex<T...>::info(0, 0, locationPlus);
         unbindVAO();
         attrCount = sizeof...(T);
     }
