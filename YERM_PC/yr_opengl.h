@@ -183,8 +183,8 @@ namespace onart {
             /// @param length OpenGL은 동시에 여러 개 렌더링 명령이 수행될 수 없으므로 사용되지 않습니다.
             /// @param size 버퍼의 크기입니다.
             /// @param stages 사용되지 않습니다.
-            /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
-            /// @param binding 바인딩 번호입니다.
+            /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다. 키 INT32_MIN + 1의 경우 push라는 인터페이스를 위해 사용되므로 이용할 수 없습니다.
+            /// @param binding 바인딩 번호입니다. 11번 바인딩을 사용하려 하는 경우 렌더패스의 push() 인터페이스는 사용하실 수 없습니다.
             static UniformBuffer* createUniformBuffer(uint32_t length, uint32_t size, size_t stages, int32_t key, uint32_t binding = 0);
             /// @brief 주어진 렌더 타겟들을 대상으로 하는 렌더패스를 구성합니다. OpenGL API의 경우 서브패스의 개념을 사용하지 않고 보통의 파이프라인으로 구성됩니다.
             /// @param targets 렌더 타겟 포인터의 배열입니다.
@@ -289,9 +289,6 @@ namespace onart {
                 NONE = 0,
                 GENERAL = 1,
             };
-        private:
-            /// @brief 렌더 타겟에 부여된 이미지 셋을 제거합니다.
-            void removeImageSet(ImageSet*);
     };
 
     class GLMachine::RenderTarget{
@@ -417,7 +414,7 @@ namespace onart {
             /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
             void bind(uint32_t pos, RenderTarget* target, uint32_t index);
             /// @brief 주어진 파이프라인을 사용합니다. 지오메트리 셰이더를 사용하도록 만들어진 패스인지 아닌지를 잘 보고 바인드해 주세요.
-            void usePipeline(VkPipeline pipeline, VkPipelineLayout layout);
+            void usePipeline(unsigned pipeline);
             /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
             void push(void* input, uint32_t start, uint32_t end);
             /// @brief 메시를 그립니다. 정점 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
@@ -429,7 +426,7 @@ namespace onart {
             /// @brief true를 리턴합니다.
             bool wait(uint64_t timeout = UINT64_MAX);
             /// @brief 렌더패스가 실제로 사용 가능한지 확인합니다.
-            inline bool isAvailable(){ return rp; }
+            inline bool isAvailable(){ return fbo; }
             /// @brief 큐브맵 타겟 크기를 바꿉니다. 이 함수를 호출한 경우, bind에서 면마다 따로 바인드했던 유니폼 버퍼는 모두 리셋되므로 필요하면 꼭 다시 기록해야 합니다.
             /// @return 실패한 경우 false를 리턴하며, 이 때 내부 데이터는 모두 해제되어 있습니다.
             bool resconstructFB(uint32_t width, uint32_t height);
@@ -439,32 +436,31 @@ namespace onart {
         private:
             inline RenderPass2Cube(){}
             ~RenderPass2Cube();
-            void beginFacewise(uint32_t pass);
 
-            VkRenderPass rp = VK_NULL_HANDLE;
-            VkFramebuffer fbs[6] = {};
-            VkPipeline pipeline = VK_NULL_HANDLE;
-            VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+            unsigned fbo;
+            unsigned targetCubeC, targetCubeD;
+            unsigned pipeline;
 
-            VkImage colorTarget = VK_NULL_HANDLE, depthTarget = VK_NULL_HANDLE;
-            VmaAllocation colorAlloc = {}, depthAlloc = {};
-            VkImageView ivs[12]={};
-            VkImageView tex = VK_NULL_HANDLE;
+            struct {
+                UniformBuffer* ub;
+                uint32_t ubPos;
+                uint32_t setPos;
+            }facewise[6];
 
-            VkFence fence = VK_NULL_HANDLE;
-            VkSemaphore semaphore = VK_NULL_HANDLE;
-            VkCommandBuffer cb = VK_NULL_HANDLE, scb = VK_NULL_HANDLE; // 0번이 주 버퍼, 1번이 보조 버퍼
-            VkCommandBuffer facewise[6]={};
-
-            VkDescriptorSet csamp = VK_NULL_HANDLE;
-
-            const Mesh* bound = nullptr;
+            struct {
+                float    x;
+                float    y;
+                float    width;
+                float    height;
+                float    minDepth;
+                float    maxDepth;
+            }viewport;
+            struct {
+                int x, y, width, height;
+            }scissor;
 
             uint32_t width, height;
             bool recording = false;
-            
-            VkViewport viewport; // viewport와 scissor는 고정
-            VkRect2D scissor;
     };
 
     class GLMachine::Texture{
@@ -535,6 +531,8 @@ namespace onart {
             uint16_t getIndex();
             /// @brief 0을 리턴합니다.
             inline int getLayout() { return 0; }
+            /// @brief 128바이트 크기의 고정 유니폼버퍼를 업데이트합니다. 이것은 모든 파이프라인이 공유하며, 셰이더의 바인딩 11번으로 접근할 수 있습니다.
+            static void updatePush(const void* input, uint32_t offset, uint32_t size);
         private:
             UniformBuffer(uint32_t length, unsigned ubo, uint32_t binding);
             ~UniformBuffer();
