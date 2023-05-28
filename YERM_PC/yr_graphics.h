@@ -23,7 +23,6 @@
 #error "D3D11 not ready"
 //
 #elif defined(YR_USE_OPENGL)
-#error "OpenGL not ready"
 #include "yr_opengl.h"
 namespace onart{
     using YRGraphics = GLMachine;

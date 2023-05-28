@@ -214,7 +214,7 @@ namespace onart {
             /// @param tc 테셀레이션 컨트롤 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
             /// @param te 테셀레이션 계산 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
             /// @param gs 지오메트리 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
-            static unsigned createPipeline(unsigned vs, unsigned fs, int32_t name, unsigned tc, unsigned te, unsigned gs);
+            static unsigned createPipeline(unsigned vs, unsigned fs, int32_t name, unsigned tc = 0, unsigned te = 0, unsigned gs = 0);
             /// @brief 정점 버퍼(모델) 객체를 생성합니다.
             /// @param vdata 정점 데이터
             /// @param vsize 정점 하나의 크기(바이트)
@@ -250,7 +250,7 @@ namespace onart {
             /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pMesh getMesh(int32_t key);
             /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
-            inline static bool isSurfaceSRGB(){ return singleton->surface.format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;}
+            inline static bool isSurfaceSRGB() { return false; }
             /// @brief 아무 것도 하지 않습니다.
             inline static int getTextureLayout(uint32_t binding) { return 0; }
             /// @brief 아무 것도 하지 않습니다.
@@ -258,9 +258,9 @@ namespace onart {
         private:
             /// @brief 기본 OpenGL 컨텍스트를 생성합니다.
             GLMachine(Window*);
-            /// @brief 창 표면 초기화 이후 호출되어 특성을 파악합니다.
-            void checkSurfaceHandle();
             /// @brief 아무것도 하지 않습니다.
+            void checkSurfaceHandle();
+            /// @brief 화면으로 그리기 위해 필요한 크기를 전달합니다.
             void createSwapchain(uint32_t width, uint32_t height, Window* window = nullptr);
             /// @brief 아무것도 하지 않습니다.
             void destroySwapchain();
@@ -284,6 +284,13 @@ namespace onart {
             std::map<int32_t, pMesh> meshes;
             std::map<int32_t, pTexture> textures;
 
+            std::mutex textureGuard;
+            uint32_t surfaceWidth, surfaceHeight;
+
+            struct {
+                bool handle = true;
+            }swapchain;
+
             std::vector<std::shared_ptr<RenderPass>> passes;
             enum vkm_strand { 
                 NONE = 0,
@@ -292,9 +299,8 @@ namespace onart {
     };
 
     class GLMachine::RenderTarget{
-        friend class VkMachine;
+        friend class GLMachine;
         friend class RenderPass;
-        friend class RenderPass2Screen;
         public:
             RenderTarget& operator=(const RenderTarget&) = delete;
         private:
@@ -517,7 +523,6 @@ namespace onart {
     class GLMachine::UniformBuffer{
         friend class GLMachine;
         friend class RenderPass;
-        friend class RenderPass2Screen;
         public:
             /// @brief 아무 동작도 하지 않습니다.
             void resize(uint32_t size);
@@ -552,7 +557,7 @@ namespace onart {
 
     template<class FATTR, class... ATTR>
     struct GLMachine::Vertex{
-        friend class VkMachine;
+        friend class GLMachine;
         inline static constexpr bool CHECK_TYPE() {
             if constexpr (sizeof...(ATTR) == 0) return is_one_of<FATTR, VERTEX_ATTR_TYPES>;
             else return is_one_of<FATTR, VERTEX_ATTR_TYPES> || Vertex<ATTR...>::CHECK_TYPE();

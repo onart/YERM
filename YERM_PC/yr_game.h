@@ -22,8 +22,12 @@
 #include <string>
 
 namespace onart{
-
-    class VkMachine;
+#if defined(YR_USE_VULKAN)
+#define YRGraphics VkMachine
+#elif defined(YR_USE_OPENGL)
+#define YRGraphics GLMachine
+#endif
+    class YRGraphics;
 
     /// @brief 프레임워크의 진입점입니다. main 함수가 리턴해야 재생성되는 안드로이드 NDK 화면회전 특성상 모든 멤버는 static입니다.
     class Game{
@@ -49,7 +53,7 @@ namespace onart{
             static void readFile(const char* fileName, std::basic_string<uint8_t>* buffer);
         private:
             static Window* window;
-            static VkMachine* vk;
+            static YRGraphics* vk;
             static int32_t _frame;
             static float _dt, _idt; // float인 이유: 이 엔진 내에서는 SIMD에서 double보다 효율적인 float 자료형이 주로 사용되는데 이게 타임과 연산될 일이 잦은 편이기 때문
             static uint64_t _tp;
@@ -63,5 +67,6 @@ namespace onart{
             static void render();
     };
 }
+#undef YRGraphics
 
 #endif

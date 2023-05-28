@@ -52,7 +52,7 @@ namespace onart {
     GLMachine* GLMachine::singleton = nullptr;
     thread_local unsigned GLMachine::reason = GL_NO_ERROR;
 
-    const Mesh* bound = nullptr;
+    const GLMachine::Mesh* bound = nullptr;
 
     GLMachine::GLMachine(Window* window){
         if(singleton) {
@@ -158,7 +158,10 @@ namespace onart {
         return mat4();
     }
 
-    void GLMachine::createSwapchain(uint32_t width, uint32_t height, Window* window) {}
+    void GLMachine::createSwapchain(uint32_t width, uint32_t height, Window* window) {
+        surfaceWidth = width;
+        surfaceHeight = height;
+    }
 
     void GLMachine::destroySwapchain(){}
 
@@ -192,9 +195,9 @@ namespace onart {
     GLMachine::pMesh GLMachine::createNullMesh(size_t vcount, int32_t name) {
         pMesh m = getMesh(name);
         if(m) { return m; }
-        struct publicmesh:public Mesh{publicmesh(VkBuffer _1, VmaAllocation _2, size_t _3, size_t _4,size_t _5,void* _6,bool _7):Mesh(_1,_2,_3,_4,_5,_6,_7){}};
-        if(name == INT32_MIN) return std::make_shared<publicmesh>(VK_NULL_HANDLE,VK_NULL_HANDLE,vcount,0,0,nullptr,false);
-        return singleton->meshes[name] = std::make_shared<publicmesh>(VK_NULL_HANDLE,VK_NULL_HANDLE,vcount,0,0,nullptr,false);
+        struct publicmesh:public Mesh{publicmesh(unsigned _1, unsigned _2, size_t _3, size_t _4, bool _5):Mesh(_1,_2,_3,_4,_5){}};
+        if(name == INT32_MIN) return std::make_shared<publicmesh>(0,0,vcount,0,false);
+        return singleton->meshes[name] = std::make_shared<publicmesh>(0,0,vcount,0,false);
     }
 
     GLMachine::pMesh GLMachine::createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, int32_t name, bool stage) {
@@ -235,10 +238,6 @@ namespace onart {
     }
 
     GLMachine::RenderTarget* GLMachine::createRenderTarget2D(int width, int height, int32_t name, RenderTargetType type, RenderTargetInputOption sampled, bool useDepthInput, bool useStencil, bool mmap){
-        if(!singleton->allocator) {
-            LOGWITH("Warning: Tried to create image before initialization");
-            return nullptr;
-        }
         if(useDepthInput && useStencil) {
             LOGWITH("Warning: Can\'t use stencil buffer while using depth buffer as sampled image or input attachment"); // TODO? 엄밀히 말하면 스텐실만 입력첨부물로 쓸 수는 있는데 이걸 꼭 해야 할지
             return nullptr;
@@ -333,15 +332,6 @@ namespace onart {
         return singleton->renderTargets[name] = new RenderTarget(type, width, height, color1, color2, color3, ds, useDepthInput, fb);
     }
 
-    void GLMachine::removeImageSet(GLMachine::ImageSet* set) {
-        auto it = images.find(set);
-        if(it != images.end()) {
-            (*it)->free();
-            delete *it;
-            images.erase(it);
-        }
-    }
-
     unsigned GLMachine::createShader(const char* spv, size_t size, int32_t name, ShaderType type) {
         unsigned ret = getShader(name);
         if(ret) return ret;
@@ -414,7 +404,7 @@ namespace onart {
                 tf = KTX_TTF_RGBA32;
                 break;
             }
-            return ktxTexture2_TranscodeBasis(texture, tf, 0));
+            return ktxTexture2_TranscodeBasis(texture, tf, 0);
         }
         return KTX_SUCCESS;
     }
@@ -580,7 +570,7 @@ namespace onart {
             ktxTexture2* texture;
             int32_t k2result;
         };
-        singleton->loadThread.post([fileName, nChannels, srgb, hq, already](){
+        singleton->loadThread.post([fileName, nChannels, srgb, hq, already]()->void*{
             if(!already){
                 ktxTexture2* texture;
                 ktx_error_code_e k2result;
@@ -611,7 +601,7 @@ namespace onart {
                         unsigned tex = 0, targ, err;
                         k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
                         if (k2result != KTX_SUCCESS) {
-                            LOGWITH("Failed to transcode ktx texture:", k2result, glError);
+                            LOGWITH("Failed to transcode ktx texture:", k2result, err);
                             ktxTexture_Destroy(ktxTexture(texture));
                         }
                         glBindTexture(GL_TEXTURE_2D, tex);
@@ -642,19 +632,21 @@ namespace onart {
             int32_t k2result;
         };
         bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([already, fileName, srgb, option](){
+        singleton->loadThread.post([already, fileName, srgb, option]() -> void*{
             if(!already){
                 int x, y, nChannels;
                 uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 4);
+                ImageTextureFormatOptions opt = option;
+                ktx_error_code_e k2result;
                 if (!pix) {
                     return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
                 }
-                ktxTexture2* texture = createKTX2FromImage(pix, x, y, 4, srgb, option);
+                ktxTexture2* texture = createKTX2FromImage(pix, x, y, 4, srgb, opt);
                 stbi_image_free(pix);
                 if (!texture) {
                     return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
                 }
-                if ((k2result = tryTranscode(texture, nChannels, srgb, hq)) != KTX_SUCCESS) {
+                if ((k2result = tryTranscode(texture, nChannels, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS)) != KTX_SUCCESS) {
                     return new __asyncparam{ nullptr, k2result };
                 }
                 return new __asyncparam{ texture, KTX_SUCCESS };
@@ -678,7 +670,7 @@ namespace onart {
                     unsigned tex = 0, targ, err;
                     k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
                     if (k2result != KTX_SUCCESS) {
-                        LOGWITH("Failed to transcode ktx texture:", k2result, glError);
+                        LOGWITH("Failed to transcode ktx texture:", k2result, err);
                         ktxTexture_Destroy(ktxTexture(texture));
                     }
                     glBindTexture(GL_TEXTURE_2D, tex);
@@ -686,7 +678,7 @@ namespace onart {
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
                     glBindTexture(GL_TEXTURE_2D, 0);
 
-                    struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2) {} };
+                    struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
                     pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
                     singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
                     ktxTexture_Destroy(ktxTexture(texture));
@@ -707,19 +699,21 @@ namespace onart {
             int32_t k2result;
         };
         bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([already, mem, size, srgb, option]() {
+        singleton->loadThread.post([already, mem, size, srgb, option]()->void* {
             if (!already) {
                 int x, y, nChannels;
                 uint8_t* pix = stbi_load_from_memory(mem, size, &x, &y, &nChannels, 0);
                 if (!pix) {
                     return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
                 }
-                ktxTexture2* texture = createKTX2FromImage(pix, x, y, 4, srgb, option);
+                ImageTextureFormatOptions opt = option;
+                ktx_error_code_e k2result;
+                ktxTexture2* texture = createKTX2FromImage(pix, x, y, 4, srgb, opt);
                 stbi_image_free(pix);
                 if (!texture) {
                     return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
                 }
-                if ((k2result = tryTranscode(texture, nChannels, srgb, hq)) != KTX_SUCCESS) {
+                if ((k2result = tryTranscode(texture, nChannels, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS)) != KTX_SUCCESS) {
                     return new __asyncparam{ nullptr, k2result };
                 }
                 return new __asyncparam{ texture, KTX_SUCCESS };
@@ -743,7 +737,7 @@ namespace onart {
                         unsigned tex = 0, targ, err;
                         k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
                         if (k2result != KTX_SUCCESS) {
-                            LOGWITH("Failed to transcode ktx texture:", k2result, glError);
+                            LOGWITH("Failed to transcode ktx texture:", k2result, err);
                             ktxTexture_Destroy(ktxTexture(texture));
                         }
                         glBindTexture(GL_TEXTURE_2D, tex);
@@ -772,9 +766,10 @@ namespace onart {
             int32_t k2result;
         };
         bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([mem, size, nChannels, srgb, hq, already, linearSampler]() {
+        singleton->loadThread.post([mem, size, nChannels, srgb, hq, already, linearSampler, key]()->void* {
             if (!already) {
-                ktx_error_code_e k2result = ktxTexture2_CreateFromMemory(mem, size, KTX_TEXTURE_CREATE_NO_FLAGS, &texture));
+                ktxTexture2* texture;
+                ktx_error_code_e k2result = ktxTexture2_CreateFromMemory(mem, size, KTX_TEXTURE_CREATE_NO_FLAGS, &texture);
                 if (k2result != KTX_SUCCESS) {
                     return new __asyncparam{ nullptr, k2result };
                 }
@@ -802,7 +797,7 @@ namespace onart {
                     unsigned tex = 0, targ, err;
                     k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
                     if (k2result != KTX_SUCCESS) {
-                        LOGWITH("Failed to transcode ktx texture:", k2result, glError);
+                        LOGWITH("Failed to transcode ktx texture:", k2result, err);
                         ktxTexture_Destroy(ktxTexture(texture));
                     }
                     glBindTexture(GL_TEXTURE_2D, tex);
@@ -846,26 +841,9 @@ namespace onart {
         singleton->textures.erase(name);
     }
 
-    GLMachine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, unsigned color1, unsigned color2, unsigned color3, unsigned depthstencil, bool depthTexture)
-        :type(type), width(width), height(height), color1(color1), color2(color2), color3(color3), depthStencil(depthstencil), depthTexture(depthTexture) {
+    GLMachine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, unsigned c1, unsigned c2, unsigned c3, unsigned ds, bool depthAsTexture, unsigned framebuffer)
+        :type(type), width(width), height(height), color1(c1), color2(c2), color3(c3), depthStencil(ds), dsTexture(depthAsTexture) {
         
-    }
-
-    uint32_t GLMachine::RenderTarget::getDescriptorSets(VkDescriptorSet* sets){
-        int nim = 0;
-        if(dset1) {
-            sets[nim++]=dset1;
-            if(dset2){
-                sets[nim++]=dset2;
-                if(dset3){
-                    sets[nim++]=dset3;
-                }
-            }
-        }
-        if(depthstencil){
-            sets[nim] = dsetDS;
-        }
-        return nim;
     }
 
     GLMachine::UniformBuffer* GLMachine::createUniformBuffer(uint32_t length, uint32_t size, size_t stages, int32_t name, uint32_t binding){
@@ -997,10 +975,8 @@ namespace onart {
 
         if(subpassCount == 0) return nullptr;
         std::vector<RenderTarget*> targets(subpassCount - 1);
-        int sx, sy;
-        singleton->window->getFramebufferSize(&sx, &sy);
         for(uint32_t i = 0; i < subpassCount - 1; i++){
-            targets[i] = createRenderTarget2D(sx, sy, INT32_MIN, tgs[i], RenderTargetInputOption::SAMPLED_LINEAR, useDepthAsInput ? useDepthAsInput[i] : false);
+            targets[i] = createRenderTarget2D(singleton->surfaceWidth, singleton->surfaceHeight, INT32_MIN, tgs[i], RenderTargetInputOption::SAMPLED_LINEAR, useDepthAsInput ? useDepthAsInput[i] : false);
             if(!targets[i]){
                 LOGHERE;
                 for(RenderTarget* t:targets) delete t;
@@ -1008,8 +984,7 @@ namespace onart {
             }
         }
 
-        RenderPass* ret = new RenderPass(newPass, fb, subpassCount);
-        for (uint32_t i = 0; i < subpassCount - 1; i++) { ret->targets[i] = targets[i]; }
+        RenderPass* ret = new RenderPass(targets.data(), subpassCount);
         ret->setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
         ret->setScissor(targets[0]->width, targets[0]->height, 0, 0);
         if (name == INT32_MIN) return ret;
@@ -1021,8 +996,7 @@ namespace onart {
         if(r) return r;
         if(subpassCount == 0) return nullptr;
 
-        RenderPass* ret = new RenderPass(newPass, fb, subpassCount);
-        for(uint32_t i = 0; i < subpassCount; i++){ ret->targets[i] = targets[i]; }
+        RenderPass* ret = new RenderPass(targets, subpassCount);
         ret->setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
         ret->setScissor(targets[0]->width, targets[0]->height, 0, 0);
         if(name == INT32_MIN) return ret;
@@ -1030,15 +1004,14 @@ namespace onart {
     }
 
     unsigned GLMachine::createPipeline(unsigned vs, unsigned fs, int32_t name, unsigned tc, unsigned te, unsigned gs){
-        VkPipeline ret = getPipeline(name);
+        unsigned ret = getPipeline(name);
         if(ret) {
-            pass->usePipeline(ret, layout, subpass);
             return ret;
         }
 
         if(!(vs | fs)){
             LOGWITH("Vertex and fragment shader should be provided.");
-            return VK_NULL_HANDLE;
+            return 0;
         }
 
         unsigned prog = glCreateProgram();
@@ -1095,7 +1068,11 @@ namespace onart {
     static void dummyBinder(size_t, uint32_t, uint32_t) {}
 
     GLMachine::Mesh::Mesh(unsigned vb, unsigned ib, size_t vcount, size_t icount, bool use32) :vb(vb), ib(ib), vcount(vcount), icount(icount), idxType(use32 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT), vao(0), vaoBinder(dummyBinder) {}
-    GLMachine::Mesh::~Mesh(){ vmaDestroyBuffer(singleton->allocator, vb, vba); }
+    GLMachine::Mesh::~Mesh(){ 
+        glDeleteVertexArrays(1, &vao);
+        glDeleteBuffers(1, &vb);
+        glDeleteBuffers(1, &ib);
+    }
 
     void GLMachine::Mesh::unbindVAO() {
         glBindVertexArray(0);
@@ -1135,7 +1112,7 @@ namespace onart {
         singleton->meshes.erase(name);
     }
 
-    GLMachine::RenderPass::RenderPass(RenderTarget** fb, uint16_t stageCount): stageCount(stageCount), pipelines(stageCount), pipelineLayouts(stageCount), targets(stageCount){
+    GLMachine::RenderPass::RenderPass(RenderTarget** fb, uint16_t stageCount): stageCount(stageCount), pipelines(stageCount), targets(stageCount){
         std::memcpy(targets.data(), fb, sizeof(RenderTarget*) * stageCount);
     }
 
@@ -1183,7 +1160,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        glBindBufferRange(GL_UNIFORM_BUFFER, ub->binding, ub->ubo, ub->offset(ubPos), ub->length);
+        glBindBufferRange(GL_UNIFORM_BUFFER, ub->binding, ub->ubo, 0, ub->length);
     }
 
     void GLMachine::RenderPass::bind(uint32_t pos, const pTexture& tx) {
@@ -1240,7 +1217,7 @@ namespace onart {
             return;
         }
         
-        if((bound != mesh.get()) && (mesh->vb != VK_NULL_HANDLE)) {
+        if((bound != mesh.get()) && (mesh->vao != 0)) {
             glBindVertexArray(mesh->vao);
         }
         if(mesh->icount) {
@@ -1252,7 +1229,7 @@ namespace onart {
             if(count == 0){
                 count = mesh->icount - start;
             }
-            glDrawElements(GL_TRIANGLES, count, mesh->idxType, mesh->idxType == GL_UNSIGNED_INT ? (uint32_t*)0 + start : (uint16_t*)0 + start);
+            glDrawElements(GL_TRIANGLES, count, mesh->idxType, mesh->idxType == GL_UNSIGNED_INT ? (void*)((uint32_t*)0 + start) : (void*)((uint16_t*)0 + start));
         }
         else {
             if((uint64_t)start + count > mesh->vcount){
@@ -1273,11 +1250,11 @@ namespace onart {
              LOGWITH("Invalid call: render pass not begun");
              return;
          }
-         if ((bound != mesh.get()) && (mesh->vb != VK_NULL_HANDLE)) {
+         if ((bound != mesh.get()) && (mesh->vb != 0)) {
              glBindVertexArray(mesh->vao);
          }
          instanceInfo->vaoBinder(0, 0, mesh->attrCount);
-         for (int i = mesh->attrCount; i < mesh->attrCount + instanceInfo->attrCount) {
+         for (int i = mesh->attrCount; i < mesh->attrCount + instanceInfo->attrCount; i++) {
              glVertexAttribDivisor(i, 1);
          }
          if(mesh->icount) {
@@ -1289,7 +1266,7 @@ namespace onart {
              if(count == 0){
                  count = mesh->icount - start;
              }
-             glDrawElementsInstanced(GL_TRIANGLES, mesh->icount, mesh->idxType, mesh->idxType == GL_UNSIGNED_INT ? (uint32_t*)0 + start : (uint16_t*)0 + start, instanceCount);
+             glDrawElementsInstanced(GL_TRIANGLES, mesh->icount, mesh->idxType, mesh->idxType == GL_UNSIGNED_INT ? (void*)((uint32_t*)0 + start) : (void*)((uint16_t*)0 + start), instanceCount);
          }
          else {
              if((uint64_t)start + count > mesh->vcount){
@@ -1302,7 +1279,7 @@ namespace onart {
              }
              glDrawArraysInstanced(GL_TRIANGLES, start, count, instanceCount);
          }
-         for (int i = mesh->attrCount; i < mesh->attrCount + instanceInfo->attrCount) {
+         for (int i = mesh->attrCount; i < mesh->attrCount + instanceInfo->attrCount; i++) {
              glDisableVertexArrayAttrib(mesh->vao, i);
          }
          bound = nullptr;
@@ -1358,7 +1335,7 @@ namespace onart {
             return;
         }
         if (pass >= 6) {
-            glBindBufferRange(GL_UNIFORM_BUFFER, ub->binding, ub->ubo, ub->offset(ubPos), ub->length);
+            glBindBufferRange(GL_UNIFORM_BUFFER, ub->binding, ub->ubo, 0, ub->length);
         }
         else {
             facewise[pass].ub = ub;
@@ -1379,10 +1356,6 @@ namespace onart {
     void GLMachine::RenderPass2Cube::bind(uint32_t pos, RenderTarget* target, uint32_t index){
         if(!recording){
             LOGWITH("Invalid call: render pass not begun");
-            return;
-        }
-        if(!target->sampled){
-            LOGWITH("Invalid call: this target is not made with texture");
             return;
         }
         unsigned dset;
@@ -1411,10 +1384,9 @@ namespace onart {
         glBindTexture(GL_TEXTURE_2D, dset);
     }
     
-    void GLMachine::RenderPass2Cube::usePipeline(VkPipeline pipeline, VkPipelineLayout layout){
+    void GLMachine::RenderPass2Cube::usePipeline(unsigned pipeline){
         this->pipeline = pipeline;
-        this->pipelineLayout = layout;
-        if(recording) { vkCmdBindPipeline(scb, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline); }
+        if (recording) { glUseProgram(pipeline); }
     }
 
     void GLMachine::RenderPass2Cube::push(void* input, uint32_t start, uint32_t end){
@@ -1430,8 +1402,8 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-         glBindFrmaebuffer(GL_FRAMEBUFFER, fbo);
-         if ((bound != mesh.get()) && (mesh->vb != VK_NULL_HANDLE)) {
+         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+         if ((bound != mesh.get()) && (mesh->vao != 0)) {
              glBindVertexArray(mesh->vao);
          }
          if (mesh->icount) {
@@ -1448,9 +1420,9 @@ namespace onart {
                  if(targetCubeD) glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, targetCubeD, 0);
                  auto& fwi = facewise[i];
                  if (fwi.ub) {
-                     glBindBufferRange(GL_UNIFORM_BUFFER, fwi.ub->binding, fwi.ub->ubo, fwi.ub->offset(fwi.ubPos), fwi.ub->length);
+                     glBindBufferRange(GL_UNIFORM_BUFFER, fwi.ub->binding, fwi.ub->ubo, 0, fwi.ub->length);
                  }
-                 glDrawElements(GL_TRIANGLES, count, mesh->idxType, mesh->idxType == GL_UNSIGNED_INT ? (uint32_t*)0 + start : (uint16_t*)0 + start);
+                 glDrawElements(GL_TRIANGLES, count, mesh->idxType, mesh->idxType == GL_UNSIGNED_INT ? (void*)((uint32_t*)0 + start) : (void*)((uint16_t*)0 + start));
              }
          }
          else {
@@ -1465,8 +1437,9 @@ namespace onart {
              for (int i = 0; i < 6; i++) {
                  if (targetCubeC) glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, targetCubeC, 0);
                  if (targetCubeD) glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, targetCubeD, 0);
+                 auto& fwi = facewise[i];
                  if (fwi.ub) {
-                     glBindBufferRange(GL_UNIFORM_BUFFER, fwi.ub->binding, fwi.ub->ubo, fwi.ub->offset(fwi.ubPos), fwi.ub->length);
+                     glBindBufferRange(GL_UNIFORM_BUFFER, fwi.ub->binding, fwi.ub->ubo, 0, fwi.ub->length);
                  }
                  glDrawArrays(GL_TRIANGLES, start, count);
              }
@@ -1479,11 +1452,11 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
          }
-         if ((bound != mesh.get()) && (mesh->vb != VK_NULL_HANDLE)) {
+         if ((bound != mesh.get()) && (mesh->vao != 0)) {
              glBindVertexArray(mesh->vao);
          }
          instanceInfo->vaoBinder(0, 0, mesh->attrCount);
-         for (int i = mesh->attrCount; i < mesh->attrCount + instanceInfo->attrCount) {
+         for (int i = mesh->attrCount; i < mesh->attrCount + instanceInfo->attrCount; i++) {
              glVertexAttribDivisor(i, 1);
          }
          if (mesh->icount) {
@@ -1500,9 +1473,9 @@ namespace onart {
                  if (targetCubeD) glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, targetCubeD, 0);
                  auto& fwi = facewise[i];
                  if (fwi.ub) {
-                     glBindBufferRange(GL_UNIFORM_BUFFER, fwi.ub->binding, fwi.ub->ubo, fwi.ub->offset(fwi.ubPos), fwi.ub->length);
+                     glBindBufferRange(GL_UNIFORM_BUFFER, fwi.ub->binding, fwi.ub->ubo, 0, fwi.ub->length);
                  }
-                 glDrawElementsInstanced(GL_TRIANGLES, mesh->icount, mesh->idxType, mesh->idxType == GL_UNSIGNED_INT ? (uint32_t*)0 + start : (uint16_t*)0 + start, instanceCount);
+                 glDrawElementsInstanced(GL_TRIANGLES, mesh->icount, mesh->idxType, mesh->idxType == GL_UNSIGNED_INT ? (void*)((uint32_t*)0 + start) : (void*)((uint16_t*)0 + start), instanceCount);
              }
          }
          else {
@@ -1519,12 +1492,12 @@ namespace onart {
                  if (targetCubeD) glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, targetCubeD, 0);
                  auto& fwi = facewise[i];
                  if (fwi.ub) {
-                     glBindBufferRange(GL_UNIFORM_BUFFER, fwi.ub->binding, fwi.ub->ubo, fwi.ub->offset(fwi.ubPos), fwi.ub->length);
+                     glBindBufferRange(GL_UNIFORM_BUFFER, fwi.ub->binding, fwi.ub->ubo, 0, fwi.ub->length);
                  }
                  glDrawArraysInstanced(GL_TRIANGLES, start, count, instanceCount);
              }
          }
-         for (int i = mesh->attrCount; i < mesh->attrCount + instanceInfo->attrCount) {
+         for (int i = mesh->attrCount; i < mesh->attrCount + instanceInfo->attrCount; i++) {
              glDisableVertexArrayAttrib(mesh->vao, i);
          }
         bound = nullptr;
@@ -1572,6 +1545,8 @@ namespace onart {
 
     void GLMachine::UniformBuffer::resize(uint32_t size) {    }
 
+    GLMachine::UniformBuffer::UniformBuffer(uint32_t length, unsigned ubo, uint32_t binding) :length(length), ubo(ubo), binding(binding) {}
+
     GLMachine::UniformBuffer::~UniformBuffer(){
         glDeleteBuffers(1, &ubo);
     }
@@ -1579,7 +1554,7 @@ namespace onart {
 
     // static함수들 구현
 
-    int textureFormatFallback(uint32_t nChannels, bool srgb, bool hq); {
+    int textureFormatFallback(uint32_t nChannels, bool srgb, bool hq) {
         int count;
         glGetIntegerv(GL_NUM_COMPRESSED_TEXTURE_FORMATS, &count);
         std::vector<int> availableFormat(count);
@@ -1627,7 +1602,7 @@ namespace onart {
         if(srgb){
             CHECK_N_RETURN(GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR);
             CHECK_N_RETURN(GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB);
-            return GL_SRG8;
+            return GL_RG8;
         }
         else{
             CHECK_N_RETURN(GL_COMPRESSED_RGBA_ASTC_4x4_KHR);
@@ -1641,7 +1616,7 @@ namespace onart {
         if(srgb){
             CHECK_N_RETURN(GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR);
             CHECK_N_RETURN(GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB);
-            return GL_SR8;
+            return GL_R8;
         }
         else{
             CHECK_N_RETURN(GL_COMPRESSED_RGBA_ASTC_4x4_KHR);
@@ -1675,28 +1650,28 @@ namespace onart {
         glEnableVertexAttribArray(index);
         switch(type.type){
             case _vattr::t::F32:
-                glVertexAttribPointer(index, dim, GL_FLOAT, GL_FALSE, stride, (void*)offset);
+                glVertexAttribPointer(index, type.dim, GL_FLOAT, GL_FALSE, stride, (void*)offset);
                 break;
             case _vattr::t::F64:
-                glVertexAttribPointer(index, dim, GL_DOUBLE, GL_FALSE, stride, (void*)offset);
+                glVertexAttribPointer(index, type.dim, GL_DOUBLE, GL_FALSE, stride, (void*)offset);
                 break;
             case _vattr::t::I8:
-                glVertexAttribIPointer(index, dim, GL_BYTE, stride, (void*)offset);
+                glVertexAttribIPointer(index, type.dim, GL_BYTE, stride, (void*)offset);
                 break;
             case _vattr::t::I16:
-                glVertexAttribIPointer(index, dim, GL_SHORT, stride, (void*)offset);
+                glVertexAttribIPointer(index, type.dim, GL_SHORT, stride, (void*)offset);
                 break;
             case _vattr::t::I32:
-                glVertexAttribIPointer(index, dim, GL_INT, stride, (void*)offset);
+                glVertexAttribIPointer(index, type.dim, GL_INT, stride, (void*)offset);
                 break;
             case _vattr::t::U8:
-                glVertexAttribIPointer(index, dim, GL_UNSIGNED_BYTE, stride, (void*)offset);
+                glVertexAttribIPointer(index, type.dim, GL_UNSIGNED_BYTE, stride, (void*)offset);
                 break;
             case _vattr::t::U16:
-                glVertexAttribIPointer(index, dim, GL_UNSIGNED_SHORT, stride, (void*)offset);
+                glVertexAttribIPointer(index, type.dim, GL_UNSIGNED_SHORT, stride, (void*)offset);
                 break;
             case _vattr::t::U32:
-                glVertexAttribIPointer(index, dim, GL_UNSIGNED_INT, stride, (void*)offset);
+                glVertexAttribIPointer(index, type.dim, GL_UNSIGNED_INT, stride, (void*)offset);
                 break;
         }
     }

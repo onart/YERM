@@ -58,7 +58,10 @@ namespace onart{
             /// @brief 주어진 렌더패스에 현재 상태의 모델을 그립니다.
             static void draw(YRGraphics::RenderPass2Cube* rp);
             /// @brief 주어진 렌더패스에 현재 상태의 모델을 그립니다.
+#ifdef YR_USE_VULKAN
             static void draw(YRGraphics::RenderPass2Screen* rp);
+#endif
+
             /// @brief 라이브러리에서 필요한 초기 세팅을 수행합니다. 안드로이드 환경인 경우 android_app 포인터를 여기로 전달해야 합니다.
             static void init(void* v = nullptr);
             inline const YRGraphics::pMesh& getMesh(){ return mesh; }
