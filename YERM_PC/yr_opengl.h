@@ -57,7 +57,7 @@ namespace onart {
             static thread_local unsigned reason;
             constexpr static bool VULKAN_GRAPHICS = false, D3D12_GRAPHICS = false, D3D11_GRAPHICS = false, OPENGL_GRAPHICS = true, OPENGLES_GRAPHICS = false, METAL_GRAPHICS = false;
             /// @brief OpenGL 오류 콜백을 사용하려면 이것을 활성화해 주세요.
-            constexpr static bool USE_OPENGL_DEBUG = false;
+            constexpr static bool USE_OPENGL_DEBUG = true;
             /// @brief 그리기 대상입니다. 텍스처로 사용하거나 메모리 맵으로 데이터에 접근할 수 있습니다. 
             class RenderTarget;
             /// @brief 오프스크린용 렌더 패스입니다.
@@ -510,11 +510,11 @@ namespace onart {
             template<class... T>
             void setVAO(unsigned locationPlus = 0, const Vertex<T...>& _={});
             void(*vaoBinder)(size_t, uint32_t, uint32_t);
+            unsigned vb, ib, vao;
         private:
             Mesh(unsigned vb, unsigned ib, size_t vcount, size_t icount, bool use32);
             ~Mesh();
             void unbindVAO();
-            unsigned vb, ib, vao;
             size_t vcount, icount;
             unsigned idxType;
             unsigned attrCount;

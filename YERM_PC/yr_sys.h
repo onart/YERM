@@ -26,6 +26,7 @@ namespace onart{
     /// @brief 창 시스템에 대한 불투명 타입입니다. GLFW와 AGDK의 vulkan 대상 인터페이스를 비슷하게 맞추기 위해 만들어졌습니다.
     class Window{
         public:
+            friend class Game;
             /// @brief 창 생성 시 부여할 옵션입니다. 일부 옵션은 유효한 환경이 제한됩니다. (현재 버전에서는 PC 옵션만 존재합니다.)
             struct CreationOptions{
                 /// @brief 창 폭(픽셀). 기본값은 640이며 PC에서만 사용됩니다.

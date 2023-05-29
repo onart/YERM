@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "../externals/glad/glad.h"
 #include "yr_game.h"
 #include "yr_sys.h"
 #include "yr_graphics.h"
@@ -136,21 +137,20 @@ namespace onart{
             Window::terminate();
             return 1;
         }
-        window->setMainThread();
-        vk = new YRGraphics(window);
-        if(!init()){
-            delete window;
-            Window::terminate();
-            return 1;
-        }
 
 #if !YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
-        std::thread gamethread([](){
+        std::thread gamethread([]() {
 #endif
-        window->setMainThread();
-            for(;;_frame++){
+            window->setMainThread();
+            vk = new YRGraphics(window);
+            if (!init()) {
+                delete window;
+                Window::terminate();
+                return 1;
+            }
+            for (;; _frame++) {
                 pollEvents();
-                if(window->windowShouldClose()) break;
+                if (window->windowShouldClose()) break;
                 std::chrono::duration<uint64_t, std::nano> longDt = std::chrono::steady_clock::now() - longTp;
                 // [0, 2^52 - 1] 범위 정수를 균등 간격의 [1.0, 2.0) 범위 double로 대응시키는 함수에 십억을 적용한 후 1을 뺀 결과에 곱하여 1로 만들 수 있는 수
                 constexpr double ONE_SECOND = 1.0 / 0.0000002220446049250313080847263336181640625;
@@ -170,19 +170,20 @@ namespace onart{
                 if (Input::isKeyDown(Input::KeyCode::down)) {
                     thr -= 0.01f;
                     if (thr < 0) thr = 0.0f;
-                    
+
                 }
                 if (Input::isKeyDown(Input::KeyCode::up)) {
                     thr += 0.01f;
                     if (thr > 4)  thr = 4.0f;
                 }
-                printf("%f\r",thr);
+                printf("%f\r", thr);
                 window->getFramebufferSize(&x, &y);
                 ivec2 scr(x, y);
                 float aspect = 1.0f;// (float)x / y;
                 float pushed = PI<float> / 2;// std::abs(std::sin((double)_tp * 0.000000001));
                 mat4 rot = YRGraphics::preTransform() * mat4(1, 0, 0, 0, 0, aspect, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);// *mat4::rotate(0, 0, (double)_tp * 0.000000001);
-                if(vk->swapchain.handle){
+                /*
+                if (vk->swapchain.handle) {
                     off->start();
                     if (loaded) {
                         off->push(&rot, 0, 64);
@@ -199,6 +200,15 @@ namespace onart{
                     rp2s->bind(0, YRGraphics::getRenderTarget(1), 0);
                     rp2s->invoke(YRGraphics::getMesh(1));
                     rp2s->execute(off);
+                    if constexpr (YRGraphics::OPENGL_GRAPHICS) {
+                        glfwSwapBuffers((GLFWwindow*)window->window);
+                    }
+                }*/
+                rp2s->start();
+                rp2s->invoke(vb);
+                rp2s->execute();
+                if constexpr (YRGraphics::OPENGL_GRAPHICS) {
+                    glfwSwapBuffers((GLFWwindow*)window->window);
                 }
             }
 #if !YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
@@ -275,6 +285,7 @@ namespace onart{
         window->windowSizeCallback = recordSizeEvent;
         window->scrollCallback = recordScrollEvent;
 #endif
+
         YRGraphics::RenderTarget* targets[2] = {
             YRGraphics::createRenderTarget2D(128, 128, 0, YRGraphics::RenderTargetType::COLOR1, YRGraphics::RenderTargetInputOption::INPUT_ATTACHMENT),
             YRGraphics::createRenderTarget2D(128, 128, 1, YRGraphics::RenderTargetType::COLOR1, YRGraphics::RenderTargetInputOption::SAMPLED_NEAREST)
@@ -283,29 +294,87 @@ namespace onart{
         auto rtt = YRGraphics::RenderTargetType::COLOR1;
         auto offrp = YRGraphics::createRenderPass(targets, 2, 0);
         auto rp2s = YRGraphics::createRenderPass2Screen(nullptr, 1, 1, false);
-        VkDescriptorSetLayout texLayout = YRGraphics::getTextureLayout(0);
-        VkDescriptorSetLayout iaLayout = YRGraphics::getInputAttachmentLayout(0);
-        auto lo = YRGraphics::createPipelineLayout(&texLayout, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0);
-        auto lo2 = YRGraphics::createPipelineLayout(&iaLayout, 1, 0, 1);
-        VkVertexInputAttributeDescription desc[2];
         using testv_t = YRGraphics::Vertex<vec3, vec2>;
-        testv_t::info(desc, 0);
-        auto vs = YRGraphics::createShader(TEST_VERT, sizeof(TEST_VERT),0);
-        auto fs = YRGraphics::createShader(TEST_FRAG, sizeof(TEST_FRAG),1);
-        YRGraphics::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, offrp, 0, 0, lo, vs, fs, 0);
-        vs = YRGraphics::createShader(TEST_IA_VERT, sizeof(TEST_IA_VERT), 2);
-        fs = YRGraphics::createShader(TEST_IA_FRAG, sizeof(TEST_IA_FRAG), 3);
-        YRGraphics::createPipeline(nullptr, 0, 0, nullptr, 0, 0, offrp, 1, 0, lo2, vs, fs, 1);
-        vs = YRGraphics::createShader(TEST_TX_VERT, sizeof(TEST_TX_VERT), 4);
-        fs = YRGraphics::createShader((uint32_t*)SCALEPX, sizeof(SCALEPX), 5);
-        YRGraphics::createPipeline(nullptr, 0, 0, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, 2);
-        testv_t verts[]{{{-1,-1,0},{0,0}},{{-1,1,0},{0,1}},{{1,-1,0},{1,0}},{{1,1,0},{1,1}}};
-        uint16_t inds[]{0,1,2,2,1,3};
-        YRGraphics::createNullMesh(3, 1);
-        YRGraphics::createMesh(verts,sizeof(testv_t),4,inds,2,6,0);
-        YRGraphics::asyncCreateTexture(TEX0, sizeof(TEX0), 4, [](void*) { loaded = true; }, 0, YRGraphics::isSurfaceSRGB(), true, false, 0);
-        //YRGraphics::createTextureFromImage("g256.png", 0,YRGraphics::isSurfaceSRGB(),YRGraphics::IT_USE_ORIGINAL,false); loaded = true;
-        //loaded = true; YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB());
+        testv_t verts[]{ {{-1,-1,0},{0,0}},{{-1,1,0},{0,1}},{{1,-1,0},{1,0}},{{1,1,0},{1,1}} };
+        uint16_t inds[]{ 0,1,2,2,1,3 };
+#ifdef YR_USE_VULKAN
+        if constexpr (YRGraphics::VULKAN_GRAPHICS) {
+            VkDescriptorSetLayout texLayout = YRGraphics::getTextureLayout(0);
+            VkDescriptorSetLayout iaLayout = YRGraphics::getInputAttachmentLayout(0);
+            auto lo = YRGraphics::createPipelineLayout(&texLayout, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0);
+            auto lo2 = YRGraphics::createPipelineLayout(&iaLayout, 1, 0, 1);
+            VkVertexInputAttributeDescription desc[2];
+            testv_t::info(desc, 0);
+            auto vs = YRGraphics::createShader(TEST_VERT, sizeof(TEST_VERT), 0);
+            auto fs = YRGraphics::createShader(TEST_FRAG, sizeof(TEST_FRAG), 1);
+            YRGraphics::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, offrp, 0, 0, lo, vs, fs, 0);
+            vs = YRGraphics::createShader(TEST_IA_VERT, sizeof(TEST_IA_VERT), 2);
+            fs = YRGraphics::createShader(TEST_IA_FRAG, sizeof(TEST_IA_FRAG), 3);
+            YRGraphics::createPipeline(nullptr, 0, 0, nullptr, 0, 0, offrp, 1, 0, lo2, vs, fs, 1);
+            vs = YRGraphics::createShader(TEST_TX_VERT, sizeof(TEST_TX_VERT), 4);
+            fs = YRGraphics::createShader((uint32_t*)SCALEPX, sizeof(SCALEPX), 5);
+            YRGraphics::createPipeline(nullptr, 0, 0, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, 2);
+            YRGraphics::createNullMesh(3, 1);
+            YRGraphics::createMesh(verts, sizeof(testv_t), 4, inds, 2, 6, 0);
+            YRGraphics::asyncCreateTexture((const char*)TEX0, sizeof(TEX0), 4, [](void*) { loaded = true; }, 0, YRGraphics::isSurfaceSRGB(), true, false);
+            //YRGraphics::createTextureFromImage("g256.png", 0,YRGraphics::isSurfaceSRGB(),YRGraphics::IT_USE_ORIGINAL,false); loaded = true;
+            //loaded = true; YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB());
+        }
+#elif defined(YR_USE_OPENGL)
+        const char TEST_GL_VERT1[] = R"(
+#version 450
+
+layout(location = 0) in vec3 inPosition;
+layout(location = 1) in vec2 inTc;
+
+layout(location = 0) out vec2 tc;
+
+layout(std140, binding=11) uniform ui{
+    mat4 aspect;
+    float t;
+};
+
+const vec2 pos[3] = {vec2(-1, -1), vec2(-1, 3), vec2(3, -1)};
+
+void main() {
+    gl_Position = vec4(pos[gl_VertexID % 3], 0.0f, 1.0f);
+    tc = inTc;
+}
+)";
+
+        const char TEST_GL_FRAG1[] = R"(
+#version 450
+
+layout(location = 0) in vec2 tc;
+
+out vec4 outColor;
+uniform sampler2D tex;
+
+layout(std140, binding=11) uniform ui{
+    mat4 aspect;
+    float t;
+};
+
+void main() {
+    //outColor = texture(tex, tc);
+    //outColor.a *= t;
+outColor = vec4(1.0, 0.0, 1.0, 1.0);
+}
+)";
+        if constexpr (YRGraphics::OPENGL_GRAPHICS) {
+            auto vs = YRGraphics::createShader(TEST_GL_VERT1, sizeof(TEST_GL_VERT1), 0, YRGraphics::ShaderType::VERTEX);
+            auto fs = YRGraphics::createShader(TEST_GL_FRAG1, sizeof(TEST_GL_FRAG1), 1, YRGraphics::ShaderType::FRAGMENT);
+            auto pp = YRGraphics::createPipeline(vs, fs, 0);
+            offrp->usePipeline(pp, 0);
+            offrp->usePipeline(pp, 1);
+            rp2s->usePipeline(pp, 0);
+            //YRGraphics::asyncCreateTexture(TEX0, sizeof(TEX0), 4, [](void*) { loaded = true; }, 0, YRGraphics::isSurfaceSRGB(), true, false);
+            YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB());
+            loaded = true;
+            YRGraphics::createNullMesh(3, 1);
+            YRGraphics::createMesh(verts, sizeof(testv_t), 4, inds, 2, 6, 0)->setVAO<vec3, vec2>();
+        }
+#endif
         return true;
     }
 

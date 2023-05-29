@@ -77,15 +77,21 @@ namespace onart {
             }
         }
 
+        int x, y;
+        window->getFramebufferSize(&x, &y);
+        createSwapchain(x, y);
+
         if constexpr(USE_OPENGL_DEBUG) {
             glEnable(GL_DEBUG_OUTPUT);
             glDebugMessageCallback(glOnError,0);
         }
-        
-        UniformBuffer* push = createUniformBuffer(1, 128, 0, INT32_MIN + 1, 11);
-        glBindBufferRange(GL_UNIFORM_BUFFER, 11, push->ubo, 0, 128);
-
         singleton = this;
+        UniformBuffer* push = createUniformBuffer(1, 128, 0, INT32_MIN + 1, 11);
+        if (!push) {
+            singleton = nullptr;
+            return;
+        }
+        glBindBufferRange(GL_UNIFORM_BUFFER, 11, push->ubo, 0, 128);
     }
 
     unsigned GLMachine::getPipeline(int32_t name){
@@ -115,8 +121,8 @@ namespace onart {
     }
 
     GLMachine::RenderPass2Screen* GLMachine::getRenderPass2Screen(int32_t name){
-        auto it = singleton->finalPasses.find(name);
-        if(it != singleton->finalPasses.end()) return it->second;
+        auto it = singleton->renderPasses.find(name);
+        if(it != singleton->renderPasses.end()) return it->second;
         else return nullptr;
     }
 
@@ -161,6 +167,12 @@ namespace onart {
     void GLMachine::createSwapchain(uint32_t width, uint32_t height, Window* window) {
         surfaceWidth = width;
         surfaceHeight = height;
+        for (auto& renderPass: renderPasses) {
+            if (renderPass.second->targets[renderPass.second->stageCount - 1] == nullptr) { // renderpass 2 screen
+                renderPass.second->setViewport(width, height, 0, 0, true); // 이후 수정 필요: 기존과 동등한 비중
+                renderPass.second->setScissor(width, height, 0, 0, true); // 이후 수정 필요: 기존과 동등한 비중
+            }
+        }
     }
 
     void GLMachine::destroySwapchain(){}
@@ -169,7 +181,7 @@ namespace onart {
         for(auto& cp: cubePasses) { delete cp.second; }
         for(auto& fp: finalPasses) { delete fp.second; }
         for(auto& rp: renderPasses) { delete rp.second; }
-        for(auto& rt: renderTargets){ delete rt.second; }
+        for(auto& rt : renderTargets) { delete rt.second; }
         for(auto& sh: shaders) { glDeleteShader(sh.second); }
         for(auto& pp: pipelines) { glDeleteProgram(pp.second); }
 
@@ -181,7 +193,6 @@ namespace onart {
         renderPasses.clear();
         renderTargets.clear();
         shaders.clear();
-        destroySwapchain();
     }
 
     void GLMachine::handle() {
@@ -842,14 +853,12 @@ namespace onart {
     }
 
     GLMachine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, unsigned c1, unsigned c2, unsigned c3, unsigned ds, bool depthAsTexture, unsigned framebuffer)
-        :type(type), width(width), height(height), color1(c1), color2(c2), color3(c3), depthStencil(ds), dsTexture(depthAsTexture) {
-        
+        :type(type), width(width), height(height), color1(c1), color2(c2), color3(c3), depthStencil(ds), dsTexture(depthAsTexture), framebuffer(framebuffer) {
     }
 
     GLMachine::UniformBuffer* GLMachine::createUniformBuffer(uint32_t length, uint32_t size, size_t stages, int32_t name, uint32_t binding){
         UniformBuffer* ret = getUniformBuffer(name);
         if(ret) return ret;
-
         unsigned ubo;
         glGenBuffers(1, &ubo);
         glBindBuffer(GL_UNIFORM_BUFFER, ubo);
@@ -872,7 +881,7 @@ namespace onart {
                 glDeleteRenderbuffers(1, &depthStencil);
             }
         }
-        glDeleteFramebuffers(1, &framebuffer);
+        if(framebuffer) glDeleteFramebuffers(1, &framebuffer);
     }
 
     GLMachine::RenderPass2Cube* GLMachine::createRenderPass2Cube(uint32_t width, uint32_t height, int32_t key, bool useColor, bool useDepth) {
@@ -918,7 +927,7 @@ namespace onart {
         }
         if (useDepth) {
             glGenTextures(1, &depth);
-            if (color == 0) {
+            if (depth == 0) {
                 LOGWITH("Failed to create texture");
                 glDeleteFramebuffers(1, &fbo);
                 if (color) {
@@ -965,7 +974,7 @@ namespace onart {
         r->scissor.y = 0;
         r->scissor.width = width;
         r->scissor.height = height;
-
+        
         return singleton->cubePasses[key] = r;
     }
 
@@ -974,7 +983,7 @@ namespace onart {
         if(r) return r;
 
         if(subpassCount == 0) return nullptr;
-        std::vector<RenderTarget*> targets(subpassCount - 1);
+        std::vector<RenderTarget*> targets(subpassCount);
         for(uint32_t i = 0; i < subpassCount - 1; i++){
             targets[i] = createRenderTarget2D(singleton->surfaceWidth, singleton->surfaceHeight, INT32_MIN, tgs[i], RenderTargetInputOption::SAMPLED_LINEAR, useDepthAsInput ? useDepthAsInput[i] : false);
             if(!targets[i]){
@@ -985,8 +994,9 @@ namespace onart {
         }
 
         RenderPass* ret = new RenderPass(targets.data(), subpassCount);
-        ret->setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
-        ret->setScissor(targets[0]->width, targets[0]->height, 0, 0);
+        ret->targets = std::move(targets);
+        ret->setViewport(singleton->surfaceWidth, singleton->surfaceHeight, 0.0f, 0.0f);
+        ret->setScissor(singleton->surfaceWidth, singleton->surfaceHeight, 0, 0);
         if (name == INT32_MIN) return ret;
         return singleton->renderPasses[name] = ret;
     }
@@ -997,6 +1007,7 @@ namespace onart {
         if(subpassCount == 0) return nullptr;
 
         RenderPass* ret = new RenderPass(targets, subpassCount);
+        std::memcpy(ret->targets.data(), targets, sizeof(RenderTarget*) * subpassCount);
         ret->setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
         ret->setScissor(targets[0]->width, targets[0]->height, 0, 0);
         if(name == INT32_MIN) return ret;
@@ -1112,12 +1123,10 @@ namespace onart {
         singleton->meshes.erase(name);
     }
 
-    GLMachine::RenderPass::RenderPass(RenderTarget** fb, uint16_t stageCount): stageCount(stageCount), pipelines(stageCount), targets(stageCount){
-        std::memcpy(targets.data(), fb, sizeof(RenderTarget*) * stageCount);
-    }
+    GLMachine::RenderPass::RenderPass(RenderTarget** fb, uint16_t stageCount): stageCount(stageCount), pipelines(stageCount), targets(stageCount){}
 
     GLMachine::RenderPass::~RenderPass(){
-        if (targets[stageCount] == nullptr) { // renderpass to screen이므로 타겟을 자체 생성해서 보유
+        if (targets[stageCount - 1] == nullptr) { // renderpass to screen이므로 타겟을 자체 생성해서 보유
             for (RenderTarget* targ : targets) {
                 delete targ;
             }
@@ -1633,7 +1642,17 @@ namespace onart {
     }
 
     static void GLAPIENTRY glOnError(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
-        LOGWITH("Error",id,':',message,'(',severity,')');
+        const char* sev = "OpenGL";
+        switch (severity) {
+        case GL_DEBUG_SEVERITY_HIGH:
+            sev = "Error";
+            break;
+        case GL_DEBUG_SEVERITY_MEDIUM:
+        case GL_DEBUG_SEVERITY_LOW:
+            sev = "Warning";
+            break;
+        }
+        LOGWITH(sev,id,':',message,'(',severity,')');
         GLMachine::reason = id;
     }
 
