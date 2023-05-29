@@ -340,7 +340,7 @@ namespace onart{
 
 #else
 
-#include "../externals/glfw/glfw3.h"
+#include "../externals/glfw/include/GLFW/glfw3.h"
 
 namespace onart{
 

@@ -7,6 +7,7 @@ if(ANDROID)
     message(STATUS "Build for Android platform is currently up to Android Studio. Please open YERM_android project with it.")
 else()
     message(STATUS "Build system: ${CMAKE_GENERATOR}")
+    add_subdirectory(externals/glfw externals/)
     project("yerm")
 
     option(YERM_VULKAN "Use Vulkan as the graphics API. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" ON)
@@ -70,17 +71,18 @@ else()
         YERM_PC/yr_model.h
         YERM_PC/yr_model.cpp
     )
+    add_dependencies(yerm glfw)
     set_target_properties(yerm PROPERTIES BUILD_RPATH ".")
     target_include_directories(yerm PUBLIC externals)
-    target_link_directories(yerm PUBLIC externals/glfw externals/vulkan externals/ktx externals/shaderc)
+    target_link_directories(yerm PUBLIC externals/vulkan externals/ktx externals/shaderc)
     if(MSVC)
         set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
         set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
         add_compile_options("/utf-8")
         set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT yerm) # 재생버튼 눌러서 바로 실행해볼 수 있게 됨
-        target_link_libraries(yerm glfw3_mt vulkan-1 ktx)
+        target_link_libraries(yerm glfw vulkan-1 ktx)
     else()
-        target_link_libraries(yerm glfw3 vulkan ktx dl m pthread X11) # TODO: X11 부분을 타겟에 잘 맞게 분류
+        target_link_libraries(yerm glfw vulkan ktx dl m pthread X11) # TODO: X11 부분을 타겟에 잘 맞게 분류
     endif()
     
 endif()

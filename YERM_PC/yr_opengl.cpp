@@ -16,7 +16,7 @@
 #include "logger.hpp"
 #include "../externals/glad/glad.h"
 #include "yr_sys.h"
-#include "../externals/glfw/glfw3.h"
+#include "../externals/glfw/include/GLFW/glfw3.h"
 
 #include "../externals/boost/predef/platform.h"
 #include "../externals/single_header/stb_image.h"

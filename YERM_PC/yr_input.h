@@ -22,7 +22,7 @@
 #if BOOST_PLAT_ANDROID
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 #else
-#include "../externals/glfw/glfw3.h"
+#include "../externals/glfw/include/GLFW/glfw3.h"
 #endif
 
 namespace onart{
