@@ -24,7 +24,6 @@
 
 #include <cstdint>
 
-#include "../externals/single_header/miniaudio.h"
 #include "yr_string.hpp"
 
 namespace onart{

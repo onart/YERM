@@ -16,6 +16,7 @@
 #define STB_VORBIS_HEADER_ONLY
 #include "../externals/single_header/stb_vorbis.c"
 #include "../externals/boost/predef/platform.h"
+#include "../externals/single_header/miniaudio.h"
 #include "logger.hpp"
 #include "yr_simd.hpp"
 #include "yr_pool.hpp"

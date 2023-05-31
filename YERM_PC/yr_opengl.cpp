@@ -85,6 +85,8 @@ namespace onart {
             glEnable(GL_DEBUG_OUTPUT);
             glDebugMessageCallback(glOnError,0);
         }
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         singleton = this;
         UniformBuffer* push = createUniformBuffer(1, 128, 0, INT32_MIN + 1, 11);
         if (!push) {
@@ -121,8 +123,8 @@ namespace onart {
     }
 
     GLMachine::RenderPass2Screen* GLMachine::getRenderPass2Screen(int32_t name){
-        auto it = singleton->renderPasses.find(name);
-        if(it != singleton->renderPasses.end()) return it->second;
+        auto it = singleton->finalPasses.find(name);
+        if(it != singleton->finalPasses.end()) return it->second;
         else return nullptr;
     }
 
@@ -167,11 +169,9 @@ namespace onart {
     void GLMachine::createSwapchain(uint32_t width, uint32_t height, Window* window) {
         surfaceWidth = width;
         surfaceHeight = height;
-        for (auto& renderPass: renderPasses) {
-            if (renderPass.second->targets[renderPass.second->stageCount - 1] == nullptr) { // renderpass 2 screen
-                renderPass.second->setViewport(width, height, 0, 0, true); // 이후 수정 필요: 기존과 동등한 비중
-                renderPass.second->setScissor(width, height, 0, 0, true); // 이후 수정 필요: 기존과 동등한 비중
-            }
+        for (auto& renderPass: finalPasses) {
+            renderPass.second->setViewport(width, height, 0, 0, true); // 이후 수정 필요: 기존과 동등한 비중
+            renderPass.second->setScissor(width, height, 0, 0, true); // 이후 수정 필요: 기존과 동등한 비중
         }
     }
 
@@ -207,8 +207,12 @@ namespace onart {
         pMesh m = getMesh(name);
         if(m) { return m; }
         struct publicmesh:public Mesh{publicmesh(unsigned _1, unsigned _2, size_t _3, size_t _4, bool _5):Mesh(_1,_2,_3,_4,_5){}};
-        if(name == INT32_MIN) return std::make_shared<publicmesh>(0,0,vcount,0,false);
-        return singleton->meshes[name] = std::make_shared<publicmesh>(0,0,vcount,0,false);
+        pMesh ret = std::make_shared<publicmesh>(0, 0, vcount, 0, false);
+        unsigned vao = 0;
+        glGenVertexArrays(1, &vao);
+        ret->vao = vao;
+        if(name == INT32_MIN) return ret;
+        return singleton->meshes[name] = ret;
     }
 
     GLMachine::pMesh GLMachine::createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, int32_t name, bool stage) {
@@ -271,7 +275,9 @@ namespace onart {
                 return nullptr;
             }
             glBindTexture(GL_TEXTURE_2D, color1);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color1, 0);
             if((int)type & 0b10){
                 glGenTextures(1, &color2);
@@ -284,6 +290,8 @@ namespace onart {
                 }
                 glBindTexture(GL_TEXTURE_2D, color2);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, color2, 0);
                 if((int)type & 0b100){
                     glGenTextures(1, &color3);
@@ -297,6 +305,8 @@ namespace onart {
                     }
                     glBindTexture(GL_TEXTURE_2D, color3);
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
                     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, color3, 0);
                 }
             }
@@ -318,6 +328,8 @@ namespace onart {
                 }
                 glBindTexture(GL_TEXTURE_2D, ds);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, width, height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, nullptr);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, ds, 0);
             }
             else {
@@ -335,6 +347,19 @@ namespace onart {
                 glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
                 glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, ds);
             }
+        }
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            LOGWITH("Framebuffer incomplete");
+            if(color1) glDeleteTextures(1, &color1);
+            if (color2) glDeleteTextures(1, &color2);
+            if (color3) glDeleteTextures(1, &color3);
+            if (ds) {
+                if (useDepthInput) { glDeleteTextures(1, &ds); }
+                else { glDeleteRenderbuffers(1, &ds); }
+            }
+            glDeleteFramebuffers(1, &fb);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            return nullptr;
         }
         glBindTexture(GL_TEXTURE_2D, 0);
         glBindRenderbuffer(GL_RENDERBUFFER, 0);
@@ -605,7 +630,7 @@ namespace onart {
                     int32_t k2result = ap->k2result;
                     delete ap;
                     if (k2result != KTX_SUCCESS) {
-                        size_t p = key | (size_t)(k2result << 32);
+                        size_t p = key | ((size_t)k2result << 32);
                         handler((void*)p);
                     }
                     else {
@@ -674,7 +699,7 @@ namespace onart {
                 int32_t k2result = ap->k2result;
                 delete ap;
                 if (k2result != KTX_SUCCESS) {
-                    size_t p = key | (size_t)(k2result << 32);
+                    size_t p = key | ((size_t)k2result << 32);
                     handler((void*)p);
                 }
                 else {
@@ -741,7 +766,7 @@ namespace onart {
                     int32_t k2result = ap->k2result;
                     delete ap;
                     if (k2result != KTX_SUCCESS) {
-                        size_t p = key | (size_t)(k2result << 32);
+                        size_t p = key | ((size_t)k2result << 32);
                         handler((void*)p);
                     }
                     else {
@@ -801,7 +826,7 @@ namespace onart {
                 int32_t k2result = ap->k2result;
                 delete ap;
                 if (k2result != KTX_SUCCESS) {
-                    size_t p = key | (size_t)(k2result << 32);
+                    size_t p = key | ((size_t)k2result << 32);
                     handler((void*)p);
                 }
                 else {
@@ -998,7 +1023,7 @@ namespace onart {
         ret->setViewport(singleton->surfaceWidth, singleton->surfaceHeight, 0.0f, 0.0f);
         ret->setScissor(singleton->surfaceWidth, singleton->surfaceHeight, 0, 0);
         if (name == INT32_MIN) return ret;
-        return singleton->renderPasses[name] = ret;
+        return singleton->finalPasses[name] = ret;
     }
 
     GLMachine::RenderPass* GLMachine::createRenderPass(RenderTarget** targets, uint32_t subpassCount, int32_t name){
@@ -1177,7 +1202,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        glActiveTexture(GL_TEXTURE0 + tx->binding);
+        glActiveTexture(GL_TEXTURE0 + pos);
         glBindTexture(GL_TEXTURE_2D, tx->txo);
     }
 
@@ -1208,7 +1233,7 @@ namespace onart {
             LOGWITH("Invalid render target index");
             return;
         }
-        glActiveTexture(GL_TEXTURE0);
+        glActiveTexture(GL_TEXTURE0 + pos);
         glBindTexture(GL_TEXTURE_2D, dset);
     }
 
@@ -1321,10 +1346,22 @@ namespace onart {
 
         if (targets[currentPass]) {
             glBindFramebuffer(GL_FRAMEBUFFER, targets[currentPass]->framebuffer);
+            if (targets[currentPass]->depthStencil) glEnable(GL_DEPTH_TEST);
+            else glDisable(GL_DEPTH_TEST);
         }
         else {
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glEnable(GL_DEPTH_TEST);
         }
+
+        if (currentPass > 0) {
+            RenderTarget* prev = targets[currentPass - 1];
+            if (prev->color1) bind(0, prev, 0);
+            if (prev->color2) bind(1, prev, 1);
+            if (prev->color3) bind(2, prev, 2);
+            if (prev->depthStencil) bind(3, prev, 3);
+        }
+
         glUseProgram(pipelines[currentPass]);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glViewport(viewport.x, viewport.y, viewport.width, viewport.height);
@@ -1358,7 +1395,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        glActiveTexture(GL_TEXTURE0 + tx->binding);
+        glActiveTexture(GL_TEXTURE0 + pos);
         glBindTexture(GL_TEXTURE_2D, tx->txo);
     }
 
@@ -1389,7 +1426,7 @@ namespace onart {
             LOGWITH("Invalid render target index");
             return;
         }
-        glActiveTexture(GL_TEXTURE0);
+        glActiveTexture(GL_TEXTURE0 + pos);
         glBindTexture(GL_TEXTURE_2D, dset);
     }
     
@@ -1661,7 +1698,7 @@ namespace onart {
         glGenVertexArrays(1, &vao);
         glBindVertexArray(vao);
         glBindBuffer(GL_ARRAY_BUFFER, vb);
-		if(ib) glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib);
         return vao;
     }
 

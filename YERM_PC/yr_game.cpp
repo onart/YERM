@@ -181,34 +181,28 @@ namespace onart{
                 ivec2 scr(x, y);
                 float aspect = 1.0f;// (float)x / y;
                 float pushed = PI<float> / 2;// std::abs(std::sin((double)_tp * 0.000000001));
-                mat4 rot = YRGraphics::preTransform() * mat4(1, 0, 0, 0, 0, aspect, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);// *mat4::rotate(0, 0, (double)_tp * 0.000000001);
-                /*
+                mat4 rot = YRGraphics::preTransform() * mat4(1, 0, 0, 0, 0, aspect, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) * mat4::rotate(0, 0, (double)_tp * 0.000000001);
+                
                 if (vk->swapchain.handle) {
                     off->start();
                     if (loaded) {
                         off->push(&rot, 0, 64);
-                        off->push(&pushed, 64, 68);
+                        off->push(&thr, 64, 68);
                         off->bind(0, tx);
                         off->invoke(vb);
                     }
                     off->start();
-                    off->invoke(YRGraphics::getMesh(1));
+                    off->invoke(vb);
                     off->execute();
                     rp2s->start();
-                    rp2s->push(&scr, 0, 8);
-                    rp2s->push(&thr, 8, 12);
+                    rp2s->push(&rot, 0, 64);
+                    rp2s->push(&thr, 64, 68);
                     rp2s->bind(0, YRGraphics::getRenderTarget(1), 0);
-                    rp2s->invoke(YRGraphics::getMesh(1));
+                    rp2s->invoke(vb);
                     rp2s->execute(off);
                     if constexpr (YRGraphics::OPENGL_GRAPHICS) {
                         glfwSwapBuffers((GLFWwindow*)window->window);
                     }
-                }*/
-                rp2s->start();
-                rp2s->invoke(vb);
-                rp2s->execute();
-                if constexpr (YRGraphics::OPENGL_GRAPHICS) {
-                    glfwSwapBuffers((GLFWwindow*)window->window);
                 }
             }
 #if !YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
@@ -334,10 +328,8 @@ layout(std140, binding=11) uniform ui{
     float t;
 };
 
-const vec2 pos[3] = {vec2(-1, -1), vec2(-1, 3), vec2(3, -1)};
-
 void main() {
-    gl_Position = vec4(pos[gl_VertexID % 3], 0.0f, 1.0f);
+    gl_Position = aspect * vec4(inPosition, 1.0);
     tc = inTc;
 }
 )";
@@ -348,7 +340,7 @@ void main() {
 layout(location = 0) in vec2 tc;
 
 out vec4 outColor;
-uniform sampler2D tex;
+layout(binding = 0) uniform sampler2D tex;
 
 layout(std140, binding=11) uniform ui{
     mat4 aspect;
@@ -356,9 +348,7 @@ layout(std140, binding=11) uniform ui{
 };
 
 void main() {
-    //outColor = texture(tex, tc);
-    //outColor.a *= t;
-outColor = vec4(1.0, 0.0, 1.0, 1.0);
+    outColor = texture(tex, tc);
 }
 )";
         if constexpr (YRGraphics::OPENGL_GRAPHICS) {
@@ -369,8 +359,7 @@ outColor = vec4(1.0, 0.0, 1.0, 1.0);
             offrp->usePipeline(pp, 1);
             rp2s->usePipeline(pp, 0);
             //YRGraphics::asyncCreateTexture(TEX0, sizeof(TEX0), 4, [](void*) { loaded = true; }, 0, YRGraphics::isSurfaceSRGB(), true, false);
-            YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB());
-            loaded = true;
+            YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB()); loaded = true;
             YRGraphics::createNullMesh(3, 1);
             YRGraphics::createMesh(verts, sizeof(testv_t), 4, inds, 2, 6, 0)->setVAO<vec3, vec2>();
         }
