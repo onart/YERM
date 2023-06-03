@@ -34,15 +34,58 @@ namespace onart {
 
     static void GLAPIENTRY glOnError(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam);
 
+    static int format;
+
+    static void GLAPIENTRY textureChecker(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
+        if (id == 131202) { format--; } // TODO: 같은 카드인데 vk에서 되는게 여기서 안되는 이유 (드라이버 때문일 수 있음)
+    }
+
     /// @brief 주어진 기반 형식과 아귀가 맞는, 현재 장치에서 사용 가능한 압축 형식을 리턴합니다.
     static int textureFormatFallback(uint32_t nChannels, bool srgb, bool hq);
     /// @brief OpenGL 에러 코드를 스트링으로 표현합니다. 리턴되는 문자열은 텍스트(코드) 영역에 존재합니다.
     inline static const char* resultAsString(unsigned);
 
-    /// @brief 활성화할 장치 확장
+    static std::unordered_set<int> availableTextureFormats;
+    
+    static void checkTextureAvailable() {
+        glEnable(GL_DEBUG_OUTPUT);
+        glDebugMessageCallback(textureChecker, 0);
+        ktxTextureCreateInfo info{};
+        info.baseDepth = 1;
+        info.baseWidth = 4;
+        info.baseHeight = 4;
+        info.numFaces = 1;
+        info.numLayers = 1;
+        info.numLevels = 1;
+        info.numDimensions = 2;
+        int count;
+        glGetIntegerv(GL_NUM_COMPRESSED_TEXTURE_FORMATS, &count);
+        std::vector<int> availableFormat(count);
+        glGetIntegerv(GL_COMPRESSED_TEXTURE_FORMATS, availableFormat.data());
+        unsigned tex, target, err;
+        glCreateTextures(GL_TEXTURE_2D, 1, &tex);
+        ktx_uint8_t arr[128]{};
+        ktxTexture1* texture{};
+        for (int fmt : availableFormat) {
+            info.glInternalformat = fmt;
+            format = fmt;
+            ktxTexture1_Create(&info, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture);
+            ktxTexture_GLUpload(ktxTexture(texture), &tex, &target, &err);
+            ktxTexture_Destroy(ktxTexture(texture));
+            if (format == fmt) { 
+                availableTextureFormats.insert(fmt);
+            }
+        }
+        glDeleteTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glDisable(GL_DEBUG_OUTPUT);
+    }
+
+    /// @brief 반드시 활성화할 장치 확장
     constexpr const char* GL_DESIRED_ARB[] = {
         "GL_ARB_vertex_buffer_object",
         "GL_ARB_vertex_array_object",
+        "GL_ARB_framebuffer_object",
         "GL_ARB_vertex_shader",
         "GL_ARB_fragment_shader",
         "GL_ARB_shader_objects",
@@ -76,6 +119,7 @@ namespace onart {
                 return;
             }
         }
+        checkTextureAvailable();
 
         int x, y;
         window->getFramebufferSize(&x, &y);
@@ -1601,12 +1645,14 @@ namespace onart {
     // static함수들 구현
 
     int textureFormatFallback(uint32_t nChannels, bool srgb, bool hq) {
+        /*
         int count;
         glGetIntegerv(GL_NUM_COMPRESSED_TEXTURE_FORMATS, &count);
         std::vector<int> availableFormat(count);
         glGetIntegerv(GL_COMPRESSED_TEXTURE_FORMATS, availableFormat.data());
         std::unordered_set<int> formatSet(availableFormat.begin(), availableFormat.end());
-    #define CHECK_N_RETURN(f) if(formatSet.find(f) != formatSet.end()) return f
+        */
+    #define CHECK_N_RETURN(f) if(availableTextureFormats.find(f) != availableTextureFormats.end()) return f
         switch (nChannels)
         {
         case 4:
@@ -1689,7 +1735,7 @@ namespace onart {
             sev = "Warning";
             break;
         }
-        LOGWITH(sev,id,':',message,'(',severity,')');
+        LOGWITH(sev, id, ':', message);
         GLMachine::reason = id;
     }
 
