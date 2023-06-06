@@ -229,6 +229,7 @@ namespace onart {
         for(auto& sh: shaders) { glDeleteShader(sh.second); }
         for(auto& pp: pipelines) { glDeleteProgram(pp.second); }
 
+        streamTextures.clear();
         textures.clear();
         meshes.clear();
         pipelines.clear();
@@ -516,6 +517,38 @@ namespace onart {
         struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
         if (key == INT32_MIN) return std::make_shared<txtr>(tex, 0, width, height);
         return textures[key] = std::make_shared<txtr>(tex, 0, width, height);
+    }
+
+    GLMachine::pStreamTexture GLMachine::createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler) {
+        
+        if ((width | height) == 0) return {};
+        unsigned tex{};
+        glCreateTextures(GL_TEXTURE_2D, 1, &tex);
+        if (tex == 0) {
+            LOGWITH("Failed to create texture");
+            return {};
+        }
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
+        
+
+        struct txtr :public StreamTexture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :StreamTexture(_1, _2, _3, _4) {} };
+        if (key == INT32_MIN) return std::make_shared<txtr>(tex, 0, width, height);
+        return singleton->streamTextures[key] = std::make_shared<txtr>(tex, 0, width, height);
+    }
+
+    GLMachine::StreamTexture::StreamTexture(uint32_t txo, uint32_t binding, uint16_t width, uint16_t height) :width(width), height(height), txo(txo), binding(binding) {
+        
+    }
+
+    GLMachine::StreamTexture::~StreamTexture() {
+        glDeleteTextures(1, &txo);
+    }
+
+    void GLMachine::StreamTexture::update(void* src) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, src);
     }
 
     static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, GLMachine::ImageTextureFormatOptions& option){
@@ -919,6 +952,26 @@ namespace onart {
 
     void GLMachine::Texture::drop(int32_t name){
         singleton->textures.erase(name);
+    }
+
+    void GLMachine::StreamTexture::collect(bool removeUsing) {
+        if (removeUsing) {
+            singleton->streamTextures.clear();
+        }
+        else {
+            for (auto it = singleton->streamTextures.cbegin(); it != singleton->streamTextures.cend();) {
+                if (it->second.use_count() == 1) {
+                    singleton->streamTextures.erase(it++);
+                }
+                else {
+                    ++it;
+                }
+            }
+        }
+    }
+
+    void GLMachine::StreamTexture::drop(int32_t name) {
+        singleton->streamTextures.erase(name);
     }
 
     GLMachine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, unsigned c1, unsigned c2, unsigned c3, unsigned ds, bool depthAsTexture, unsigned framebuffer)

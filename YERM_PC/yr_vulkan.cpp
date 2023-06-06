@@ -230,6 +230,12 @@ namespace onart {
         }
     }
 
+    VkMachine::pStreamTexture VkMachine::getStreamTexture(int32_t name) {
+        auto it = singleton->streamTextures.find(name);
+        if (it != singleton->streamTextures.end()) return it->second;
+        else return {};
+    }
+
     void VkMachine::allocateCommandBuffers(int count, bool isPrimary, bool fromGraphics, VkCommandBuffer* buffers){
         VkCommandBufferAllocateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -396,6 +402,7 @@ namespace onart {
         for(auto& pp: pipelines) { vkDestroyPipeline(device, pp.second, nullptr); }
         for(auto& pp: pipelineLayouts) { vkDestroyPipelineLayout(device, pp.second, nullptr); }
 
+        streamTextures.clear();
         textures.clear();
         meshes.clear();
         pipelines.clear();
@@ -523,6 +530,13 @@ namespace onart {
         VkBufferCreateInfo vbInfo{};
         vbInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         vbInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        const auto& physicalDevice = singleton->physicalDevice;
+        uint32_t qfi[2] = { physicalDevice.gq, physicalDevice.subq };
+        if (physicalDevice.gq != physicalDevice.subq) {
+            vbInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
+            vbInfo.pQueueFamilyIndices = qfi;
+            vbInfo.queueFamilyIndexCount = 2;
+        }
         vbInfo.size = VBSIZE + IBSIZE;
         
         VmaAllocationCreateInfo vbaInfo{};
@@ -926,6 +940,12 @@ namespace onart {
         imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
         imgInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        uint32_t qfi[2] = { physicalDevice.gq, physicalDevice.subq };
+        if (physicalDevice.gq != physicalDevice.subq) {
+            imgInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
+            imgInfo.queueFamilyIndexCount = 2;
+            imgInfo.pQueueFamilyIndices = qfi;
+        }
         imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         imgInfo.extent = {texture->baseWidth, texture->baseHeight, 1};
         imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -1062,6 +1082,213 @@ namespace onart {
             return textures[key] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
         }
         return textures[key] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
+    }
+
+    VkMachine::pStreamTexture VkMachine::createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler) {
+        if (pStreamTexture ret = getStreamTexture(key)) return ret;
+        if ((width | height) == 0) return {};
+        VkImageCreateInfo imgInfo{};
+        imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imgInfo.imageType = VK_IMAGE_TYPE_2D;
+        imgInfo.format = VK_FORMAT_B8G8R8A8_UNORM;
+        imgInfo.mipLevels = 1;
+        imgInfo.arrayLayers = 1;
+        imgInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imgInfo.tiling = VK_IMAGE_TILING_LINEAR;
+        imgInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imgInfo.extent = { width, height, 1 };
+        imgInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        imgInfo.flags = 0;
+        const auto& physicalDevice = singleton->physicalDevice;
+        uint32_t qfi[2] = { physicalDevice.gq, physicalDevice.subq };
+        if (physicalDevice.gq == physicalDevice.subq) {
+            imgInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
+            imgInfo.pQueueFamilyIndices = qfi;
+            imgInfo.queueFamilyIndexCount = 2;
+        }
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+        //allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+        //allocInfo.requiredFlags = VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+        VkImage img;
+        VmaAllocation alloc;
+        VkResult result = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &img, &alloc, nullptr);
+        if (result != VK_SUCCESS) {
+            LOGWITH("Failed to create vkimage", resultAsString(result));
+            LOGWITH(width, height, key);
+            return nullptr;
+        }
+
+        VkCommandBuffer copyCmd;
+        singleton->allocateCommandBuffers(1, true, false, &copyCmd);
+
+        VkImageMemoryBarrier imgBarrier{};
+        imgBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        imgBarrier.image = img;
+        imgBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imgBarrier.subresourceRange.baseMipLevel = 0;
+        imgBarrier.subresourceRange.levelCount = 1;
+        imgBarrier.subresourceRange.layerCount = 1;
+        imgBarrier.srcAccessMask = 0;
+        imgBarrier.dstAccessMask = 0;// VK_ACCESS_SHADER_READ_BIT;
+        imgBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imgBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+        if ((reason = vkBeginCommandBuffer(copyCmd, &beginInfo)) != VK_SUCCESS) {
+            LOGWITH("Failed to begin command buffer:", reason, resultAsString(reason));
+            vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copyCmd);
+            vmaDestroyImage(singleton->allocator, img, alloc);
+            return nullptr;
+        }
+        vkCmdPipelineBarrier(copyCmd, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 0, nullptr, 1, &imgBarrier);
+        if ((reason = vkEndCommandBuffer(copyCmd)) != VK_SUCCESS) {
+            LOGWITH("Failed to end command buffer:", reason, resultAsString(reason));
+            vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copyCmd);
+            vmaDestroyImage(singleton->allocator, img, alloc);
+            return nullptr;
+        }
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &copyCmd;
+        VkFence fence = singleton->createFence();
+        if (fence == VK_NULL_HANDLE) {
+            LOGHERE;
+            vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copyCmd);
+            vmaDestroyImage(singleton->allocator, img, alloc);
+            return nullptr;
+        }
+        if ((reason = singleton->qSubmit(false, 1, &submitInfo, fence)) != VK_SUCCESS) {
+            LOGWITH("Failed to submit copy command:", reason, resultAsString(reason));
+            vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copyCmd);
+            vmaDestroyImage(singleton->allocator, img, alloc);
+            vkDestroyFence(singleton->device, fence, nullptr);
+            return nullptr;
+        }
+        VkImageView newView;
+
+        VkImageViewCreateInfo viewInfo{};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image = img;
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format = VK_FORMAT_B8G8R8A8_UNORM;
+        viewInfo.subresourceRange = imgBarrier.subresourceRange;
+
+        reason = vkCreateImageView(singleton->device, &viewInfo, nullptr, &newView);
+
+        vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, UINT64_MAX);
+        vkDestroyFence(singleton->device, fence, nullptr);
+        vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copyCmd);
+
+        if (reason != VK_SUCCESS) {
+            LOGWITH("Failed to create image view:", reason, resultAsString(reason));
+            vmaDestroyImage(singleton->allocator, img, alloc);
+            return nullptr;
+        }
+
+        VkDescriptorSet newSet;
+        singleton->allocateDescriptorSets(&singleton->textureLayout[0], 1, &newSet); // TODO: 여기 바인딩 번호 선택권
+        if (!newSet) {
+            LOGHERE;
+            vkDestroyImageView(singleton->device, newView, nullptr);
+            vmaDestroyImage(singleton->allocator, img, alloc);
+            return nullptr;
+        }
+
+        VkDescriptorImageInfo dsImageInfo{};
+        dsImageInfo.imageView = newView;
+        dsImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        if (linearSampler) {
+            dsImageInfo.sampler = singleton->textureSampler[0];
+        }
+        else {
+            dsImageInfo.sampler = singleton->nearestSampler;
+        }
+
+        VkWriteDescriptorSet descriptorWrite{};
+        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrite.dstSet = newSet;
+        descriptorWrite.dstBinding = 0; // TODO: 위의 것과 함께 선택권
+        descriptorWrite.dstArrayElement = 0;
+        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptorWrite.descriptorCount = 1;
+        descriptorWrite.pImageInfo = &dsImageInfo;
+        vkUpdateDescriptorSets(singleton->device, 1, &descriptorWrite, 0, nullptr);
+
+        struct txtr :public StreamTexture { inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint32_t _5, uint16_t _6, uint16_t _7) :StreamTexture(_1, _2, _3, _4, _5, _6, _7) {} };
+        if (key == INT32_MIN) return std::make_shared<txtr>(img, newView, alloc, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
+        if (singleton->loadThread.waiting()) {
+            std::unique_lock<std::mutex> _(singleton->textureGuard);
+            return singleton->streamTextures[key] = std::make_shared<txtr>(img, newView, alloc, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
+        }
+        return singleton->streamTextures[key] = std::make_shared<txtr>(img, newView, alloc, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
+    }
+
+    VkMachine::StreamTexture::StreamTexture(VkImage img, VkImageView view, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding, uint16_t width, uint16_t height) :img(img), view(view), alloc(alloc), dset(dset), binding(binding), width(width), height(height) {
+        VmaAllocationCreateInfo ainfo{};
+        ainfo.usage = VMA_MEMORY_USAGE_AUTO;
+        ainfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+        VkBufferCreateInfo bufInfo{};
+        bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bufInfo.size = (VkDeviceSize)width * height * 4;
+        bufInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        vmaCreateBuffer(VkMachine::getAllocator(), &bufInfo, &ainfo, &buf, &allocb, nullptr);
+        vmaMapMemory(VkMachine::getAllocator(), allocb, &mmap);
+        fence = singleton->createFence(true);
+        singleton->allocateCommandBuffers(1, true, false, &cb);
+    }
+
+    VkMachine::StreamTexture::~StreamTexture() {
+        vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, UINT64_MAX);
+        vkDestroyFence(singleton->device, fence, nullptr);
+        vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
+        vmaUnmapMemory(singleton->allocator, allocb);
+        vkDestroyImageView(singleton->device, view, nullptr);
+        vmaDestroyImage(singleton->allocator, img, alloc);
+        vmaDestroyBuffer(singleton->allocator, buf, allocb);
+        vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &cb);
+    }
+
+    void VkMachine::StreamTexture::update(void* src) {
+        memcpy(mmap, src, (size_t)width * height * 4);
+        vmaInvalidateAllocation(singleton->allocator, alloc, 0, VK_WHOLE_SIZE);
+        vmaFlushAllocation(singleton->allocator, alloc, 0, VK_WHOLE_SIZE);
+        VkCommandBuffer cb;
+        VkMachine::singleton->allocateCommandBuffers(1, true, false, &cb);
+        VkBufferImageCopy region{};
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.mipLevel = 0;
+        region.imageSubresource.baseArrayLayer = 0;
+        region.imageSubresource.layerCount = 1;
+        region.imageExtent.width = width;
+        region.imageExtent.height = height;
+        region.imageExtent.depth = 1;
+        region.bufferOffset = 0;
+        region.bufferImageHeight = 0;
+
+        vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, UINT64_MAX);
+        vkResetFences(singleton->device, 1, &fence);
+        vkResetCommandBuffer(cb, 0);
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        vkBeginCommandBuffer(cb, &beginInfo);
+        vkCmdCopyBufferToImage(cb, buf, img, VK_IMAGE_LAYOUT_GENERAL, 1, &region);
+        vkEndCommandBuffer(cb);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cb;
+        VkMachine::singleton->qSubmit(false, 1, &submitInfo, fence);
+    }
+
+    VkDescriptorSetLayout VkMachine::StreamTexture::getLayout() {
+        return singleton->textureLayout[binding];
     }
 
     static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, VkMachine::ImageTextureFormatOptions& option){
@@ -1298,6 +1525,10 @@ namespace onart {
 
     void VkMachine::Texture::drop(int32_t name){
         singleton->textures.erase(name);
+    }
+
+    void VkMachine::StreamTexture::drop(int32_t key) {
+        VkMachine::singleton->streamTextures.erase(key);
     }
 
     VkMachine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil, bool sampled, bool mmap, VkDescriptorSet* dsets)
@@ -2311,6 +2542,14 @@ namespace onart {
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
     }
 
+    void VkMachine::RenderPass::bind(uint32_t pos, const pStreamTexture& tx) {
+        if (currentPass == -1) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
+    }
+
     void VkMachine::RenderPass::bind(uint32_t pos, RenderTarget* target, uint32_t index){
         if(currentPass == -1){
             LOGWITH("Invalid call: render pass not begun");
@@ -2583,6 +2822,14 @@ namespace onart {
         vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
     }
 
+    void VkMachine::RenderPass2Cube::bind(uint32_t pos, const pStreamTexture& tx) {
+        if (!recording) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
+    }
+
     void VkMachine::RenderPass2Cube::bind(uint32_t pos, RenderTarget* target, uint32_t index){
         if(!recording){
             LOGWITH("Invalid call: render pass not begun");
@@ -2616,7 +2863,7 @@ namespace onart {
         }
         vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &dset, 0, nullptr);
     }
-    
+  
     void VkMachine::RenderPass2Cube::usePipeline(VkPipeline pipeline, VkPipelineLayout layout){
         this->pipeline = pipeline;
         this->pipelineLayout = layout;
@@ -2972,6 +3219,14 @@ namespace onart {
 
     void VkMachine::RenderPass2Screen::bind(uint32_t pos, const pTexture& tx) {
         if(currentPass == -1){
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
+    }
+
+    void VkMachine::RenderPass2Screen::bind(uint32_t pos, const pStreamTexture& tx) {
+        if (currentPass == -1) {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }

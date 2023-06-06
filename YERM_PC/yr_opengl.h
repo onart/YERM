@@ -68,10 +68,13 @@ namespace onart {
             class RenderPass2Cube;
             /// @brief 직접 불러오는 텍스처입니다.
             class Texture;
+            using pTexture = std::shared_ptr<Texture>;
+            /// @brief 메모리 맵으로 고정된 텍스처입니다. 실시간으로 CPU단에서 데이터를 수정할 수 있습니다. 동영상이나 다른 창의 화면 등을 텍스처로 사용할 때 적합합니다.
+            class StreamTexture;
+            using pStreamTexture = std::shared_ptr<StreamTexture>;
             /// @brief 속성을 직접 정의하는 정점 객체입니다.
             template<class, class...>
             struct Vertex;
-            using pTexture = std::shared_ptr<Texture>;
             /// @brief 정점 버퍼와 인덱스 버퍼를 합친 것입니다. 사양은 템플릿 생성자를 통해 정할 수 있습니다.
             class Mesh;
             using pMesh = std::shared_ptr<Mesh>;
@@ -163,6 +166,8 @@ namespace onart {
             static pTexture createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb = true, bool hq = true, bool linearSampler = true);
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
             static void asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(void*)> handler, int32_t key, bool srgb = true, bool hq = true, bool linearSampler = true);
+            /// @brief 빈 텍스처를 만듭니다. 메모리 맵으로 데이터를 올릴 수 있습니다. 올리는 데이터의 기본 형태는 BGRA 순서이며, 필요한 경우 셰이더에서 직접 스위즐링하여 사용합니다.
+            static pStreamTexture createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler = true);
             /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다. 이것을 해제하는 수단은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
             /// @param width 가로 길이(px).
             /// @param height 세로 길이(px).
@@ -283,6 +288,7 @@ namespace onart {
             std::map<int32_t, unsigned> pipelines;
             std::map<int32_t, pMesh> meshes;
             std::map<int32_t, pTexture> textures;
+            std::map<int32_t, pStreamTexture> streamTextures;
 
             std::mutex textureGuard;
             uint32_t surfaceWidth, surfaceHeight;
@@ -347,6 +353,10 @@ namespace onart {
             /// @param target 바인드할 타겟
             /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
             void bind(uint32_t pos, RenderTarget* target, uint32_t index);
+            /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+            /// @param pos 바인드할 set 번호
+            /// @param tx 바인드할 텍스처
+            void bind(uint32_t pos, const pStreamTexture& tx);
             /// @brief 주어진 파이프라인을 사용하게 합니다.
             /// @param pipeline 파이프라인
             /// @param subpass 서브패스 번호
@@ -419,6 +429,10 @@ namespace onart {
             /// @param target 바인드할 타겟
             /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
             void bind(uint32_t pos, RenderTarget* target, uint32_t index);
+            /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+            /// @param pos 바인드할 set 번호
+            /// @param tx 바인드할 텍스처
+            void bind(uint32_t pos, const pStreamTexture& tx);
             /// @brief 주어진 파이프라인을 사용합니다. 지오메트리 셰이더를 사용하도록 만들어진 패스인지 아닌지를 잘 보고 바인드해 주세요.
             void usePipeline(unsigned pipeline);
             /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
@@ -482,6 +496,26 @@ namespace onart {
         protected:
             Texture(uint32_t txo, uint32_t binding, uint16_t width, uint16_t height);
             ~Texture();
+        private:
+            unsigned txo;
+            uint32_t binding;
+    };
+
+    class GLMachine::StreamTexture {
+        friend class GLMachine;
+        friend class RenderPass;
+        public:
+            /// @brief 사용하지 않는 텍스처 데이터를 정리합니다.
+            /// @param removeUsing 사용하는 텍스처 데이터도 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getTexture로 찾을 수 없습니다.)
+            static void collect(bool removeUsing = false);
+            /// @brief 주어진 이름의 텍스처 데이터를 내립니다. 사용하고 있는 텍스처 데이터는 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getTexture로 찾을 수 없습니다.)
+            static void drop(int32_t name);
+            /// @brief 이미지 데이터를 다시 설정합니다.
+            void update(void* img);
+            const uint16_t width, height;
+        protected:
+            StreamTexture(uint32_t txo, uint32_t binding, uint16_t width, uint16_t height);
+            ~StreamTexture();
         private:
             unsigned txo;
             uint32_t binding;

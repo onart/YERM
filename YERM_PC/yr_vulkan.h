@@ -72,10 +72,13 @@ namespace onart {
             class RenderPass2Cube;
             /// @brief 직접 불러오는 텍스처입니다.
             class Texture;
+            using pTexture = std::shared_ptr<Texture>;
+            /// @brief 메모리 맵으로 고정된 텍스처입니다. 실시간으로 CPU단에서 데이터를 수정할 수 있습니다. 동영상이나 다른 창의 화면 등을 텍스처로 사용할 때 적합합니다.
+            class StreamTexture;
+            using pStreamTexture = std::shared_ptr<StreamTexture>;
             /// @brief 속성을 직접 정의하는 정점 객체입니다.
             template<class, class...>
             struct Vertex;
-            using pTexture = std::shared_ptr<Texture>;
             /// @brief 정점 버퍼와 인덱스 버퍼를 합친 것입니다. 사양은 템플릿 생성자를 통해 정할 수 있습니다.
             class Mesh;
             using pMesh = std::shared_ptr<Mesh>;
@@ -157,6 +160,8 @@ namespace onart {
             /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
             /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
             static pTexture createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb = true, bool hq = true, bool linearSampler = true, uint32_t binding = 0);
+            /// @brief 빈 텍스처를 만듭니다. 메모리 맵으로 데이터를 올릴 수 있습니다. 올리는 데이터의 기본 형태는 BGRA 순서이며, 필요한 경우 셰이더에서 직접 스위즐링하여 사용합니다.
+            static pStreamTexture createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler = true);
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
             static void asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(void*)> handler, int32_t key, bool srgb = true, bool hq = true, bool linearSampler = true, uint32_t binding = 0);
             /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다. 이것을 해제하는 수단은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
@@ -277,6 +282,8 @@ namespace onart {
             static VkShaderModule getShader(int32_t key);
             /// @brief 올려 둔 텍스처 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pTexture getTexture(int32_t key, bool lock = false);
+            /// @brief 만들어 둔 텍스처 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
+            static pStreamTexture getStreamTexture(int32_t key);
             /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pMesh getMesh(int32_t key);
             /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
@@ -382,6 +389,7 @@ namespace onart {
             std::map<int32_t, VkPipeline> pipelines;
             std::map<int32_t, pMesh> meshes;
             std::map<int32_t, pTexture> textures;
+            std::map<int32_t, pStreamTexture> streamTextures;
 
             std::mutex textureGuard;
             std::mutex qGuard; // gq와 tq에 동시 제출을 시도하는데 gq == tq일 때는 동기화가 필요함
@@ -458,6 +466,10 @@ namespace onart {
             /// @param target 바인드할 타겟
             /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
             void bind(uint32_t pos, RenderTarget* target, uint32_t index);
+            /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+            /// @param pos 바인드할 set 번호
+            /// @param tx 바인드할 텍스처
+            void bind(uint32_t pos, const pStreamTexture& tx);
             /// @brief 주어진 파이프라인을 주어진 서브패스에 사용하게 합니다. 이 함수는 매번 호출할 필요는 없지만, 해당 서브패스 진행 중에 사용하면 그때부터 바로 새로 주어진 파이프라인을 사용합니다.
             /// @param pipeline 파이프라인
             /// @param layout 파이프라인 레이아웃
@@ -535,6 +547,10 @@ namespace onart {
             /// @param target 바인드할 타겟
             /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
             void bind(uint32_t pos, RenderTarget* target, uint32_t index);
+            /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+            /// @param pos 바인드할 set 번호
+            /// @param tx 바인드할 텍스처
+            void bind(uint32_t pos, const pStreamTexture& tx);
             /// @brief 주어진 파이프라인을 사용합니다. 지오메트리 셰이더를 사용하도록 만들어진 패스인지 아닌지를 잘 보고 바인드해 주세요.
             void usePipeline(VkPipeline pipeline, VkPipelineLayout layout);
             /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
@@ -622,6 +638,10 @@ namespace onart {
             /// @param target 바인드할 타겟
             /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
             void bind(uint32_t pos, RenderTarget* target, uint32_t index);
+            /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+            /// @param pos 바인드할 set 번호
+            /// @param tx 바인드할 텍스처
+            void bind(uint32_t pos, const pStreamTexture& tx);
             /// @brief 주어진 파이프라인을 주어진 서브패스에 사용하게 합니다. 이 함수는 매번 호출할 필요는 없지만, 해당 서브패스 진행 중에 사용하면 그때부터 바로 새로 주어진 파이프라인을 사용합니다.
             /// @param pipeline 파이프라인
             /// @param layout 파이프라인 레이아웃
@@ -705,6 +725,29 @@ namespace onart {
             VmaAllocation alloc;
             VkDescriptorSet dset;
             uint32_t binding;
+    };
+
+    class VkMachine::StreamTexture {
+        friend class VkMachine;
+        friend class RenderPass;
+        public:
+            const uint16_t width, height;
+            void update(void* img);
+            static void drop(int32_t key);
+        protected:
+            StreamTexture(VkImage img, VkImageView imgView, VmaAllocation alloc, VkDescriptorSet dst, uint32_t binding, uint16_t width, uint16_t height);
+            VkDescriptorSetLayout getLayout();
+            ~StreamTexture();
+        private:
+            VkBuffer buf;
+            VkImage img;
+            VkImageView view;
+            VkFence fence;
+            VmaAllocation alloc, allocb;
+            VkDescriptorSet dset;
+            uint32_t binding;
+            VkCommandBuffer cb;
+            void* mmap;
     };
 
     class VkMachine::Mesh{
