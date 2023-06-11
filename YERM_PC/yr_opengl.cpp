@@ -69,7 +69,9 @@ namespace onart {
         for (int fmt : availableFormat) {
             info.glInternalformat = fmt;
             format = fmt;
-            ktxTexture1_Create(&info, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture);
+            if(ktxTexture1_Create(&info, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture) != KTX_SUCCESS){
+                continue;
+            }
             ktxTexture_GLUpload(ktxTexture(texture), &tex, &target, &err);
             ktxTexture_Destroy(ktxTexture(texture));
             if (format == fmt) { 
