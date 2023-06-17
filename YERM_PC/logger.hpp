@@ -58,6 +58,12 @@ inline std::string toString(const T&... extra) {
         #define LOGHERE __android_log_print(ANDROID_LOG_DEBUG, "", "%s:%d %s\n", __FILE__, __LINE__, __func__)
         #define LOGWITH(...) __android_log_print(ANDROID_LOG_DEBUG, "", "%s", __getLogContent(__FILE__, __LINE__, __func__, __VA_ARGS__).c_str())
         #define LOGRAW(...) __android_log_print(ANDROID_LOG_DEBUG, "", "%s", toString(__VA_ARGS__).c_str())
+    #elif defined(YR_USE_WEBGPU)
+    #include "../externals/wasm_webgpu/miniprintf.h"
+
+        #define LOGHERE emscripten_mini_stdio_printf("%s:%d %s\n", __FILE__, __LINE__, __func__)
+        #define LOGWITH(...) emscripten_mini_stdio_printf("%s", __getLogContent(__FILE__, __LINE__, __func__, __VA_ARGS__).c_str())
+        #define LOGRAW(...) emscripten_mini_stdio_printf("%s", toString(__VA_ARGS__).c_str())
     #else
         #define LOGHERE __logPosition(__FILE__, __LINE__, __func__)
         #define LOGWITH(...) __logPosition(__FILE__, __LINE__, __func__, __VA_ARGS__)

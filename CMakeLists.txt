@@ -3,8 +3,79 @@ set (CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release;")
 
-if(ANDROID)
+if (ANDROID)
     message(STATUS "Build for Android platform is currently up to Android Studio. Please open YERM_android project with it.")
+elseif (EMSCRIPTEN)
+    macro(append_compiler_flags FLAGS)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${FLAGS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}")
+    endmacro()
+    
+    macro(append_compiler_flags_debug FLAGS)
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${FLAGS}")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${FLAGS}")
+    endmacro()
+
+    macro(append_linker_flags FLAGS)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS}")
+    endmacro()
+
+    macro(append_linker_flags_debug FLAGS)
+    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} ${FLAGS}")
+    endmacro()
+
+    macro(append_linker_flags_opts FLAGS)
+    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} ${FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS_MINSIZEREL "${CMAKE_EXE_LINKER_FLAGS_MINSIZEREL} ${FLAGS}")
+    endmacro()
+
+    macro(append_linker_flags_minsizerel FLAGS)
+    set(CMAKE_EXE_LINKER_FLAGS_MINSIZEREL "${CMAKE_EXE_LINKER_FLAGS_MINSIZEREL} ${FLAGS}")
+    endmacro()
+    
+    message(STATUS "Building for WebGPU..")
+    project("yerm")
+    add_compile_definitions(YR_USE_WEBGPU)
+    set(CMAKE_EXECUTABLE_SUFFIX ".html")
+    
+	append_compiler_flags("-Wall")
+	append_compiler_flags_debug("-g3")
+
+	append_linker_flags("-Wall")
+	append_linker_flags_debug("-g3")
+	append_linker_flags_debug("-sASSERTIONS=1 -jsDWEBGPU_DEBUG=1")
+
+	append_linker_flags("--js-library ${CMAKE_CURRENT_SOURCE_DIR}/externals/wasm_webgpu/lib_webgpu.js")
+    append_linker_flags("--js-library ${CMAKE_CURRENT_SOURCE_DIR}/externals/wasm_webgpu/lib_demo.js")
+    append_linker_flags("--js-library ${CMAKE_CURRENT_SOURCE_DIR}/externals/wasm_webgpu/library_miniprintf.js")
+    append_linker_flags("--shell-file \"${CMAKE_CURRENT_SOURCE_DIR}/externals/wasm_webgpu/shell.html\"")
+	append_linker_flags("-sMINIMAL_RUNTIME=2 -sTEXTDECODER=2 -sABORTING_MALLOC=0 -sSUPPORT_ERRNO=0")
+	append_linker_flags("-sENVIRONMENT=web -sMIN_FIREFOX_VERSION=87 -sMIN_SAFARI_VERSION=140000 -sMIN_EDGE_VERSION=90 -sMIN_CHROME_VERSION=90")
+	append_linker_flags("-sTOTAL_STACK=16KB -sINITIAL_MEMORY=128KB")
+	append_linker_flags("-sALLOW_MEMORY_GROWTH=1")
+	append_linker_flags("-sUSE_SDL=0 -sFILESYSTEM=0 -sAUTO_JS_LIBRARIES=0 -sDISABLE_EXCEPTION_THROWING=1")
+	append_linker_flags("-lmath.js -lhtml5.js -lint53.js")
+	append_linker_flags("--closure-args=--externs=externals/wasm_webgpu//webgpu-closure-externs.js")
+    
+	append_linker_flags("-sINITIAL_MEMORY=16MB -sMALLOC=emmalloc --memory-init-file 0")
+
+	append_linker_flags("-sMAXIMUM_MEMORY=4GB")
+
+	# Manual debugging:
+	#append_linker_flags("-g2 -sSINGLE_FILE=1")
+
+	append_linker_flags_opts("--closure 1")
+
+	append_linker_flags_minsizerel("-Oz")
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY externals/wasm_webgpu)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_library(webgpu STATIC externals/wasm_webgpu/lib_webgpu.cpp externals/wasm_webgpu/lib_webgpu_cpp11.cpp)
+
+    add_executable(yerm
+        YERM_webgpu/hello_triangle_minimal.c
+    )
+    target_include_directories(yerm PUBLIC externals)
+    target_link_libraries(yerm PUBLIC webgpu)
 else()
     message(STATUS "Build system: ${CMAKE_GENERATOR}")
     add_subdirectory(externals/glfw externals/)
