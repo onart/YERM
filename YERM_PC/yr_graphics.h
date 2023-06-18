@@ -38,6 +38,16 @@ namespace onart{
 #elif defined(YR_USE_METAL)
 #error "Metal not ready"
 //
+#elif defined(YR_USE_WEBGPU)
+#include "../YERM_webgpu/yr_webgpu.h"
+namespace onart{
+    using YRGraphics = WGMachine;
+    using pipelinelayout_t = VkPipelineLayout;
+    using pipeline_t = VkPipeline;
+    using shader_t = VkShaderModule;
+    using descriptorSet_t = VkDescriptorSet;
+    using descriptorSetLayout_t = VkDescriptorSetLayout;
+}
 #else
 #include "yr_vulkan.h"
 namespace onart{

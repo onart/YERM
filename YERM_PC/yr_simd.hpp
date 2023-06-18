@@ -14,6 +14,10 @@
 #ifndef __YR_SIMD_HPP__
 #define __YR_SIMD_HPP__
 
+#ifdef YR_USE_WEBGPU
+#define YR_NOSIMD // wasm용 simd 사용이 완전히 되기 전까지 봉인함.
+#endif
+
 #include "../externals/boost/predef/hardware.h"
 #include <cstring>
 #include <cstdint>

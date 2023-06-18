@@ -1,11 +1,12 @@
 cmake_minimum_required(VERSION 3.13)
-set (CMAKE_CXX_STANDARD 17)
 
-set(CMAKE_CONFIGURATION_TYPES "Debug;Release;")
+project("yerm")
 
 if (ANDROID)
     message(STATUS "Build for Android platform is currently up to Android Studio. Please open YERM_android project with it.")
 elseif (EMSCRIPTEN)
+    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CONFIGURATION_TYPES "Debug;Release;")
     macro(append_compiler_flags FLAGS)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${FLAGS}")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}")
@@ -34,7 +35,7 @@ elseif (EMSCRIPTEN)
     endmacro()
     
     message(STATUS "Building for WebGPU..")
-    project("yerm")
+
     add_compile_definitions(YR_USE_WEBGPU)
     set(CMAKE_EXECUTABLE_SUFFIX ".html")
     
@@ -77,9 +78,10 @@ elseif (EMSCRIPTEN)
     target_include_directories(yerm PUBLIC externals)
     target_link_libraries(yerm PUBLIC webgpu)
 else()
+    set (CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CONFIGURATION_TYPES "Debug;Release;")
     message(STATUS "Build system: ${CMAKE_GENERATOR}")
     add_subdirectory(externals/glfw externals/)
-    project("yerm")
 
     option(YERM_VULKAN "Use Vulkan as the graphics API. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" ON)
     option(YERM_OPENGL "Use OpenGL 4.0 as the graphics API. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" OFF)

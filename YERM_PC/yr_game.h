@@ -26,6 +26,8 @@ namespace onart{
 #define YRGraphics VkMachine
 #elif defined(YR_USE_OPENGL)
 #define YRGraphics GLMachine
+#elif defined(YR_USE_WEBGPU)
+#define YRGraphics WGMachine
 #endif
     class YRGraphics;
 
