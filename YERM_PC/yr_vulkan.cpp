@@ -22,7 +22,7 @@
 #if !BOOST_PLAT_ANDROID
 #define KHRONOS_STATIC
 #endif
-#include "../externals/ktx/ktx.h"
+#include "../externals/ktx/include/ktx.h"
 
 #include <algorithm>
 #include <vector>
