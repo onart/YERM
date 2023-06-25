@@ -26,6 +26,26 @@
 
 namespace onart{
 
+    union variant8 {
+        uint8_t bytedata1[8];
+        uint16_t bytedata2[4];
+        uint32_t bytedata4[2];
+#define TYPE_N_CAST(type, varname) type varname; inline variant8(type t):varname(t){} inline type& operator=(type t){return varname = t;}
+        TYPE_N_CAST(int8_t, i8)
+        TYPE_N_CAST(uint8_t, u8)
+        TYPE_N_CAST(int16_t, i16)
+        TYPE_N_CAST(uint16_t, u16)
+        TYPE_N_CAST(int32_t, i32)
+        TYPE_N_CAST(uint32_t, u32)
+        TYPE_N_CAST(int64_t, i64)
+        TYPE_N_CAST(uint64_t, u64)
+        TYPE_N_CAST(float, f)
+        TYPE_N_CAST(double, db)
+        TYPE_N_CAST(void*, vp)
+#undef TYPE_N_CAST
+        inline variant8(const variant8& other):u64(other.u64) {}
+    };
+
     template<class T>
     class ReservedQueue{
         public:
@@ -48,7 +68,7 @@ namespace onart{
         inline void enqueue(const T& v) {
             if(ind.size() == 0) {
                 size_t newSize = data.size() * 2;
-                for(size_t i = data.size() ; i < newSize ; i++) { ind[i] = newSize - 1 - i; }
+                for (size_t i = data.size(); i < newSize; i++) { ind[i] = uint32_t(newSize - 1 - i); }
                 data.resize(newSize);
             }
             uint32_t newTail = ind.back();
@@ -140,7 +160,7 @@ namespace onart{
             /// @param work 스레드에서 실행할 함수입니다.
             /// @param completionHandler 함수가 완료되면 handleCompleted()에서 실행할 함수입니다. 주어지는 인수는 work 함수의 리턴값입니다.
             /// @param strand 동시 실행이 불가능한 그룹입니다. 즉 같은 strand값이 주어진 것끼리 같은 스레드에 배치됩니다. 0을 주면 그룹에 속하지 않아 어떤 스레드에도 배치될 수 있습니다.
-            inline void post(const std::function<void*()>& work, const std::function<void(void*)>& completionHandler = {}, uint8_t strand = 0) {
+            inline void post(const std::function<variant8()>& work, const std::function<void(variant8)>& completionHandler = {}, uint8_t strand = 0) {
                 if(!work) return;
                 workCount++;
                 std::unique_lock<std::mutex> _(queueGuard);
@@ -174,7 +194,7 @@ namespace onart{
                     }
                     _.unlock();
                     if(wws.work){
-                        void* result = wws.work();
+                        variant8 result = wws.work();
                         pool->release(wws.strand, tid);
                         if(wws.handler){
                             std::unique_lock<std::mutex> _(pool->asGuard);
@@ -224,13 +244,13 @@ namespace onart{
             std::mutex asGuard;
             std::condition_variable cond;
             struct WorkWithStrand{
-                std::function<void*()> work;
-                std::function<void(void*)> handler;
+                std::function<variant8()> work;
+                std::function<void(variant8)> handler;
                 uint32_t strand;
             };
             struct WorkCompleteHandler{
-                std::function<void(void*)> handler;
-                void* param;
+                std::function<void(variant8)> handler;
+                variant8 param;
             };
             ReservedQueue<WorkWithStrand> works;
             std::vector<WorkCompleteHandler> afterService;

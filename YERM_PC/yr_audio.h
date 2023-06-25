@@ -94,7 +94,7 @@ namespace onart{
             static bool shouldReap;
             static std::mutex g;
 
-            void present(Audio::Stream& stream, unsigned nSamples);
+            void present(Audio::Stream& stream, int nSamples);
 
             Source(void*);
             ~Source();

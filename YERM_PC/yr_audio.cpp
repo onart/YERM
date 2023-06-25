@@ -327,7 +327,7 @@ namespace onart{
         volume = std::clamp(f, 0.0f, 1.0f);
     }
 
-    void Audio::Source::present(Audio::Stream& stream, unsigned nSamples) {
+    void Audio::Source::present(Audio::Stream& stream, int nSamples) {
         if(stream.stopped || stream.seekOffset == -1ll) return;
         if(stream.seekOffset != stb_vorbis_get_sample_offset(_HSTBV)) stb_vorbis_seek_frame(_HSTBV, stream.seekOffset);
         unsigned produced = 0;
@@ -336,7 +336,7 @@ namespace onart{
             int rest = stream.len - stream.offset;
             if (rest == 0) {
                 stream.offset = 0;
-                rest = stream.len = stb_vorbis_get_frame_short_interleaved(_HSTBV, 2, stream.buffer->data(), stream.buffer->size());
+                rest = stream.len = stb_vorbis_get_frame_short_interleaved(_HSTBV, 2, stream.buffer->data(), (int)stream.buffer->size());
                 if (stream.len == 0) {
                     stream.loop--;
                     if (stream.loop == 0) {

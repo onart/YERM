@@ -22,7 +22,9 @@
 #include "../externals/single_header/stb_image.h"
 
 #if !BOOST_PLAT_ANDROID
+#ifndef KHRONOS_STATIC
 #define KHRONOS_STATIC
+#endif
 #endif
 #include "../externals/ktx/include/ktx.h"
 
@@ -216,7 +218,7 @@ namespace onart {
         surfaceWidth = width;
         surfaceHeight = height;
         for (auto& renderPass: finalPasses) {
-            renderPass.second->setViewport(width, height, 0, 0, true); // 이후 수정 필요: 기존과 동등한 비중
+            renderPass.second->setViewport((float)width, (float)height, 0, 0, true); // 이후 수정 필요: 기존과 동등한 비중
             renderPass.second->setScissor(width, height, 0, 0, true); // 이후 수정 필요: 기존과 동등한 비중
         }
     }
@@ -442,7 +444,7 @@ namespace onart {
         }
 
         unsigned prog = glCreateShader(shType);
-        int sz = size;
+        int sz = (int)size;
         glShaderSource(prog, 1, &spv, &sz);
         glCompileShader(prog);
         int buf;
@@ -626,7 +628,7 @@ namespace onart {
 
     GLMachine::pTexture GLMachine::createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler){
         int x, y, nChannels;
-        uint8_t* pix = stbi_load_from_memory(mem, size, &x, &y, &nChannels, 0);
+        uint8_t* pix = stbi_load_from_memory(mem, (int)size, &x, &y, &nChannels, 0);
         if(!pix) {
             LOGWITH("Failed to load image:",stbi_failure_reason());
             return pTexture();
@@ -675,7 +677,7 @@ namespace onart {
         return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler);
     }
 
-    void GLMachine::asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(void*)> handler, bool srgb, bool hq, bool linearSampler){
+    void GLMachine::asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(variant8)> handler, bool srgb, bool hq, bool linearSampler){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
@@ -685,7 +687,7 @@ namespace onart {
             ktxTexture2* texture;
             int32_t k2result;
         };
-        singleton->loadThread.post([fileName, nChannels, srgb, hq, already]()->void*{
+        singleton->loadThread.post([fileName, nChannels, srgb, hq, already]()->variant8{
             if(!already){
                 ktxTexture2* texture;
                 ktx_error_code_e k2result;
@@ -698,19 +700,18 @@ namespace onart {
                 return new __asyncparam{ texture, KTX_SUCCESS };
             }
             return nullptr;
-            }, [key, linearSampler, handler](void* param) { // upload on GL context thread
-                if (!param) {
-                    size_t p = key;
-                    handler((void*)p);
+            }, [key, linearSampler, handler](variant8 param) { // upload on GL context thread
+                if (!param.vp) {
+                    handler((uint64_t)(uint32_t)key);
                 }
                 else {
-                    __asyncparam* ap = reinterpret_cast<__asyncparam*>(param);
+                    __asyncparam* ap = reinterpret_cast<__asyncparam*>(param.vp);
                     ktxTexture2* texture = ap->texture;
                     int32_t k2result = ap->k2result;
                     delete ap;
                     if (k2result != KTX_SUCCESS) {
-                        size_t p = key | ((size_t)k2result << 32);
-                        handler((void*)p);
+                        variant8 p = (uint32_t)key | ((size_t)k2result << 32);
+                        handler(p);
                     }
                     else {
                         unsigned tex = 0, targ, err;
@@ -728,8 +729,7 @@ namespace onart {
                         pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
                         singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
                         ktxTexture_Destroy(ktxTexture(texture));
-                        size_t p = key;
-                        handler((void*)p);
+                        handler((uint64_t)(uint32_t)key);
                     }
                 }
             }, vkm_strand::GENERAL);
@@ -737,7 +737,7 @@ namespace onart {
 
     
 
-    void GLMachine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(void*)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler){
+    void GLMachine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(variant8)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
@@ -747,7 +747,7 @@ namespace onart {
             int32_t k2result;
         };
         bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([already, fileName, srgb, option]() -> void*{
+        singleton->loadThread.post([already, fileName, srgb, option]() -> variant8{
             if(!already){
                 int x, y, nChannels;
                 uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 4);
@@ -767,19 +767,18 @@ namespace onart {
                 return new __asyncparam{ texture, KTX_SUCCESS };
             }
             return nullptr;
-        }, [key, handler, linearSampler](void* param) {
-            if (!param) {
-                size_t p = key;
-                handler((void*)p);
+        }, [key, handler, linearSampler](variant8 param) {
+            if (!param.vp) {
+                handler((uint64_t)(uint32_t)key);
             }
             else {
-                __asyncparam* ap = reinterpret_cast<__asyncparam*>(param);
+                __asyncparam* ap = reinterpret_cast<__asyncparam*>(param.vp);
                 ktxTexture2* texture = ap->texture;
                 int32_t k2result = ap->k2result;
                 delete ap;
                 if (k2result != KTX_SUCCESS) {
-                    size_t p = key | ((size_t)k2result << 32);
-                    handler((void*)p);
+                    variant8 p = (uint32_t)key | ((size_t)k2result << 32);
+                    handler(p);
                 }
                 else {
                     unsigned tex = 0, targ, err;
@@ -797,14 +796,13 @@ namespace onart {
                     pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
                     singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
                     ktxTexture_Destroy(ktxTexture(texture));
-                    size_t p = key;
-                    handler((void*)p);
+                    handler((uint64_t)(uint32_t)key);
                 }
             }
         }, vkm_strand::GENERAL);
     }
 
-    void GLMachine::asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(void*)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler){
+    void GLMachine::asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(variant8)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler){
         if (key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
@@ -817,7 +815,7 @@ namespace onart {
         singleton->loadThread.post([already, mem, size, srgb, option]()->void* {
             if (!already) {
                 int x, y, nChannels;
-                uint8_t* pix = stbi_load_from_memory(mem, size, &x, &y, &nChannels, 0);
+                uint8_t* pix = stbi_load_from_memory(mem, (int)size, &x, &y, &nChannels, 0);
                 if (!pix) {
                     return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
                 }
@@ -834,19 +832,18 @@ namespace onart {
                 return new __asyncparam{ texture, KTX_SUCCESS };
             }
             return nullptr;
-            }, [key, handler, linearSampler](void* param) {
-                if (!param) {
-                    size_t p = key;
-                    handler((void*)p);
+            }, [key, handler, linearSampler](variant8 param) {
+                if (!param.vp) {
+                    handler((uint64_t)(uint32_t)key);
                 }
                 else {
-                    __asyncparam* ap = reinterpret_cast<__asyncparam*>(param);
+                    __asyncparam* ap = reinterpret_cast<__asyncparam*>(param.vp);
                     ktxTexture2* texture = ap->texture;
                     int32_t k2result = ap->k2result;
                     delete ap;
                     if (k2result != KTX_SUCCESS) {
-                        size_t p = key | ((size_t)k2result << 32);
-                        handler((void*)p);
+                        variant8 p = (uint32_t)key | ((size_t)k2result << 32);
+                        handler(p);
                     }
                     else {
                         unsigned tex = 0, targ, err;
@@ -864,14 +861,13 @@ namespace onart {
                         pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
                         ktxTexture_Destroy(ktxTexture(texture));
                         singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
-                        size_t p = key;
-                        handler((void*)p);
+                        handler((uint64_t)(uint32_t)key);
                     }
                 }
             }, vkm_strand::GENERAL);
     }
 
-    void GLMachine::asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(void*)> handler, int32_t key, bool srgb, bool hq, bool linearSampler) {
+    void GLMachine::asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(variant8)> handler, int32_t key, bool srgb, bool hq, bool linearSampler) {
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
@@ -881,7 +877,7 @@ namespace onart {
             int32_t k2result;
         };
         bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([mem, size, nChannels, srgb, hq, already, linearSampler, key]()->void* {
+        singleton->loadThread.post([mem, size, nChannels, srgb, hq, already, linearSampler, key]()->variant8 {
             if (!already) {
                 ktxTexture2* texture;
                 ktx_error_code_e k2result = ktxTexture2_CreateFromMemory(mem, size, KTX_TEXTURE_CREATE_NO_FLAGS, &texture);
@@ -893,20 +889,19 @@ namespace onart {
                 }
                 return new __asyncparam{ texture, KTX_SUCCESS };
             }
-            return (void*)key;
-        }, [key, handler, linearSampler](void* param) {
-            if (!param) {
-                size_t p = key;
-                handler((void*)p);
+            return (uint64_t)(uint32_t)key;
+        }, [key, handler, linearSampler](variant8 param) {
+            if (!param.vp) {
+                handler((uint64_t)(uint32_t)key);
             }
             else {
-                __asyncparam* ap = reinterpret_cast<__asyncparam*>(param);
+                __asyncparam* ap = reinterpret_cast<__asyncparam*>(param.vp);
                 ktxTexture2* texture = ap->texture;
                 int32_t k2result = ap->k2result;
                 delete ap;
                 if (k2result != KTX_SUCCESS) {
-                    size_t p = key | ((size_t)k2result << 32);
-                    handler((void*)p);
+                    variant8 p = (uint32_t)key | ((size_t)k2result << 32);
+                    handler(p);
                 }
                 else {
                     unsigned tex = 0, targ, err;
@@ -924,8 +919,7 @@ namespace onart {
                     pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
                     singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
                     ktxTexture_Destroy(ktxTexture(texture));
-                    size_t p = key;
-                    handler((void*)p);
+                    handler((uint64_t)(uint32_t)key);
                 }
             }
         }, vkm_strand::GENERAL);
@@ -1090,8 +1084,8 @@ namespace onart {
         r->fbo = fbo;
         r->viewport.x = 0;
         r->viewport.y = 0;
-        r->viewport.width = width;
-        r->viewport.height = height;
+        r->viewport.width = (float)width;
+        r->viewport.height = (float)height;
         r->viewport.minDepth = -1;
         r->viewport.maxDepth = 1;
         r->scissor.x = 0;
@@ -1119,7 +1113,7 @@ namespace onart {
 
         RenderPass* ret = new RenderPass(targets.data(), subpassCount);
         ret->targets = std::move(targets);
-        ret->setViewport(singleton->surfaceWidth, singleton->surfaceHeight, 0.0f, 0.0f);
+        ret->setViewport((float)singleton->surfaceWidth, (float)singleton->surfaceHeight, 0.0f, 0.0f);
         ret->setScissor(singleton->surfaceWidth, singleton->surfaceHeight, 0, 0);
         if (name == INT32_MIN) return ret;
         return singleton->finalPasses[name] = ret;
@@ -1132,7 +1126,7 @@ namespace onart {
 
         RenderPass* ret = new RenderPass(targets, subpassCount);
         std::memcpy(ret->targets.data(), targets, sizeof(RenderTarget*) * subpassCount);
-        ret->setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
+        ret->setViewport((float)targets[0]->width, (float)targets[0]->height, 0.0f, 0.0f);
         ret->setScissor(targets[0]->width, targets[0]->height, 0, 0);
         if(name == INT32_MIN) return ret;
         return singleton->renderPasses[name] = ret;
@@ -1360,7 +1354,7 @@ namespace onart {
                 return;
             }
             if(count == 0){
-                count = mesh->icount - start;
+                count = uint32_t(mesh->icount - start);
             }
             glDrawElements(GL_TRIANGLES, count, mesh->idxType, mesh->idxType == GL_UNSIGNED_INT ? (void*)((uint32_t*)0 + start) : (void*)((uint16_t*)0 + start));
         }
@@ -1371,7 +1365,7 @@ namespace onart {
                 return;
             }
             if(count == 0){
-                count = mesh->vcount - start;
+                count = uint32_t(mesh->vcount - start);
             }
             glDrawArrays(GL_TRIANGLES, start, count);
         }
@@ -1387,7 +1381,7 @@ namespace onart {
              glBindVertexArray(mesh->vao);
          }
          instanceInfo->vaoBinder(0, 0, mesh->attrCount);
-         for (int i = mesh->attrCount; i < mesh->attrCount + instanceInfo->attrCount; i++) {
+         for (unsigned i = mesh->attrCount; i < mesh->attrCount + instanceInfo->attrCount; i++) {
              glVertexAttribDivisor(i, 1);
          }
          if(mesh->icount) {
@@ -1397,7 +1391,7 @@ namespace onart {
                  return;
              }
              if(count == 0){
-                 count = mesh->icount - start;
+                 count = uint32_t(mesh->icount - start);
              }
              glDrawElementsInstanced(GL_TRIANGLES, mesh->icount, mesh->idxType, mesh->idxType == GL_UNSIGNED_INT ? (void*)((uint32_t*)0 + start) : (void*)((uint16_t*)0 + start), instanceCount);
          }

@@ -20,7 +20,9 @@
 #include "../externals/single_header/stb_image.h"
 
 #if !BOOST_PLAT_ANDROID
+#ifndef KHRONOS_STATIC
 #define KHRONOS_STATIC
+#endif
 #endif
 #include "../externals/ktx/include/ktx.h"
 
@@ -1363,7 +1365,7 @@ namespace onart {
 
     VkMachine::pTexture VkMachine::createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler, uint32_t binding){
         int x, y, nChannels;
-        uint8_t* pix = stbi_load_from_memory(mem, size, &x, &y, &nChannels, 0);
+        uint8_t* pix = stbi_load_from_memory(mem, (int)size, &x, &y, &nChannels, 0);
         if(!pix) {
             LOGWITH("Failed to load image:",stbi_failure_reason());
             return pTexture();
@@ -1412,7 +1414,7 @@ namespace onart {
         return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler, binding);
     }
 
-    void VkMachine::asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(void*)> handler, bool srgb, bool hq, bool linearSampler, uint32_t binding){
+    void VkMachine::asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(variant8)> handler, bool srgb, bool hq, bool linearSampler, uint32_t binding){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
@@ -1422,18 +1424,18 @@ namespace onart {
             if(!already){
                 pTexture ret = singleton->createTexture(fileName, INT32_MIN, nChannels, srgb, hq, linearSampler, binding);
                 if (!ret) {
-                    size_t _k = key | ((uint64_t)VkMachine::reason << 32);
-                    return (void*)_k;
+                    variant8 _k = (uint32_t)key | ((uint64_t)VkMachine::reason << 32);
+                    return _k;
                 }
                 singleton->textureGuard.lock();
                 singleton->textures[key] = std::move(ret);
                 singleton->textureGuard.unlock();
             }
-            return (void*)key;
+            return variant8((uint64_t)(uint32_t)key);
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(void*)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler, uint32_t binding){
+    void VkMachine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(variant8)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler, uint32_t binding){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
@@ -1443,18 +1445,18 @@ namespace onart {
             if(!already){
                 pTexture ret = singleton->createTextureFromImage(fileName, INT32_MIN, srgb, option, linearSampler, binding);
 				if (!ret) {
-					size_t _k = key | ((uint64_t)VkMachine::reason << 32);
-					return (void*)_k;
+					variant8 _k = (uint32_t)key | ((uint64_t)VkMachine::reason << 32);
+					return _k;
 				}
                 singleton->textureGuard.lock();
                 singleton->textures[key] = std::move(ret);
                 singleton->textureGuard.unlock();
             }
-            return (void*)key;
+            return variant8((uint64_t)(uint32_t)key);
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(void*)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler, uint32_t binding){
+    void VkMachine::asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(variant8)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler, uint32_t binding){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
@@ -1464,18 +1466,18 @@ namespace onart {
             if(!already){
                 pTexture ret = singleton->createTextureFromImage(mem, size, INT32_MIN, srgb, option, linearSampler, binding);
 				if (!ret) {
-					size_t _k = key | ((uint64_t)VkMachine::reason << 32);
-					return (void*)_k;
+					variant8 _k = (uint32_t)key | ((uint64_t)VkMachine::reason << 32);
+					return _k;
 				}
                 singleton->textureGuard.lock();
                 singleton->textures[key] = std::move(ret);
                 singleton->textureGuard.unlock();
             }
-            return (void*)key;
+            return variant8((uint64_t)(uint32_t)key);
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(void*)> handler, int32_t key, bool srgb, bool hq, bool linearSampler, uint32_t binding) {
+    void VkMachine::asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(variant8)> handler, int32_t key, bool srgb, bool hq, bool linearSampler, uint32_t binding) {
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
@@ -1485,14 +1487,14 @@ namespace onart {
             if(!already){
                 pTexture ret = singleton->createTexture(mem, size, nChannels, INT32_MIN, srgb, hq, linearSampler, binding);
 				if (!ret) {
-					size_t _k = key | ((uint64_t)VkMachine::reason << 32);
-					return (void*)_k;
+					variant8 _k = (uint32_t)key | ((uint64_t)VkMachine::reason << 32);
+					return _k;
 				}
                 singleton->textureGuard.lock();
                 singleton->textures[key] = std::move(ret);
                 singleton->textureGuard.unlock();
             }
-            return (void*)key;
+            return variant8((uint64_t)(uint32_t)key);
         }, handler, vkm_strand::GENERAL);
     }
 
@@ -1583,7 +1585,7 @@ namespace onart {
         void* mmap;
 
         if(length > 1){
-            individual = (size + singleton->physicalDevice.minUBOffsetAlignment - 1);
+            individual = (size + (uint32_t)singleton->physicalDevice.minUBOffsetAlignment - 1);
             individual -= individual % singleton->physicalDevice.minUBOffsetAlignment;
         }
         else{
@@ -2263,7 +2265,7 @@ namespace onart {
 
         RenderPass* ret = new RenderPass(newPass, fb, subpassCount);
         for(uint32_t i = 0; i < subpassCount; i++){ ret->targets[i] = targets[i]; }
-        ret->setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
+        ret->setViewport((float)targets[0]->width, (float)targets[0]->height, 0.0f, 0.0f);
         ret->setScissor(targets[0]->width, targets[0]->height, 0, 0);
         if(name == INT32_MIN) return ret;
         return singleton->renderPasses[name] = ret;
@@ -2493,12 +2495,12 @@ namespace onart {
         fbInfo.renderPass = rp;
         fbInfo.layers = 1;
         fbInfo.pAttachments = ivs.data();
-        fbInfo.attachmentCount = ivs.size();
+        fbInfo.attachmentCount = (uint32_t)ivs.size();
         reason = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb);
         if(reason != VK_SUCCESS){
             LOGWITH("Failed to create framebuffer:", reason,resultAsString(reason));
         }
-        setViewport(targets[0]->width, targets[0]->height, 0.0f, 0.0f);
+        setViewport((float)targets[0]->width, (float)targets[0]->height, 0.0f, 0.0f);
         setScissor(targets[0]->width, targets[0]->height, 0, 0);
     }
 
@@ -2609,7 +2611,7 @@ namespace onart {
                 return;
             }
             if(count == 0){
-                count = mesh->icount - start;
+                count = uint32_t(mesh->icount - start);
             }
             vkCmdDrawIndexed(cb, count, 1, start, 0, 0);
         }
@@ -2620,7 +2622,7 @@ namespace onart {
                 return;
             }
             if(count == 0){
-                count = mesh->vcount - start;
+                count = (uint32_t)(mesh->vcount - start);
             }
             vkCmdDraw(cb, count, 1, start, 0);
         }
@@ -2642,7 +2644,7 @@ namespace onart {
                 return;
             }
             if(count == 0){
-                count = mesh->icount - start;
+                count = uint32_t(mesh->icount - start);
             }
             vkCmdBindIndexBuffer(cb, mesh->vb, mesh->ioff, mesh->idxType);
             vkCmdDrawIndexed(cb, count, instanceCount, start, 0, istart);
@@ -2654,7 +2656,7 @@ namespace onart {
                 return;
             }
             if(count == 0){
-                count = mesh->vcount - start;
+                count = uint32_t(mesh->vcount - start);
             }
             vkCmdDraw(cb, count, instanceCount, start, istart);
         }
@@ -2748,7 +2750,7 @@ namespace onart {
             rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
             rpInfo.framebuffer = fb;
             rpInfo.pClearValues = clearValues.data();
-            rpInfo.clearValueCount = clearValues.size();
+            rpInfo.clearValueCount = (uint32_t)clearValues.size();
             rpInfo.renderArea.offset = {0,0};
             rpInfo.renderArea.extent = {targets[0]->width, targets[0]->height};
             rpInfo.renderPass = rp;
@@ -2895,7 +2897,7 @@ namespace onart {
                 return;
             }
             if(count == 0){
-                count = mesh->icount - start;
+                count = uint32_t(mesh->icount - start);
             }
             vkCmdDrawIndexed(scb, count, 1, start, 0, 0);
         }
@@ -2906,7 +2908,7 @@ namespace onart {
                 return;
             }
             if(count == 0){
-                count = mesh->vcount - start;
+                count = uint32_t(mesh->vcount - start);
             }
             vkCmdDraw(scb, count, 1, start, 0);
         }
@@ -2928,7 +2930,7 @@ namespace onart {
                 return;
             }
             if(count == 0){
-                count = mesh->icount - start;
+                count = uint32_t(mesh->icount - start);
             }
             vkCmdBindIndexBuffer(scb, mesh->vb, mesh->ioff, mesh->idxType);
             vkCmdDrawIndexed(scb, count, instanceCount, start, 0, istart);
@@ -2940,7 +2942,7 @@ namespace onart {
                 return;
             }
             if(count == 0){
-                count = mesh->vcount - start;
+                count = uint32_t(mesh->vcount - start);
             }
             vkCmdDraw(scb, count, instanceCount, start, istart);
         }
@@ -3068,7 +3070,7 @@ namespace onart {
         singleton->allocateCommandBuffers(COMMANDBUFFER_COUNT, true, true, cbs);
         pipelines.resize(this->targets.size() + 1, VK_NULL_HANDLE);
         pipelineLayouts.resize(this->targets.size() + 1, VK_NULL_HANDLE);
-        setViewport(singleton->swapchain.extent.width, singleton->swapchain.extent.height, 0.0f, 0.0f);
+        setViewport((float)singleton->swapchain.extent.width, (float)singleton->swapchain.extent.height, 0.0f, 0.0f);
         setScissor(singleton->swapchain.extent.width, singleton->swapchain.extent.height, 0, 0);
         width = scissor.extent.width;
         height = scissor.extent.height;
@@ -3115,7 +3117,7 @@ namespace onart {
                 delete targets[i];
             }
             targets.clear();
-            RenderPass2Screen* newDat = singleton->createRenderPass2Screen(types.data(), pipelines.size(), INT32_MIN, useFinalDepth, (bool*)useDepth.data());
+            RenderPass2Screen* newDat = singleton->createRenderPass2Screen(types.data(), (uint32_t)pipelines.size(), INT32_MIN, useFinalDepth, (bool*)useDepth.data());
             if(!newDat) {
                 this->~RenderPass2Screen();
                 return false;
@@ -3285,7 +3287,7 @@ namespace onart {
                 return;
             }
             if(count == 0){
-                count = mesh->icount - start;
+                count = uint32_t(mesh->icount - start);
             }
             vkCmdDrawIndexed(cbs[currentCB], count, 1, start, 0, 0);
         }
@@ -3296,7 +3298,7 @@ namespace onart {
                 return;
             }
             if(count == 0){
-                count = mesh->vcount - start;
+                count = uint32_t(mesh->vcount - start);
             }
             vkCmdDraw(cbs[currentCB], count, 1, start, 0);
         }
@@ -3318,7 +3320,7 @@ namespace onart {
                 return;
             }
             if(count == 0){
-                count = mesh->icount - start;
+                count = uint32_t(mesh->icount - start);
             }
             vkCmdBindIndexBuffer(cbs[currentCB], mesh->vb, mesh->ioff, mesh->idxType);
             vkCmdDrawIndexed(cbs[currentCB], count, instanceCount, start, 0, istart);
@@ -3330,7 +3332,7 @@ namespace onart {
                 return;
             }
             if(count == 0){
-                count = mesh->vcount - start;
+                count = uint32_t(mesh->vcount - start);
             }
             vkCmdDraw(cbs[currentCB], count, instanceCount, start, istart);
         }
@@ -3396,7 +3398,7 @@ namespace onart {
             rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
             rpInfo.framebuffer = fbs[imgIndex];
             rpInfo.pClearValues = clearValues.data(); // TODO: 렌더패스 첨부물 인덱스에 대응하게 준비해야 함
-            rpInfo.clearValueCount = clearValues.size();
+            rpInfo.clearValueCount = (uint32_t)clearValues.size();
             rpInfo.renderArea.offset = {0,0};
             rpInfo.renderArea.extent = singleton->swapchain.extent;
             rpInfo.renderPass = rp;
@@ -4032,7 +4034,7 @@ namespace onart {
         vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
         vertexInputInfo.vertexBindingDescriptionCount = (vattr ? 1 : 0) + (iattr ? 1 : 0);
         vertexInputInfo.pVertexBindingDescriptions = vattr ? vbind : vbind + 1;
-        vertexInputInfo.vertexAttributeDescriptionCount = attrs.size();
+        vertexInputInfo.vertexAttributeDescriptionCount = (uint32_t)attrs.size();
         vertexInputInfo.pVertexAttributeDescriptions = attrs.data();
 
         VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo{};

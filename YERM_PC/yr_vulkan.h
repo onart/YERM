@@ -136,7 +136,7 @@ namespace onart {
             /// @param option 이미지를 압축 텍스처 형식으로 바꿀지 결정할 수 있습니다.
             static pTexture createTextureFromImage(const char* fileName, int32_t key, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true, uint32_t binding = 0);
             /// @brief createTextureFromImage를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아닌 그냥 key). 매개변수 설명은 createTextureFromImage를 참고하세요.
-            static void asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(void*)> handler, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true, uint32_t binding = 0);
+            static void asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(variant8)> handler, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true, uint32_t binding = 0);
             /// @brief 보통 이미지 데이터를 메모리에서 불러와 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
             /// @param mem 이미지 시작 주소
             /// @param size mem 배열의 길이(바이트)
@@ -145,7 +145,7 @@ namespace onart {
             /// @param option 이미지를 압축 텍스처 형식으로 바꿀지 결정할 수 있습니다.
             static pTexture createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true, uint32_t binding = 0);
             /// @brief createTextureFromImage를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아닌 그냥 key). 매개변수 설명은 createTextureFromImage를 참고하세요.
-            static void asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(void*)> handler, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true, uint32_t binding = 0);
+            static void asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(variant8)> handler, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true, uint32_t binding = 0);
             /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param fileName 파일 이름
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
@@ -154,7 +154,7 @@ namespace onart {
             /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
             static pTexture createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb = true, bool hq = true, bool linearSampler = true, uint32_t binding = 0);
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
-            static void asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(void*)> handler, bool srgb = true, bool hq = true, bool linearSampler = true, uint32_t binding = 0);
+            static void asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(variant8)> handler, bool srgb = true, bool hq = true, bool linearSampler = true, uint32_t binding = 0);
             /// @brief 메모리 상의 ktx2 파일을 통해 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param mem 이미지 시작 주소
             /// @param size mem 배열의 길이(바이트)
@@ -166,7 +166,7 @@ namespace onart {
             /// @brief 빈 텍스처를 만듭니다. 메모리 맵으로 데이터를 올릴 수 있습니다. 올리는 데이터의 기본 형태는 BGRA 순서이며, 필요한 경우 셰이더에서 직접 스위즐링하여 사용합니다.
             static pStreamTexture createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler = true);
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
-            static void asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(void*)> handler, int32_t key, bool srgb = true, bool hq = true, bool linearSampler = true, uint32_t binding = 0);
+            static void asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(variant8)> handler, int32_t key, bool srgb = true, bool hq = true, bool linearSampler = true, uint32_t binding = 0);
             /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다. 이것을 해제하는 수단은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
             /// @param width 가로 길이(px).
             /// @param height 세로 길이(px).
@@ -354,20 +354,20 @@ namespace onart {
                 VkSurfaceKHR handle;
                 VkSurfaceCapabilitiesKHR caps;
                 VkSurfaceFormatKHR format;
-            } surface;
+            } surface{};
             struct{
                 VkPhysicalDevice card = VK_NULL_HANDLE;
                 uint32_t gq, pq, subq;
                 uint32_t subqIndex;
                 uint64_t minUBOffsetAlignment;
                 VkPhysicalDeviceFeatures features;
-            } physicalDevice;
+            } physicalDevice{};
             VkDevice device = VK_NULL_HANDLE;
             VkQueue graphicsQueue = VK_NULL_HANDLE;
             VkQueue presentQueue = VK_NULL_HANDLE;
             VkQueue transferQueue = VK_NULL_HANDLE;
-            bool gqIsTq;
-            bool pqIsTq;
+            bool gqIsTq{};
+            bool pqIsTq{};
             VkCommandPool gCommandPool = VK_NULL_HANDLE;
             VkCommandPool tCommandPool = VK_NULL_HANDLE;
             VkCommandBuffer baseBuffer[1]={};
@@ -379,7 +379,7 @@ namespace onart {
             VkSampler nearestSampler = VK_NULL_HANDLE; // maxLod 1
             struct{
                 VkSwapchainKHR handle = VK_NULL_HANDLE;
-                VkExtent2D extent;
+                VkExtent2D extent{};
                 std::vector<VkImageView> imageView;
             }swapchain;
             std::map<int32_t, RenderPass*> renderPasses;
@@ -516,8 +516,8 @@ namespace onart {
             std::vector<VkPipelineLayout> pipelineLayouts;
             std::vector<RenderTarget*> targets;
             int currentPass = -1;
-            VkViewport viewport;
-            VkRect2D scissor;
+            VkViewport viewport{};
+            VkRect2D scissor{};
             VkCommandBuffer cb = VK_NULL_HANDLE;
             const Mesh* bound = nullptr;
             
@@ -600,11 +600,11 @@ namespace onart {
 
             const Mesh* bound = nullptr;
 
-            uint32_t width, height;
+            uint32_t width{}, height{};
             bool recording = false;
             
-            VkViewport viewport; // viewport와 scissor는 고정
-            VkRect2D scissor;
+            VkViewport viewport{}; // viewport와 scissor는 고정
+            VkRect2D scissor{};
     };
 
     class VkMachine::RenderPass2Screen{
@@ -890,7 +890,7 @@ namespace onart {
             vattrs->binding = binding;
             vattrs->location = LOCATION + locationPlus;
             vattrs->format = getFormat<A_TYPE>();
-            vattrs->offset = ftuple<FATTR, ATTR...>::template offset<LOCATION>();
+            vattrs->offset = (uint32_t)(ftuple<FATTR, ATTR...>::template offset<LOCATION>());
             if constexpr(LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(vattrs + 1, binding, locationPlus);
         }
         inline Vertex() {static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
