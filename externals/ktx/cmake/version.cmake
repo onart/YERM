@@ -180,6 +180,10 @@ function( create_version_header dest_path target )
             VERBATIM
         )
     else()
+        execute_process(
+            COMMAND chmod 755 ./mkversion
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        )
         add_custom_command(
             OUTPUT ${version_h_output}
             COMMAND ./mkversion -o version.h ${dest_path}
