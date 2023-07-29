@@ -340,7 +340,11 @@ namespace onart{
 
 #else
 
+#if BOOST_OS_WINDOWS
+#define GLFW_EXPOSE_NATIVE_WIN32
+#endif
 #include "../externals/glfw/include/GLFW/glfw3.h"
+#include "../externals/glfw/include/GLFW/glfw3Native.h"
 
 namespace onart{
 
@@ -377,7 +381,7 @@ namespace onart{
         glfwWindowHint(GLFW_DECORATED, options->decorated);
         glfwWindowHint(GLFW_RESIZABLE, options->resizable);
         glfwWindowHint(GLFW_VISIBLE, false);
-#if defined(YR_USE_VULKAN)
+#if defined(YR_USE_VULKAN) || defined(YR_USE_D3D11)
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 #elif defined(YR_USE_OPENGL)
         glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
@@ -496,6 +500,14 @@ namespace onart{
 
     VkResult Window::createWindowSurface(VkInstance instance, VkSurfaceKHR* surface){
         return glfwCreateWindowSurface(instance, (GLFWwindow*)window, nullptr, surface);
+    }
+
+    void* Window::getWin32Handle() {
+#if BOOST_OS_WINDOWS
+        return glfwGetWin32Window((GLFWwindow*)window);
+#else
+        return nullptr;
+#endif
     }
 
     std::vector<const char*> Window::requiredInstanceExentsions(){

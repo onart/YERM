@@ -21,6 +21,7 @@
 
 #include "yr_math.hpp"
 #include "yr_threadpool.hpp"
+#include <d3d11.h>
 
 #include <type_traits>
 #include <vector>
@@ -58,7 +59,7 @@ namespace onart {
         static thread_local unsigned reason;
         constexpr static bool VULKAN_GRAPHICS = false, D3D12_GRAPHICS = false, D3D11_GRAPHICS = true, OPENGL_GRAPHICS = false, OPENGLES_GRAPHICS = false, METAL_GRAPHICS = false;
         /// @brief OpenGL 오류 콜백을 사용하려면 이것을 활성화해 주세요.
-        constexpr static bool USE_OPENGL_DEBUG = true;
+        constexpr static bool USE_D3D11_DEBUG = true;
         /// @brief 그리기 대상입니다. 텍스처로 사용하거나 메모리 맵으로 데이터에 접근할 수 있습니다. 
         class RenderTarget;
         /// @brief 오프스크린용 렌더 패스입니다.
@@ -279,8 +280,10 @@ namespace onart {
         inline void operator delete(void* p) { ::operator delete(p); }
     private:
         static D3D11Machine* singleton;
-        void* device;
-        void* deviceContext;
+        ID3D11Device* device;
+        ID3D11DeviceContext* context;
+        IDXGISwapChain* swapchain;
+
         ThreadPool loadThread;
         std::map<int32_t, RenderPass*> renderPasses;
         std::map<int32_t, RenderPass2Screen*> finalPasses;
@@ -295,10 +298,6 @@ namespace onart {
 
         std::mutex textureGuard;
         uint32_t surfaceWidth, surfaceHeight;
-
-        struct {
-            bool handle = true;
-        }swapchain;
 
         std::vector<std::shared_ptr<RenderPass>> passes;
         enum vkm_strand {

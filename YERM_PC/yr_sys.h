@@ -99,6 +99,8 @@ namespace onart{
             /// @param surface 생성 성공 시 창 표면 핸들을 이 위치로 리턴합니다.
             /// @return 결과 코드입니다.
             VkResult createWindowSurface(VkInstance instance, VkSurfaceKHR* surface);
+            /// @brief win32 핸들을 리턴합니다. windows 이외의 플랫폼에서는 nullptr를 리턴합니다.
+            void* getWin32Handle();
             /// @brief 창이 최소화되거나 비활성화될 때 호출될 함수입니다.
             std::function<void(int, int)> loseFocusCallback;
             /// @brief 창 크기가 변경될 때 호출될 함수입니다. 시그니처: void(int [가로 길이(픽셀)], int [세로 길이(픽셀)])
