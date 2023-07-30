@@ -265,12 +265,8 @@ namespace onart {
     private:
         /// @brief 기본 OpenGL 컨텍스트를 생성합니다.
         D3D11Machine(Window*);
-        /// @brief 아무것도 하지 않습니다.
-        void checkSurfaceHandle();
         /// @brief 화면으로 그리기 위해 필요한 크기를 전달합니다.
         void createSwapchain(uint32_t width, uint32_t height, Window* window = nullptr);
-        /// @brief 아무것도 하지 않습니다.
-        void destroySwapchain();
         /// @brief ktxTexture2 객체로 텍스처를 생성합니다.
         pTexture createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler = true);
         /// @brief vulkan 객체를 없앱니다.
@@ -280,9 +276,9 @@ namespace onart {
         inline void operator delete(void* p) { ::operator delete(p); }
     private:
         static D3D11Machine* singleton;
-        ID3D11Device* device;
-        ID3D11DeviceContext* context;
-        IDXGISwapChain* swapchain;
+        ID3D11Device* device{};
+        ID3D11DeviceContext* context{};
+        IDXGISwapChain* swapchain{};
 
         ThreadPool loadThread;
         std::map<int32_t, RenderPass*> renderPasses;
@@ -304,6 +300,107 @@ namespace onart {
             NONE = 0,
             GENERAL = 1,
         };
+    };
+
+    class D3D11Machine::Mesh {
+        friend class D3D11Machine;
+        public:
+            template<class... VATTR> void setInputLayout();
+        private:
+            Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib);
+            ~Mesh();
+            ID3D11InputLayout* layout{};
+            ID3D11Buffer* vb;
+            ID3D11Buffer* ib;
+    };
+
+    template<class FATTR, class... ATTR>
+    struct D3D11Machine::Vertex {
+        friend class D3D11Machine;
+        inline static constexpr bool CHECK_TYPE() {
+            if constexpr (sizeof...(ATTR) == 0) return is_one_of<FATTR, VERTEX_ATTR_TYPES>;
+            else return is_one_of<FATTR, VERTEX_ATTR_TYPES> || Vertex<ATTR...>::CHECK_TYPE();
+        }
+    private:
+        ftuple<FATTR, ATTR...> member;
+        template<class F>
+        inline static constexpr VkFormat getFormat() {
+            if constexpr (is_one_of<F, VERTEX_FLOAT_TYPES>) {
+                if constexpr (sizeof(F) / sizeof(float) == 1) return VK_FORMAT_R32_SFLOAT;
+                if constexpr (std::is_same_v<F, vec2> || sizeof(F) / sizeof(float) == 2) return VK_FORMAT_R32G32_SFLOAT;
+                if constexpr (std::is_same_v<F, vec3> || sizeof(F) / sizeof(float) == 3) return VK_FORMAT_R32G32B32_SFLOAT;
+                return VK_FORMAT_R32G32B32A32_SFLOAT;
+            }
+            else if constexpr (is_one_of<F, VERTEX_DOUBLE_TYPES>) {
+                if constexpr (sizeof(F) / sizeof(double) == 1) return VK_FORMAT_R64_SFLOAT;
+                if constexpr (std::is_same_v<F, dvec2> || sizeof(F) / sizeof(double) == 2) return VK_FORMAT_R64G64_SFLOAT;
+                if constexpr (std::is_same_v<F, dvec3> || sizeof(F) / sizeof(double) == 3) return VK_FORMAT_R64G64B64_SFLOAT;
+                return VK_FORMAT_R64G64B64A64_SFLOAT;
+            }
+            else if constexpr (is_one_of<F, VERTEX_INT8_TYPES>) {
+                if constexpr (sizeof(F) == 1) return VK_FORMAT_R8_SINT;
+                if constexpr (sizeof(F) == 2) return VK_FORMAT_R8G8_SINT;
+                if constexpr (sizeof(F) == 3) return VK_FORMAT_R8G8B8_SINT;
+                return VK_FORMAT_R8G8B8A8_SINT;
+            }
+            else if constexpr (is_one_of<F, VERTEX_UINT8_TYPES>) {
+                if constexpr (sizeof(F) == 1) return VK_FORMAT_R8_UINT;
+                if constexpr (sizeof(F) == 2) return VK_FORMAT_R8G8_UINT;
+                if constexpr (sizeof(F) == 3) return VK_FORMAT_R8G8B8_UINT;
+                return VK_FORMAT_R8G8B8A8_UINT;
+            }
+            else if constexpr (is_one_of<F, VERTEX_INT16_TYPES>) {
+                if constexpr (sizeof(F) == 2) return VK_FORMAT_R16_SINT;
+                if constexpr (sizeof(F) == 4) return VK_FORMAT_R16G16_SINT;
+                if constexpr (sizeof(F) == 6) return VK_FORMAT_R16G16B16_SINT;
+                return VK_FORMAT_R16G16B16A16_SINT;
+            }
+            else if constexpr (is_one_of<F, VERTEX_UINT16_TYPES>) {
+                if constexpr (sizeof(F) == 2) return VK_FORMAT_R16_UINT;
+                if constexpr (sizeof(F) == 4) return VK_FORMAT_R16G16_UINT;
+                if constexpr (sizeof(F) == 6) return VK_FORMAT_R16G16B16_UINT;
+                return VK_FORMAT_R16G16B16A16_UINT;
+            }
+            else if constexpr (is_one_of<F, VERTEX_INT32_TYPES>) {
+                if constexpr (sizeof(F) / sizeof(int32_t) == 1) return VK_FORMAT_R32_SINT;
+                if constexpr (std::is_same_v<F, ivec2> || sizeof(F) / sizeof(int32_t) == 2) return VK_FORMAT_R32G32_SINT;
+                if constexpr (std::is_same_v<F, ivec3> || sizeof(F) / sizeof(int32_t) == 3) return VK_FORMAT_R32G32B32_SINT;
+                return VK_FORMAT_R32G32B32A32_SINT;
+            }
+            else if constexpr (is_one_of<F, VERTEX_UINT32_TYPES>) {
+                if constexpr (sizeof(F) / sizeof(uint32_t) == 1) return VK_FORMAT_R32_UINT;
+                if constexpr (std::is_same_v<F, uvec2> || sizeof(F) / sizeof(uint32_t) == 2) return VK_FORMAT_R32G32_UINT;
+                if constexpr (std::is_same_v<F, uvec3> || sizeof(F) / sizeof(uint32_t) == 3) return VK_FORMAT_R32G32B32_UINT;
+                return VK_FORMAT_R32G32B32A32_UINT;
+            }
+            return VK_FORMAT_UNDEFINED; // UNREACHABLE
+        }
+    public:
+        /// @brief 정점 속성 바인딩을 받아옵니다.
+        /// @param vattrs 출력 위치
+        /// @param binding 바인딩 번호
+        /// @param locationPlus 셰이더 내의 location이 시작할 번호
+        template<unsigned LOCATION = 0>
+        inline static constexpr void info(VkVertexInputAttributeDescription* vattrs, uint32_t binding = 0, uint32_t locationPlus = 0) {
+            using A_TYPE = std::remove_reference_t<decltype(Vertex().get<LOCATION>())>;
+            vattrs->binding = binding;
+            vattrs->location = LOCATION + locationPlus;
+            vattrs->format = getFormat<A_TYPE>();
+            vattrs->offset = (uint32_t)(ftuple<FATTR, ATTR...>::template offset<LOCATION>());
+            if constexpr (LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(vattrs + 1, binding, locationPlus);
+        }
+        inline Vertex() { static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
+        inline Vertex(const FATTR& first, const ATTR&... rest) :member(first, rest...) { static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
+        /// @brief 주어진 번호의 참조를 리턴합니다. 인덱스 초과 시 컴파일되지 않습니다.
+        template<unsigned POS, std::enable_if_t<POS <= sizeof...(ATTR), bool> = false>
+        constexpr inline auto& get() { return member.template get<POS>(); }
+        /* template 키워드 설명
+         * When the name of a member template specialization appears after . or -> in a postfix-expression,
+         * or after nested-name-specifier in a qualified-id,
+         * and the postfix-expression or qualified-id explicitly depends on a template-parameter (14.6.2),
+         * the member template name must be prefixed by the keyword template.
+         * Otherwise the name is assumed to name a non-template.
+         * */
     };
 }
 
