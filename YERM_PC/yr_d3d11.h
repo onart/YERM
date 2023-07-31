@@ -181,11 +181,11 @@ namespace onart {
         /// @param mmap 이것이 true라면 픽셀 데이터에 순차로 접근할 수 있습니다. 단, 렌더링 성능이 낮아질 가능성이 매우 높습니다.
         /// @return 이것을 통해 렌더 패스를 생성할 수 있습니다.
         static RenderTarget* createRenderTarget2D(int width, int height, int32_t key, RenderTargetType type = RenderTargetType::COLOR1DEPTH, RenderTargetInputOption sampled = RenderTargetInputOption::SAMPLED_LINEAR, bool useDepthInput = false, bool useStencil = false, bool mmap = false);
-        /// @brief GLSL 셰이더 코드를 오브젝트로 저장하고 가져옵니다.
-        /// @param glsl GLSL 코드
-        /// @param size 주어진 GLSL 코드의 길이(바이트)
+        /// @brief HLSL 셰이더 바이너리를 통해 오브젝트로 저장하고 가져옵니다.
+        /// @param code 컴파일된 HLSL 바이너리
+        /// @param size code의 길이
         /// @param key 이후 별도로 접근할 수 있는 이름을 지정합니다. 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다.
-        static unsigned createShader(const char* glsl, size_t size, int32_t key, ShaderType type = ShaderType::VERTEX);
+        static ID3D11DeviceChild* createShader(const char* code, size_t size, int32_t key, ShaderType type = ShaderType::VERTEX);
         /// @brief 셰이더에서 사용할 수 있는 uniform 버퍼를 생성하여 리턴합니다. 이것을 해제하는 방법은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
         /// @param length OpenGL은 동시에 여러 개 렌더링 명령이 수행될 수 없으므로 사용되지 않습니다.
         /// @param size 버퍼의 크기입니다.
@@ -251,7 +251,7 @@ namespace onart {
         /// @brief 만들어 둔 공유 버퍼를 리턴합니다. 없으면 nullptr를 리턴합니다.
         static UniformBuffer* getUniformBuffer(int32_t key);
         /// @brief 만들어 둔 셰이더 모듈을 리턴합니다. 없으면 0을 리턴합니다.
-        static unsigned getShader(int32_t key);
+        static ID3D11DeviceChild* getShader(int32_t key);
         /// @brief 올려 둔 텍스처 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
         static pTexture getTexture(int32_t key, bool lock = false);
         /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
@@ -285,7 +285,7 @@ namespace onart {
         std::map<int32_t, RenderPass2Screen*> finalPasses;
         std::map<int32_t, RenderPass2Cube*> cubePasses;
         std::map<int32_t, RenderTarget*> renderTargets;
-        std::map<int32_t, unsigned> shaders;
+        std::map<int32_t, ID3D11DeviceChild*> shaders;
         std::map<int32_t, UniformBuffer*> uniformBuffers;
         std::map<int32_t, unsigned> pipelines;
         std::map<int32_t, pMesh> meshes;
@@ -305,7 +305,7 @@ namespace onart {
     class D3D11Machine::Mesh {
         friend class D3D11Machine;
         public:
-            template<class... VATTR> void setInputLayout();
+            template<class... VATTR> void setInputLayout(void* vs, size_t size, unsigned locationPlus = 0, unsigned inputSlot = 0);
         private:
             Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib);
             ~Mesh();
@@ -313,6 +313,8 @@ namespace onart {
             ID3D11Buffer* vb;
             ID3D11Buffer* ib;
     };
+
+    constexpr LPCSTR VS_SEMANTIC[] = { u8"_0",u8"_1",u8"_2",u8"_3",u8"_4",u8"_5",u8"_6",u8"_7",u8"_8",u8"_9",u8"_10",u8"_11",u8"_12",u8"_13",u8"_14",u8"_15" };
 
     template<class FATTR, class... ATTR>
     struct D3D11Machine::Vertex {
@@ -324,69 +326,72 @@ namespace onart {
     private:
         ftuple<FATTR, ATTR...> member;
         template<class F>
-        inline static constexpr VkFormat getFormat() {
+        inline static constexpr DXGI_FORMAT getFormat() {
             if constexpr (is_one_of<F, VERTEX_FLOAT_TYPES>) {
-                if constexpr (sizeof(F) / sizeof(float) == 1) return VK_FORMAT_R32_SFLOAT;
-                if constexpr (std::is_same_v<F, vec2> || sizeof(F) / sizeof(float) == 2) return VK_FORMAT_R32G32_SFLOAT;
-                if constexpr (std::is_same_v<F, vec3> || sizeof(F) / sizeof(float) == 3) return VK_FORMAT_R32G32B32_SFLOAT;
-                return VK_FORMAT_R32G32B32A32_SFLOAT;
+                if constexpr (sizeof(F) / sizeof(float) == 1) return DXGI_FORMAT_R32_SFLOAT;
+                if constexpr (std::is_same_v<F, vec2> || sizeof(F) / sizeof(float) == 2) return DXGI_FORMAT_R32G32_SFLOAT;
+                if constexpr (std::is_same_v<F, vec3> || sizeof(F) / sizeof(float) == 3) return DXGI_FORMAT_R32G32B32_SFLOAT;
+                return DXGI_FORMAT_R32G32B32A32_SFLOAT;
             }
             else if constexpr (is_one_of<F, VERTEX_DOUBLE_TYPES>) {
-                if constexpr (sizeof(F) / sizeof(double) == 1) return VK_FORMAT_R64_SFLOAT;
-                if constexpr (std::is_same_v<F, dvec2> || sizeof(F) / sizeof(double) == 2) return VK_FORMAT_R64G64_SFLOAT;
-                if constexpr (std::is_same_v<F, dvec3> || sizeof(F) / sizeof(double) == 3) return VK_FORMAT_R64G64B64_SFLOAT;
-                return VK_FORMAT_R64G64B64A64_SFLOAT;
+                if constexpr (sizeof(F) / sizeof(double) == 1) return DXGI_FORMAT_R64_SFLOAT;
+                if constexpr (std::is_same_v<F, dvec2> || sizeof(F) / sizeof(double) == 2) return DXGI_FORMAT_R64G64_SFLOAT;
+                if constexpr (std::is_same_v<F, dvec3> || sizeof(F) / sizeof(double) == 3) return DXGI_FORMAT_R64G64B64_SFLOAT;
+                return DXGI_FORMAT_R64G64B64A64_SFLOAT;
             }
             else if constexpr (is_one_of<F, VERTEX_INT8_TYPES>) {
-                if constexpr (sizeof(F) == 1) return VK_FORMAT_R8_SINT;
-                if constexpr (sizeof(F) == 2) return VK_FORMAT_R8G8_SINT;
-                if constexpr (sizeof(F) == 3) return VK_FORMAT_R8G8B8_SINT;
-                return VK_FORMAT_R8G8B8A8_SINT;
+                if constexpr (sizeof(F) == 1) return DXGI_FORMAT_R8_SINT;
+                if constexpr (sizeof(F) == 2) return DXGI_FORMAT_R8G8_SINT;
+                if constexpr (sizeof(F) == 3) return DXGI_FORMAT_R8G8B8_SINT;
+                return DXGI_FORMAT_R8G8B8A8_SINT;
             }
             else if constexpr (is_one_of<F, VERTEX_UINT8_TYPES>) {
-                if constexpr (sizeof(F) == 1) return VK_FORMAT_R8_UINT;
-                if constexpr (sizeof(F) == 2) return VK_FORMAT_R8G8_UINT;
-                if constexpr (sizeof(F) == 3) return VK_FORMAT_R8G8B8_UINT;
-                return VK_FORMAT_R8G8B8A8_UINT;
+                if constexpr (sizeof(F) == 1) return DXGI_FORMAT_R8_UINT;
+                if constexpr (sizeof(F) == 2) return DXGI_FORMAT_R8G8_UINT;
+                if constexpr (sizeof(F) == 3) return DXGI_FORMAT_R8G8B8_UINT;
+                return DXGI_FORMAT_R8G8B8A8_UINT;
             }
             else if constexpr (is_one_of<F, VERTEX_INT16_TYPES>) {
-                if constexpr (sizeof(F) == 2) return VK_FORMAT_R16_SINT;
-                if constexpr (sizeof(F) == 4) return VK_FORMAT_R16G16_SINT;
-                if constexpr (sizeof(F) == 6) return VK_FORMAT_R16G16B16_SINT;
-                return VK_FORMAT_R16G16B16A16_SINT;
+                if constexpr (sizeof(F) == 2) return DXGI_FORMAT_R16_SINT;
+                if constexpr (sizeof(F) == 4) return DXGI_FORMAT_R16G16_SINT;
+                if constexpr (sizeof(F) == 6) return DXGI_FORMAT_R16G16B16_SINT;
+                return DXGI_FORMAT_R16G16B16A16_SINT;
             }
             else if constexpr (is_one_of<F, VERTEX_UINT16_TYPES>) {
-                if constexpr (sizeof(F) == 2) return VK_FORMAT_R16_UINT;
-                if constexpr (sizeof(F) == 4) return VK_FORMAT_R16G16_UINT;
-                if constexpr (sizeof(F) == 6) return VK_FORMAT_R16G16B16_UINT;
-                return VK_FORMAT_R16G16B16A16_UINT;
+                if constexpr (sizeof(F) == 2) return DXGI_FORMAT_R16_UINT;
+                if constexpr (sizeof(F) == 4) return DXGI_FORMAT_R16G16_UINT;
+                if constexpr (sizeof(F) == 6) return DXGI_FORMAT_R16G16B16_UINT;
+                return DXGI_FORMAT_R16G16B16A16_UINT;
             }
             else if constexpr (is_one_of<F, VERTEX_INT32_TYPES>) {
-                if constexpr (sizeof(F) / sizeof(int32_t) == 1) return VK_FORMAT_R32_SINT;
-                if constexpr (std::is_same_v<F, ivec2> || sizeof(F) / sizeof(int32_t) == 2) return VK_FORMAT_R32G32_SINT;
-                if constexpr (std::is_same_v<F, ivec3> || sizeof(F) / sizeof(int32_t) == 3) return VK_FORMAT_R32G32B32_SINT;
-                return VK_FORMAT_R32G32B32A32_SINT;
+                if constexpr (sizeof(F) / sizeof(int32_t) == 1) return DXGI_FORMAT_R32_SINT;
+                if constexpr (std::is_same_v<F, ivec2> || sizeof(F) / sizeof(int32_t) == 2) return DXGI_FORMAT_R32G32_SINT;
+                if constexpr (std::is_same_v<F, ivec3> || sizeof(F) / sizeof(int32_t) == 3) return DXGI_FORMAT_R32G32B32_SINT;
+                return DXGI_FORMAT_R32G32B32A32_SINT;
             }
             else if constexpr (is_one_of<F, VERTEX_UINT32_TYPES>) {
-                if constexpr (sizeof(F) / sizeof(uint32_t) == 1) return VK_FORMAT_R32_UINT;
-                if constexpr (std::is_same_v<F, uvec2> || sizeof(F) / sizeof(uint32_t) == 2) return VK_FORMAT_R32G32_UINT;
-                if constexpr (std::is_same_v<F, uvec3> || sizeof(F) / sizeof(uint32_t) == 3) return VK_FORMAT_R32G32B32_UINT;
-                return VK_FORMAT_R32G32B32A32_UINT;
+                if constexpr (sizeof(F) / sizeof(uint32_t) == 1) return DXGI_FORMAT_R32_UINT;
+                if constexpr (std::is_same_v<F, uvec2> || sizeof(F) / sizeof(uint32_t) == 2) return DXGI_FORMAT_R32G32_UINT;
+                if constexpr (std::is_same_v<F, uvec3> || sizeof(F) / sizeof(uint32_t) == 3) return DXGI_FORMAT_R32G32B32_UINT;
+                return DXGI_FORMAT_R32G32B32A32_UINT;
             }
-            return VK_FORMAT_UNDEFINED; // UNREACHABLE
+            return DXGI_FORMAT_FORCE_UINT; // UNREACHABLE
         }
     public:
         /// @brief 정점 속성 바인딩을 받아옵니다.
         /// @param vattrs 출력 위치
         /// @param binding 바인딩 번호
-        /// @param locationPlus 셰이더 내의 location이 시작할 번호
+        /// @param locationPlus 셰이더 내의 location이 시작할 번호. 이 값이 0이 아닌 경우 per instance 버퍼로 취급됩니다.
         template<unsigned LOCATION = 0>
-        inline static constexpr void info(VkVertexInputAttributeDescription* vattrs, uint32_t binding = 0, uint32_t locationPlus = 0) {
+        inline static constexpr void info(D3D11_INPUT_ELEMENT_DESC* vattrs, uint32_t binding = 0, uint32_t locationPlus = 0) {
             using A_TYPE = std::remove_reference_t<decltype(Vertex().get<LOCATION>())>;
-            vattrs->binding = binding;
-            vattrs->location = LOCATION + locationPlus;
-            vattrs->format = getFormat<A_TYPE>();
-            vattrs->offset = (uint32_t)(ftuple<FATTR, ATTR...>::template offset<LOCATION>());
+            vattrs->SemanticName = VS_SEMANTIC[LOCATION];
+            vattrs->SemanticIndex = 0;
+            vattrs->InputSlot = binding;
+            vattrs->InputSlotClass = locationPlus ? D3D11_INPUT_PER_INSTANCE_DATA : D3D11_INPUT_PER_VERTEX_DATA;
+            vattrs->Format = getFormat<A_TYPE>();
+            vattrs->AlignedByteOffset = (uint32_t)(ftuple<FATTR, ATTR...>::template offset<LOCATION>());
+            vattrs->InstanceDataStepRate = locationPlus ? 1 : 0;
             if constexpr (LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(vattrs + 1, binding, locationPlus);
         }
         inline Vertex() { static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
@@ -402,6 +407,17 @@ namespace onart {
          * Otherwise the name is assumed to name a non-template.
          * */
     };
+
+    template<class... VATTR>
+    void D3D11Machine::Mesh::setInputLayout(void* vs, size_t size, unsigned locationPlus, unsigned inputSlot) {
+        D3D11_INPUT_ELEMENT_DESC attrs[sizeof...(VATTR)]{};
+        D3D11Machine::Vertex<VATTR...>::info(attrs, inputSlot, locationPlus);
+        HRESULT result = D3D11Machine::singleton->device->CreateInputLayout(attrs, sizeof...(VATTR), vs, size, &layout);
+        
+        if (result != S_OK) {
+            LOGWITH("Failed to create input layout:", result);
+        }
+    }
 }
 
 #endif // __YR_D3D11_H__

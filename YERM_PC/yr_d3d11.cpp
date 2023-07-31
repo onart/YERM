@@ -145,6 +145,12 @@ namespace onart {
     }
 
     void D3D11Machine::free() {
+        for (auto& shader : shaders) {
+            shader.second->Release();
+        }
+        shaders.clear();
+        meshes.clear();
+        textures.clear();
         swapchain->Release();
         device->Release();
         context->Release();
@@ -236,6 +242,52 @@ namespace onart {
 
         struct publicmesh :public Mesh { publicmesh(ID3D11Buffer* _1, ID3D11Buffer* _2) :Mesh(_1,_2) {} };
         ret = std::make_shared<publicmesh>(vb, ib);
-        return ret;
+        return singleton->meshes[key] = ret;
+    }
+
+    ID3D11DeviceChild* D3D11Machine::getShader(int32_t key) {
+        if (auto it = singleton->shaders.find(key); it != singleton->shaders.end()) {
+            return it->second;
+        }
+        return {};
+    }
+
+    ID3D11DeviceChild* D3D11Machine::createShader(const char* code, size_t size, int32_t key, ShaderType type) {
+        if (auto sh = getShader(key)) return sh;
+        HRESULT result{};
+        ID3D11DeviceChild* ret{};
+        switch (type)
+        {
+        case onart::D3D11Machine::ShaderType::VERTEX:
+            result = singleton->device->CreateVertexShader(code, size, nullptr, (ID3D11VertexShader**)&ret);
+            break;
+        case onart::D3D11Machine::ShaderType::FRAGMENT:
+            result = singleton->device->CreatePixelShader(code, size, nullptr, (ID3D11PixelShader**)&ret);
+            break;
+        case onart::D3D11Machine::ShaderType::GEOMETRY:
+            result = singleton->device->CreateGeometryShader(code, size, nullptr, (ID3D11GeometryShader**)&ret);
+            break;
+        case onart::D3D11Machine::ShaderType::TESS_CTRL:
+            result = singleton->device->CreateHullShader(code, size, nullptr, (ID3D11HullShader**)&ret);
+            break;
+        case onart::D3D11Machine::ShaderType::TESS_EVAL:
+            result = singleton->device->CreateDomainShader(code, size, nullptr, (ID3D11DomainShader**)&ret);
+            break;
+        default:
+            return {};
+        }
+        if (result != S_OK) {
+            LOGWITH("Failed to create shader instance:",result);
+            return {};
+        }
+        return singleton->shaders[key] = ret;
+    }
+
+    D3D11Machine::Mesh::Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib) :vb(vb), ib(ib), layout{} {}
+
+    D3D11Machine::Mesh::~Mesh() {
+        if(vb) vb->Release();
+        if (ib) ib->Release();
+        if (layout) layout->Release();
     }
 }
