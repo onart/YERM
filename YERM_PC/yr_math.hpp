@@ -61,7 +61,7 @@ namespace onart{
         /// @brief 벡터의 모든 성분을 하나의 값으로 초기화합니다.
         explicit inline nvec(T a):rg(load(a)) { static_assert(D >= 2 && D <= 4, "nvec은 2~4차원만 생성할 수 있습니다."); }
         /// @brief 벡터의 값 중 앞 2~4개를 초기화합니다.
-        inline nvec(T x, T y, T z = 0, T w = 0): rg(load(w,z,y,x)) { static_assert(D >= 2 && D <= 4, "nvec은 2~4차원만 생성할 수 있습니다."); }
+        inline nvec(T x, T y, T z = 0, T w = 0): rg(load(x,y,z,w)) { static_assert(D >= 2 && D <= 4, "nvec은 2~4차원만 생성할 수 있습니다."); }
         /// @brief 벡터를 복사합니다.
         inline nvec(const nvec &v): rg(v.rg) { }
         /// @brief 배열을 이용하여 벡터를 생성합니다.
@@ -1450,7 +1450,7 @@ namespace onart{
         };
         OVERLOAD_NEW_DEL;
         /// @brief 사원수를 생성합니다.
-        inline Quaternion(float o = 1, float i = 0, float j = 0, float k = 0) : rg(load(k, j, i, o)) {  }
+        inline Quaternion(float o = 1, float i = 0, float j = 0, float k = 0) : rg(load(o, i, j, k)) {  }
         explicit inline Quaternion(float128 rg):rg(rg){}
         /// @brief 각속도 벡터(초당 회전각(float) * 회전축(vec3))에 대응하는 사원수를 생성합니다.
         inline Quaternion(const vec3& av) :rg(swizzle<SWIZZLE_X,SWIZZLE_X,SWIZZLE_Y,SWIZZLE_Z>(av.rg)) { c1 = 0; }

@@ -318,14 +318,21 @@ namespace onart{
     /// @brief 역제곱근을 리턴합니다.
     inline double rsqrt(double d) { return 1.0 / std::sqrt(d); }
 
-#ifndef YR_NOSIMD
-#if BOOST_HW_SIMD_X86 >= BOOST_HW_SIMD_X86_SSE2_VERSION || BOOST_HW_SIMD_ARM >= BOOST_HW_SIMD_ARM_NEON_VERSION
-#define YR_USING_SIMD
-#if BOOST_HW_SIMD_ARM >= BOOST_HW_SIMD_ARM_NEON_VERSION
-#include "../externals/single_header/sse2neon.h"
-#else
-#include <emmintrin.h>
+#ifdef YR_USING_SIMD
+#undef YR_USING_SIMD
 #endif
+
+#ifndef YR_NOSIMD
+#if BOOST_HW_SIMD_X86 >= BOOST_HW_SIMD_X86_SSE2_VERSION
+#define YR_USING_SIMD
+#include <emmintrin.h>
+#elif BOOST_HW_SIMD_ARM >= BOOST_HW_SIMD_ARM_NEON_VERSION
+#define YR_USING_SIMD
+#include "../externals/single_header/sse2neon.h"
+#endif
+#endif
+
+#ifdef YR_USING_SIMD
 
     using float128 = __m128;
     using double128 = __m128d;
@@ -335,22 +342,22 @@ namespace onart{
     inline float128 loadu(const float* vec) { return _mm_loadu_ps(vec); }
     inline float128 load(const float* vec) { return _mm_load_ps(vec); }
     inline float128 load(float f) { return _mm_set_ps1(f); }
-    inline float128 load(float _1, float _2, float _3, float _4) { return _mm_set_ps(_1, _2, _3, _4); }
+    inline float128 load(float _1, float _2, float _3, float _4) { return _mm_set_ps(_4, _3, _2, _1); }
     inline float128 zerof128() { return _mm_setzero_ps(); }
     inline double128 loadu(const double* vec) { return _mm_loadu_pd(vec); }
     inline double128 load(const double* vec) { return _mm_loadu_pd(vec); }
     inline double128 load(double f) { return _mm_set1_pd(f); }
-    inline double128 load(double _1, double _2) { return _mm_set_pd(_1, _2); }
+    inline double128 load(double _1, double _2) { return _mm_set_pd(_2, _1); }
     inline double128 zerod128() { return _mm_setzero_pd(); }
     inline int128 loadu(const int32_t* vec) { return _mm_loadu_si128((__m128i*)vec); }
     inline int128 load(const int32_t* vec) { return _mm_load_si128((__m128i*)vec); }
     inline int128 load(int32_t f) { return _mm_set1_epi32(f); }
-    inline int128 load(int32_t _1, int32_t _2, int32_t _3, int32_t _4) { return _mm_set_epi32(_1, _2, _3, _4); }
+    inline int128 load(int32_t _1, int32_t _2, int32_t _3, int32_t _4) { return _mm_set_epi32(_4, _3, _2, _1); }
     inline int128 zeroi128() { return _mm_setzero_si128(); }
     inline uint128 loadu(const uint32_t* vec) { return _mm_loadu_si128((__m128i*)vec); }
     inline uint128 load(const uint32_t* vec) { return _mm_load_si128((__m128i*)vec); }
     inline uint128 load(uint32_t f) { return _mm_set1_epi32(f); }
-    inline uint128 load(uint32_t _1, uint32_t _2, uint32_t _3, uint32_t _4) { return _mm_set_epi32(_1, _2, _3, _4); }
+    inline uint128 load(uint32_t _1, uint32_t _2, uint32_t _3, uint32_t _4) { return _mm_set_epi32(_4, _3, _2, _1); }
     inline uint128 zerou128() { return _mm_setzero_si128(); }
 
     inline void storeu(float128 vec, float* output) { _mm_storeu_ps(output, vec); }
@@ -940,9 +947,28 @@ namespace onart{
             vec[i] = (int16_t)((float)vec[i] * val);
         }
     }
-#endif
+#else
 
-#ifndef YR_USING_SIMD
+    inline void addsAll(int16_t* vec, const int16_t* val, size_t size) {
+        for (size_t i = 0; i < size; i++) {
+            int32_t sum = (int32_t)vec[i] + (int32_t)val[i];
+            vec[i] = (sum < INT16_MIN) 
+                ? INT16_MIN 
+                : (
+                    (sum > INT16_MAX) 
+                    ? INT16_MAX 
+                    : sum);
+        }
+    }
+
+    inline void mulAll(int16_t* vec, float val, size_t size) {
+        assert(val <= 1.0f && val >= 0.0f && "이 함수에서 곱해지는 실수의 값은 [0,1] 범위만 허용됩니다.");
+        int16_t v2 = (int16_t)((float)val * 32768.0f);
+        for (size_t i = 0; i < size; i++) {
+            vec[i] *= val;
+        }
+    }
+
     struct float128 { float _[4]; };
     struct double128 { double _[2]; };
     struct int128 { int32_t _[4]; };
@@ -1028,7 +1054,7 @@ namespace onart{
     inline float128 mabs(float128 a) { return {-std::abs(a._[0]),-std::abs(a._[1]),-std::abs(a._[2]),-std::abs(a._[3])}; }
     inline float128 abs(float128 a) { return {std::abs(a._[0]),std::abs(a._[1]),std::abs(a._[2]),std::abs(a._[3])}; }
     inline float128 sqrt(float128 a) { return {std::sqrt(a._[0]),std::sqrt(a._[1]),std::sqrt(a._[2]),std::sqrt(a._[3])}; }
-    inline float128 rsqrt(float128 a) { return _mm_rsqrt_ps(a); }
+    inline float128 rsqrt(float128 a) { return { 1.0f / std::sqrt(a._[0]), 1.0f / std::sqrt(a._[1]), 1.0f / std::sqrt(a._[2]), 1.0f / std::sqrt(a._[3]) }; }
     inline float128 rcp(float128 a) { return { 1/a._[0], 1/a._[1], 1/a._[2], 1/a._[3]}; }
     inline double128 mabs(double128 a) { return {-std::abs(a._[0]), -std::abs(a._[1])}; }
     inline double128 abs(double128 a) { return {std::abs(a._[0]), std::abs(a._[1])}; }
@@ -1037,13 +1063,13 @@ namespace onart{
     inline float128 neg(float128 a) { return toggleSigns<true, true, true, true>(a); }
     inline double128 neg(double128 a) { return toggleSigns<true, true>(a); }
 
-    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL2 P1, SWIZZLE_SYMBOL2 P2, SWIZZLE_SYMBOL2 P3>
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
     inline float128 swizzle(float128 a) { return { a._[(int)P0], a._[(int)P1], a._[(int)P2], a._[(int)P3] }; }
 
-    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL2 P1, SWIZZLE_SYMBOL2 P2, SWIZZLE_SYMBOL2 P3>
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
     inline int128 swizzle(int128 a) { return { a._[(int)P0], a._[(int)P1], a._[(int)P2], a._[(int)P3] }; }
 
-    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL2 P1, SWIZZLE_SYMBOL2 P2, SWIZZLE_SYMBOL2 P3>
+    template<SWIZZLE_SYMBOL P0, SWIZZLE_SYMBOL P1, SWIZZLE_SYMBOL P2, SWIZZLE_SYMBOL P3>
     inline uint128 swizzle(uint128 a) { return { a._[(int)P0], a._[(int)P1], a._[(int)P2], a._[(int)P3] }; }
 
 #undef CAST_AND_OP
@@ -1095,7 +1121,5 @@ namespace onart{
 #endif
 
 }
-
-#endif
 
 #endif
