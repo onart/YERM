@@ -280,6 +280,8 @@ namespace onart {
         ID3D11DeviceContext* context{};
         IDXGISwapChain* swapchain{};
 
+        bool canUseBC7 = false;
+
         ThreadPool loadThread;
         std::map<int32_t, RenderPass*> renderPasses;
         std::map<int32_t, RenderPass2Screen*> finalPasses;
@@ -300,6 +302,28 @@ namespace onart {
             NONE = 0,
             GENERAL = 1,
         };
+    };
+
+    class D3D11Machine::Texture {
+        friend class D3D11Machine;
+        friend class RenderPass;
+    public:
+        /// @brief 사용하지 않는 텍스처 데이터를 정리합니다.
+        /// @param removeUsing 사용하는 텍스처 데이터도 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getTexture로 찾을 수 없습니다.)
+        static void collect(bool removeUsing = false);
+        /// @brief 주어진 이름의 텍스처 데이터를 내립니다. 사용하고 있는 텍스처 데이터는 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getTexture로 찾을 수 없습니다.)
+        static void drop(int32_t name);
+        /// @brief 원본 텍스처의 크기입니다.
+        const uint16_t width, height;
+    protected:
+        Texture(ID3D11Resource* texture, ID3D11ShaderResourceView* dset, uint16_t width, uint16_t height, bool isCubemap, bool linearSampled);
+        VkDescriptorSetLayout getLayout();
+        ~Texture();
+    private:
+        ID3D11Resource* texture;
+        ID3D11ShaderResourceView* dset;
+        const bool isCubemap;
+        bool linearSampled;
     };
 
     class D3D11Machine::Mesh {

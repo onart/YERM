@@ -1,6 +1,12 @@
 #include "yr_d3d11.h"
 #include "yr_sys.h"
 
+#ifndef KHRONOS_STATIC
+#define KHRONOS_STATIC
+#endif
+#include "../externals/ktx/include/ktx.h"
+#include "../externals/single_header/stb_image.h"
+
 #include <comdef.h>
 
 #pragma comment(lib, "dxgi.lib")
@@ -9,7 +15,12 @@ namespace onart {
 	D3D11Machine* D3D11Machine::singleton = nullptr;
 	thread_local unsigned D3D11Machine::reason = 0;
 
+    constexpr uint64_t BC7_SCORE = 1LL << 53;
+
     static uint64_t assessAdapter(IDXGIAdapter*);
+    static DXGI_FORMAT ktx2Format2DX(VkFormat);
+    static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, D3D11Machine::ImageTextureFormatOptions& option);
+    static ktx_error_code_e tryTranscode(ktxTexture2* texture, ID3D11Device* device, uint32_t nChannels, bool srgb, bool hq);
 
     D3D11Machine::D3D11Machine(Window* window) {
         if (singleton) {
@@ -52,6 +63,10 @@ namespace onart {
             &lv,
             &context
         );
+
+        if (score & BC7_SCORE) {
+            canUseBC7 = true;
+        }
 
         selectedAdapter->Release();
 
@@ -198,7 +213,7 @@ namespace onart {
         constexpr UINT BITS_FOR_BC7 = D3D11_FORMAT_SUPPORT_TEXTURE2D | D3D11_FORMAT_SUPPORT_TEXTURECUBE;
         if (temp->CheckFeatureSupport(D3D11_FEATURE_FORMAT_SUPPORT, &formatSupport, sizeof(formatSupport)) == S_OK) {
             if ((formatSupport.OutFormatSupport & BITS_FOR_BC7) == BITS_FOR_BC7) {
-                score |= 1LL << 53;
+                score |= BC7_SCORE;
             }
         }
 
@@ -283,11 +298,300 @@ namespace onart {
         return singleton->shaders[key] = ret;
     }
 
+    ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, D3D11Machine::ImageTextureFormatOptions& option) {
+        ktxTexture2* texture;
+        ktx_error_code_e k2result;
+        ktxTextureCreateInfo texInfo{};
+        texInfo.baseDepth = 1;
+        texInfo.baseWidth = x;
+        texInfo.baseHeight = y;
+        texInfo.numFaces = 1;
+        texInfo.numLevels = 1;
+        texInfo.numDimensions = 2;
+        texInfo.numLayers = 1;
+        switch (nChannels)
+        {
+        case 1:
+            texInfo.vkFormat = srgb ? VK_FORMAT_R8_SRGB : VK_FORMAT_R8_UNORM;
+            break;
+        case 2:
+            texInfo.vkFormat = srgb ? VK_FORMAT_R8G8_SRGB : VK_FORMAT_R8G8_UNORM;
+            break;
+        case 3:
+            texInfo.vkFormat = srgb ? VK_FORMAT_R8G8B8_SRGB : VK_FORMAT_R8G8B8_UNORM;
+            break;
+        case 4:
+            texInfo.vkFormat = srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+            break;
+        default:
+            LOGWITH("nChannels should be 1~4");
+            return nullptr;
+        }
+        if ((k2result = ktxTexture2_Create(&texInfo, ktxTextureCreateStorageEnum::KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture)) != KTX_SUCCESS) {
+            LOGWITH("Failed to create texture:", k2result);
+            return nullptr;
+        }
+        if ((k2result = ktxTexture_SetImageFromMemory(ktxTexture(texture), 0, 0, 0, pix, x * y * nChannels)) != KTX_SUCCESS) {
+            LOGWITH("Failed to set texture image data:", k2result);
+            ktxTexture_Destroy(ktxTexture(texture));
+            return nullptr;
+        }
+        if (option == D3D11Machine::ImageTextureFormatOptions::IT_USE_HQCOMPRESS || option == D3D11Machine::ImageTextureFormatOptions::IT_USE_COMPRESS) {
+            ktxBasisParams params{};
+            params.compressionLevel = KTX_ETC1S_DEFAULT_COMPRESSION_LEVEL;
+            params.uastc = KTX_TRUE;
+            params.verbose = KTX_FALSE;
+            params.structSize = sizeof(params);
+
+            k2result = ktxTexture2_CompressBasisEx(texture, &params);
+            if (k2result != KTX_SUCCESS) {
+                LOGWITH("Compress failed:", k2result);
+                option = D3D11Machine::ImageTextureFormatOptions::IT_USE_ORIGINAL;
+            }
+        }
+        return texture;
+    }
+
+    ktx_error_code_e tryTranscode(ktxTexture2* texture, ID3D11Device* device, uint32_t nChannels, bool srgb, bool hq) {
+        if (ktxTexture2_NeedsTranscoding(texture)) {
+            ktx_transcode_fmt_e tf;
+            switch (textureFormatFallback(device, nChannels, srgb, hq, texture->isCubemap ? D3D11_FORMAT_SUPPORT_TEXTURECUBE : D3D11_FORMAT_SUPPORT_TEXTURE2D ))
+            {
+            case DXGI_FORMAT_BC7_UNORM_SRGB:
+            case DXGI_FORMAT_BC7_UNORM:
+                tf = KTX_TTF_BC7_RGBA;
+                break;
+            case DXGI_FORMAT_BC3_UNORM_SRGB:
+            case DXGI_FORMAT_BC3_UNORM:
+                tf = KTX_TTF_BC3_RGBA;
+                break;
+            case DXGI_FORMAT_BC1_UNORM_SRGB:
+            case DXGI_FORMAT_BC1_UNORM:
+                tf = KTX_TTF_BC1_RGB;
+                break;
+            case DXGI_FORMAT_BC4_UNORM:
+                tf = KTX_TTF_BC4_R;
+                break;
+            case DXGI_FORMAT_BC5_UNORM:
+                tf = KTX_TTF_BC5_RG;
+                break;
+            default:
+                tf = KTX_TTF_RGBA32;
+                break;
+            }
+            return ktxTexture2_TranscodeBasis(texture, tf, 0);
+        }
+        return KTX_SUCCESS;
+    }
+
+    D3D11Machine::pTexture D3D11Machine::createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler) {
+        if (auto ret = getTexture(key)) { return ret; }
+        int x, y, nChannels;
+        uint8_t* pix = stbi_load_from_memory(mem, size, &x, &y, &nChannels, 4);
+        if (!pix) {
+            LOGWITH("Failed to load image:", stbi_failure_reason());
+            return pTexture();
+        }
+        ktxTexture2* texture = createKTX2FromImage(pix, x, y, 4, srgb, option);
+        stbi_image_free(pix);
+        if (!texture) {
+            LOGHERE;
+            return pTexture();
+        }
+        return singleton->createTexture(texture, key, 4, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS, linearSampler);
+    }
+
+    D3D11Machine::pTexture D3D11Machine::createTextureFromImage(const char* fileName, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler) {
+        if (auto ret = getTexture(key)) { return ret; }
+        int x, y, nChannels;
+        uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 4);
+        if (!pix) {
+            LOGWITH("Failed to load image:", stbi_failure_reason());
+            return pTexture();
+        }
+        ktxTexture2* texture = createKTX2FromImage(pix, x, y, 4, srgb, option);
+        stbi_image_free(pix);
+        if (!texture) {
+            LOGHERE;
+            return pTexture();
+        }
+        return singleton->createTexture(texture, key, 4, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS, linearSampler);
+    }
+
+    D3D11Machine::pTexture D3D11Machine::createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler) {
+        if (auto ret = getTexture(key)) { return ret; }
+        if (nChannels > 4 || nChannels == 0) {
+            LOGWITH("Invalid channel count. nChannels must be 1~4");
+            return pTexture();
+        }
+
+        ktxTexture2* texture;
+        ktx_error_code_e k2result;
+
+        if ((k2result = ktxTexture2_CreateFromNamedFile(fileName, KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS) {
+            LOGWITH("Failed to load ktx texture:", k2result);
+            return pTexture();
+        }
+        return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler);
+    }
+
+    D3D11Machine::pTexture D3D11Machine::createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb, bool hq, bool linearSampler) {
+        if (auto ret = getTexture(key)) { return ret; }
+        if (nChannels > 4 || nChannels == 0) {
+            LOGWITH("Invalid channel count. nChannels must be 1~4");
+            return pTexture();
+        }
+
+        ktxTexture2* texture;
+        ktx_error_code_e k2result;
+        if ((k2result = ktxTexture2_CreateFromMemory(mem, size, KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS) {
+            LOGWITH("Failed to load ktx texture:", k2result);
+            return pTexture();
+        }
+        return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler);
+    }
+
+    D3D11Machine::pTexture D3D11Machine::createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler) {
+        ktxTexture2* texture = reinterpret_cast<ktxTexture2*>(ktxObj);
+        if (texture->numLevels == 0) return pTexture();
+        ktx_error_code_e k2result = tryTranscode(texture, device, nChannels, srgb, hq);
+        if (k2result != KTX_SUCCESS) {
+            LOGWITH("Failed to transcode ktx texture:", k2result);
+            ktxTexture_Destroy(ktxTexture(texture));
+            return pTexture();
+        }
+        
+        D3D11_TEXTURE2D_DESC info{};
+        info.Width = texture->baseWidth;
+        info.Height = texture->baseHeight;
+        info.MipLevels = texture->numLevels;
+        info.ArraySize = texture->numFaces * texture->numLayers;
+        info.Format = textureFormatFallback(device, nChannels, srgb, hq, texture->isCubemap ? D3D11_FORMAT_SUPPORT_TEXTURECUBE : D3D11_FORMAT_SUPPORT_TEXTURE2D);
+        info.Usage = D3D11_USAGE_IMMUTABLE;
+        info.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        info.SampleDesc.Count = 1;
+        info.SampleDesc.Quality = 1;
+        D3D11_SUBRESOURCE_DATA data{};
+        data.pSysMem = texture->pData;
+        data.SysMemPitch = ktxTexture_GetRowPitch(ktxTexture(texture), 0);
+        ID3D11Texture2D* newTex{};
+        ID3D11ShaderResourceView* srv{};
+        HRESULT result = singleton->device->CreateTexture2D(&info, &data, &newTex);
+        
+        if (result != S_OK) {
+            LOGWITH("Failed to create d3d11 texture:", result);
+            ktxTexture_Destroy(ktxTexture(texture));
+            return pTexture();
+        }
+        uint16_t width = texture->baseWidth, height = texture->baseHeight;
+        ktxTexture_Destroy(ktxTexture(texture));
+
+        D3D11_SHADER_RESOURCE_VIEW_DESC descInfo{};
+        descInfo.Format = info.Format;
+        descInfo.ViewDimension = texture->isCubemap ? D3D11_SRV_DIMENSION_TEXTURECUBE : D3D11_SRV_DIMENSION_TEXTURE2D;
+        descInfo.Texture2D.MipLevels = info.MipLevels;
+        result = singleton->device->CreateShaderResourceView(newTex, &descInfo, &srv);
+        if (result != S_OK) {
+            LOGWITH("Failed to create d3d11 shader resource view:", result);
+            newTex->Release();
+            return pTexture();
+        }
+        struct txtr :public Texture { inline txtr(ID3D11Resource* _1, ID3D11ShaderResourceView* _2, uint16_t _3, uint16_t _4, bool _5, bool _6) :Texture(_1, _2, _3, _4, _5, _6) {} };
+        if (key == INT32_MIN) return std::make_shared<txtr>(texture, srv, width, height, texture->isCubemap, linearSampler);
+        return textures[key] = std::make_shared<txtr>(texture, srv, width, height, texture->isCubemap, linearSampler);
+    }
+
+    D3D11Machine::Texture::Texture(ID3D11Resource* texture, ID3D11ShaderResourceView* dset, uint16_t width, uint16_t height, bool isCubemap, bool linearSampled)
+        :texture(texture), dset(dset), width(width), height(height), isCubemap(isCubemap), linearSampled(linearSampled) {
+    }
+
+    D3D11Machine::Texture::~Texture() {
+        dset->Release();
+        texture->Release();
+    }
+
     D3D11Machine::Mesh::Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib) :vb(vb), ib(ib), layout{} {}
 
     D3D11Machine::Mesh::~Mesh() {
         if(vb) vb->Release();
         if (ib) ib->Release();
         if (layout) layout->Release();
+    }
+
+    DXGI_FORMAT ktx2Format2DX(VkFormat fmt) {
+        switch (fmt)
+        {
+        case VK_FORMAT_BC7_UNORM_BLOCK: return DXGI_FORMAT_BC7_UNORM;
+        case VK_FORMAT_BC3_UNORM_BLOCK: return DXGI_FORMAT_BC3_UNORM;
+        default: return DXGI_FORMAT::DXGI_FORMAT_FORCE_UINT;
+        }
+    }
+
+    bool isThisFormatAvailable(ID3D11Device* device, DXGI_FORMAT format, UINT flags) {
+        D3D11_FEATURE_DATA_FORMAT_SUPPORT formatSupport{};
+        formatSupport.InFormat = format;
+        if (device->CheckFeatureSupport(D3D11_FEATURE_FORMAT_SUPPORT, &formatSupport, sizeof(formatSupport)) == S_OK) {
+            return (formatSupport.OutFormatSupport & flags) == flags;
+        }
+        return false;
+    }
+
+    DXGI_FORMAT textureFormatFallback(ID3D11Device* device, uint32_t nChannels, bool srgb, bool hq, UINT flags) {
+#define CHECK_N_RETURN(f) if(isThisFormatAvailable(device,f,flags)) return f
+        switch (nChannels)
+        {
+        case 4:
+            if (srgb) {
+                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
+                if (hq) return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+                CHECK_N_RETURN(DXGI_FORMAT_BC3_UNORM_SRGB);
+                return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+            }
+            else {
+                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM);
+                if (hq) return DXGI_FORMAT_R8G8B8A8_UNORM;
+                CHECK_N_RETURN(DXGI_FORMAT_BC3_UNORM);
+                return DXGI_FORMAT_R8G8B8A8_UNORM;
+            }
+            break;
+        case 3:
+            if (srgb) {
+                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
+                if (hq) return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+                CHECK_N_RETURN(DXGI_FORMAT_BC1_UNORM_SRGB);
+                return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+            }
+            else {
+                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM);
+                if (hq) return DXGI_FORMAT_R8G8B8A8_UNORM;
+                CHECK_N_RETURN(DXGI_FORMAT_BC1_UNORM);
+                return DXGI_FORMAT_R8G8B8A8_UNORM;
+            }
+        case 2:
+            if (srgb) {
+                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
+                return DXGI_FORMAT_R8G8_UNORM; // SRGB æ»∫∏¿”..
+            }
+            else {
+                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM);
+                if (hq) return DXGI_FORMAT_R8G8_UNORM;
+                CHECK_N_RETURN(DXGI_FORMAT_BC5_UNORM);
+                return DXGI_FORMAT_R8G8_UNORM;
+            }
+        case 1:
+            if (srgb) {
+                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
+                return DXGI_FORMAT_R8_UNORM;
+            }
+            else {
+                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
+                if (hq) return DXGI_FORMAT_R8_UNORM;
+                CHECK_N_RETURN(DXGI_FORMAT_BC4_UNORM);
+                return DXGI_FORMAT_R8_UNORM;
+            }
+        default:
+            return DXGI_FORMAT_UNKNOWN;
+        }
+#undef CHECK_N_RETURN
     }
 }
