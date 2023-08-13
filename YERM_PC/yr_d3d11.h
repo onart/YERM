@@ -294,6 +294,13 @@ namespace onart {
         std::map<int32_t, pTexture> textures;
         std::map<int32_t, pStreamTexture> streamTextures;
 
+        struct ImageSet {
+            ID3D11Resource* tex{};
+            ID3D11ShaderResourceView* srv{};
+            void free();
+            ~ImageSet();
+        };
+
         std::mutex textureGuard;
         uint32_t surfaceWidth, surfaceHeight;
 
@@ -324,6 +331,26 @@ namespace onart {
         ID3D11ShaderResourceView* dset;
         const bool isCubemap;
         bool linearSampled;
+    };
+
+    class D3D11Machine::RenderTarget {
+        friend class D3D11Machine;
+        friend class RenderPass;
+        friend class RenderPass2Screen;
+    public:
+        RenderTarget& operator=(const RenderTarget&) = delete;
+    private:
+        /// @brief 이 타겟을 위한 첨부물을 기술합니다.
+        /// @return 색 첨부물의 수(최대 3)
+        uint32_t attachmentRefs(VkAttachmentDescription* descr, bool forSample);
+        uint32_t getDescriptorSets(VkDescriptorSet* out);
+        ID3D11RenderTargetView* dset1{}, *dset2{}, *dset3{}, *dsetDS{};
+        ImageSet* color1{}, *color2{}, *color3{}, *ds{};
+        unsigned width, height;
+        const bool mapped;
+        const RenderTargetType type;
+        RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet**, ID3D11RenderTargetView**, bool);
+        ~RenderTarget();
     };
 
     class D3D11Machine::Mesh {

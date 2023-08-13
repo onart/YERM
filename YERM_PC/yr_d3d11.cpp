@@ -578,7 +578,9 @@ namespace onart {
         info.Usage = D3D11_USAGE_IMMUTABLE;
         info.BindFlags = D3D11_BIND_SHADER_RESOURCE;
         info.SampleDesc.Count = 1;
-        info.SampleDesc.Quality = 1;
+        info.SampleDesc.Quality = 0;
+        info.MiscFlags = texture->isCubemap ? D3D11_RESOURCE_MISC_FLAG::D3D11_RESOURCE_MISC_TEXTURECUBE : 0;
+
         D3D11_SUBRESOURCE_DATA data{};
         data.pSysMem = texture->pData;
         data.SysMemPitch = ktxTexture_GetRowPitch(ktxTexture(texture), 0);
@@ -611,12 +613,206 @@ namespace onart {
         return textures[key] = std::make_shared<txtr>(texture, srv, width, height, texture->isCubemap, linearSampler);
     }
 
+    D3D11Machine::ImageSet::~ImageSet() {
+        if (srv) { srv->Release(); }
+        if (tex) { tex->Release(); }
+    }
+
+    D3D11Machine::RenderTarget* D3D11Machine::createRenderTarget2D(int width, int height, int32_t key, RenderTargetType type, RenderTargetInputOption sampled, bool useDepthInput, bool useStencil, bool mmap) {
+        auto it = singleton->renderTargets.find(key);
+        if (it != singleton->renderTargets.end()) {
+            return it->second;
+        }
+
+        D3D11_TEXTURE2D_DESC textureInfo{};
+        textureInfo.Width = width;
+        textureInfo.Height = height;
+        textureInfo.MipLevels = 1;
+        textureInfo.ArraySize = 1;
+        textureInfo.SampleDesc.Count = 1;
+        textureInfo.SampleDesc.Quality = 0;
+        textureInfo.Usage = mmap ? D3D11_USAGE_STAGING : D3D11_USAGE_DEFAULT;
+        textureInfo.CPUAccessFlags = mmap ? D3D11_CPU_ACCESS_FLAG::D3D11_CPU_ACCESS_READ : 0;
+
+        textureInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // TODO: SRGB?
+        textureInfo.BindFlags = D3D11_BIND_FLAG::D3D11_BIND_RENDER_TARGET | D3D11_BIND_FLAG::D3D11_BIND_SHADER_RESOURCE;
+
+        D3D11_RENDER_TARGET_VIEW_DESC targetInfo{};
+        targetInfo.Format = textureInfo.Format;
+        targetInfo.ViewDimension = D3D11_RTV_DIMENSION::D3D11_RTV_DIMENSION_TEXTURE2D;
+        targetInfo.Texture2D.MipSlice = 0;
+
+        ImageSet* color1{}, *color2{}, *color3{}, *ds{};
+        ID3D11RenderTargetView* rtv1{}, * rtv2{}, * rtv3{}, * rtvds{};
+
+        D3D11_SHADER_RESOURCE_VIEW_DESC descInfo{};
+        descInfo.Format = textureInfo.Format;
+        descInfo.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        descInfo.Texture2D.MipLevels = 1;
+
+        if ((int)type & 0b1) {
+            color1 = new ImageSet{};
+            HRESULT result = singleton->device->CreateTexture2D(&textureInfo, nullptr, (ID3D11Texture2D**)&color1->tex);
+            if (result != S_OK) {
+                LOGWITH("Failed to create color target:", result);
+                reason = result;
+                delete color1;
+                return {};
+            }
+            result = singleton->device->CreateShaderResourceView(color1->tex, &descInfo, &color1->srv);
+            if (result != S_OK) {
+                LOGWITH("Failed to create color target shader resoruce view:", result);
+                reason = result;
+                delete color1;
+                return {};
+            }
+            result = singleton->device->CreateRenderTargetView(color1->tex, &targetInfo, &rtv1);
+            if (result != S_OK) {
+                LOGWITH("Failed to create color target render target view:", result);
+                reason = result;
+                delete color1;
+                return {};
+            }
+            if ((int)type & 0b10) {
+                color2 = new ImageSet{};
+                result = singleton->device->CreateTexture2D(&textureInfo, nullptr, (ID3D11Texture2D**)&color2->tex);
+                if (result != S_OK) {
+                    LOGWITH("Failed to create color target:", result);
+                    reason = result;
+                    delete color1;
+                    delete color2;
+                    rtv1->Release();
+                    return {};
+                }
+                result = singleton->device->CreateShaderResourceView(color2->tex, &descInfo, &color2->srv);
+                if (result != S_OK) {
+                    LOGWITH("Failed to create color target shader resoruce view:", result);
+                    reason = result;
+                    delete color1;
+                    delete color2;
+                    rtv1->Release();
+                    return {};
+                }
+                result = singleton->device->CreateRenderTargetView(color2->tex, &targetInfo, &rtv2);
+                if (result != S_OK) {
+                    LOGWITH("Failed to create color target render target view:", result);
+                    reason = result;
+                    delete color1;
+                    delete color2;
+                    rtv1->Release();
+                    return {};
+                }
+                if ((int)type & 0b100) {
+                    color3 = new ImageSet{};
+                    result = singleton->device->CreateTexture2D(&textureInfo, nullptr, (ID3D11Texture2D**)&color3->tex);
+                    if (result != S_OK) {
+                        LOGWITH("Failed to create color target:", result);
+                        reason = result;
+                        delete color1;
+                        delete color2;
+                        delete color3;
+                        rtv1->Release();
+                        rtv2->Release();
+                        return {};
+                    }
+                    result = singleton->device->CreateShaderResourceView(color3->tex, &descInfo, &color3->srv);
+                    if (result != S_OK) {
+                        LOGWITH("Failed to create color target shader resoruce view:", result);
+                        reason = result;
+                        delete color1;
+                        delete color2;
+                        delete color3;
+                        rtv1->Release();
+                        rtv2->Release();
+                        return {};
+                    }
+                    result = singleton->device->CreateRenderTargetView(color3->tex, &targetInfo, &rtv3);
+                    if (result != S_OK) {
+                        LOGWITH("Failed to create color target render target view:", result);
+                        reason = result;
+                        delete color1;
+                        delete color2;
+                        delete color3;
+                        rtv1->Release();
+                        rtv2->Release();
+                        return {};
+                    }
+                }
+            }
+        }
+        if ((int)type & 0b1000) {
+            ds = new ImageSet{};
+            textureInfo.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+            if (!useDepthInput) {
+                textureInfo.BindFlags = D3D11_BIND_FLAG::D3D11_BIND_RENDER_TARGET;
+            }
+            HRESULT result = singleton->device->CreateTexture2D(&textureInfo, nullptr, (ID3D11Texture2D**)&ds->tex);
+            if (result != S_OK) {
+                LOGWITH("Failed to create depth-stencil texture:", result);
+                delete color1;
+                delete color2;
+                delete color3;
+                delete ds;
+                if (rtv1) rtv1->Release();
+                if (rtv2) rtv2->Release();
+                if (rtv3) rtv3->Release();
+                return {};
+            }
+            result = singleton->device->CreateShaderResourceView(ds->tex, &descInfo, &ds->srv);
+            if (result != S_OK) {
+                LOGWITH("Failed to create color target shader resoruce view:", result);
+                reason = result;
+                delete color1;
+                delete color2;
+                delete color3;
+                delete ds;
+                if (rtv1) rtv1->Release();
+                if (rtv2) rtv2->Release();
+                if (rtv3) rtv3->Release();
+                return {};
+            }
+            result = singleton->device->CreateRenderTargetView(ds->tex, &targetInfo, &rtvds);
+            if (result != S_OK) {
+                LOGWITH("Failed to create color target render target view:", result);
+                reason = result;
+                delete color1;
+                delete color2;
+                delete color3;
+                if (rtv1) rtv1->Release();
+                if (rtv2) rtv2->Release();
+                if (rtv3) rtv3->Release();
+                return {};
+            }
+        }
+        ImageSet* params[] = {color1, color2, color3, ds};
+        ID3D11RenderTargetView* params2[] = {rtv1, rtv2, rtv3, rtvds};
+        if (key == INT32_MIN) return new RenderTarget(type, width, height, params, params2, mmap);
+        return singleton->renderTargets[key] = new RenderTarget(type, width, height, params, params2, mmap);
+    }
+
+
     void D3D11Machine::handle() {
         singleton->loadThread.handleCompleted();
     }
 
     mat4 D3D11Machine::preTransform() {
         return mat4();
+    }
+
+    D3D11Machine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet** sets, ID3D11RenderTargetView** rtvs, bool mmap)
+        :width(width), height(height), mapped(mmap), type(type), color1(sets[0]), color2(sets[1]), color3(sets[2]), ds(sets[3]), dset1(rtvs[0]), dset2(rtvs[1]), dset3(rtvs[2]), dsetDS(rtvs[3]) {
+
+    }
+
+    D3D11Machine::RenderTarget::~RenderTarget() {
+        if (dset1) dset1->Release();
+        if (dset2) dset2->Release();
+        if (dset3) dset3->Release();
+        if (dsetDS) dsetDS->Release();
+        delete color1;
+        delete color2;
+        delete color3;
+        delete ds;
     }
 
     D3D11Machine::Texture::Texture(ID3D11Resource* texture, ID3D11ShaderResourceView* dset, uint16_t width, uint16_t height, bool isCubemap, bool linearSampled)
