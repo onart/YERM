@@ -13,7 +13,7 @@
 
 namespace onart {
 	D3D11Machine* D3D11Machine::singleton = nullptr;
-	thread_local unsigned D3D11Machine::reason = 0;
+	thread_local HRESULT D3D11Machine::reason = 0;
 
     constexpr uint64_t BC7_SCORE = 1LL << 53;
 
@@ -72,6 +72,7 @@ namespace onart {
 
         if (result != S_OK) {
             LOGWITH("Failed to create d3d11 device:", result);
+            reason = result;
             return;
         }
 
@@ -81,6 +82,7 @@ namespace onart {
         createSwapchain(x, y, window);
         if (!swapchain) {
             LOGWITH("Failed to create swapchain");
+            reason = result;
             return;
         }
 
@@ -96,6 +98,7 @@ namespace onart {
                 LOGWITH("Failed to resize swapchain:", result, err.ErrorMessage());
                 swapchain->Release();
                 swapchain = nullptr;
+                reason = result;
                 return;
             }
             return;
@@ -111,18 +114,21 @@ namespace onart {
         if (!dxgiDevice) {
             _com_error err(result);
             LOGWITH("Failed to query dxgi device:", result, err.ErrorMessage());
+            reason = result;
             return;
         }
         result = dxgiDevice->GetAdapter(&dxgiAdapter);
         if (!dxgiAdapter) {
             _com_error err(result);
             LOGWITH("Failed to query dxgi adapter:", result, err.ErrorMessage());
+            reason = result;
             return;
         }
         result = dxgiAdapter->GetParent(__uuidof(IDXGIFactory), (void**)&dxgiFactory);
         if (!dxgiFactory) {
             _com_error err(result);
             LOGWITH("Failed to query dxgi factory:", result, err.ErrorMessage());
+            reason = result;
             return;
         }
 
@@ -147,6 +153,7 @@ namespace onart {
         if (!swapchain) {
             _com_error err(result);
             LOGWITH("Failed to create swapchain:", result, err.ErrorMessage());
+            reason = result;
             return;
         }
         
@@ -241,6 +248,7 @@ namespace onart {
         HRESULT result = singleton->device->CreateBuffer(&bufferInfo, &vertexData, &vb);
         if (result != S_OK) {
             LOGWITH("Failed to create vertex buffer:", result);
+            reason = result;
             return {};
         }
 
@@ -251,6 +259,7 @@ namespace onart {
             if (result != S_OK) {
                 LOGWITH("Failed to create index buffer:", result);
                 vb->Release();
+                reason = result;
                 return {};
             }
         }
@@ -293,6 +302,7 @@ namespace onart {
         }
         if (result != S_OK) {
             LOGWITH("Failed to create shader instance:",result);
+            reason = result;
             return {};
         }
         return singleton->shaders[key] = ret;
@@ -382,6 +392,104 @@ namespace onart {
             return ktxTexture2_TranscodeBasis(texture, tf, 0);
         }
         return KTX_SUCCESS;
+    }
+
+    D3D11Machine::pTexture D3D11Machine::getTexture(int32_t key, bool lock) {
+        if (lock) {
+            std::unique_lock<std::mutex> _(singleton->textureGuard);
+            auto it = singleton->textures.find(key);
+            if (it != singleton->textures.end()) return it->second;
+            else return pTexture();
+        }
+        else {
+            auto it = singleton->textures.find(key);
+            if (it != singleton->textures.end()) return it->second;
+            else return pTexture();
+        }
+    }
+
+    void D3D11Machine::asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(variant8)> handler, int32_t key, bool srgb, bool hq, bool linearSampler) {
+        if (key == INT32_MIN) {
+            LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
+            return;
+        }
+        bool already = (bool)getTexture(key, true);
+        singleton->loadThread.post([mem, size, key, nChannels, handler, srgb, hq, already, linearSampler]() {
+            if (!already) {
+                pTexture ret = singleton->createTexture(mem, size, nChannels, INT32_MIN, srgb, hq, linearSampler);
+                if (!ret) {
+                    variant8 _k = (uint32_t)key | ((uint64_t)D3D11Machine::reason << 32);
+                    return _k;
+                }
+                singleton->textureGuard.lock();
+                singleton->textures[key] = std::move(ret);
+                singleton->textureGuard.unlock();
+            }
+            return variant8((uint64_t)(uint32_t)key);
+            }, handler, vkm_strand::GENERAL);
+    }
+
+    void D3D11Machine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(variant8)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler) {
+        if (key == INT32_MIN) {
+            LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
+            return;
+        }
+        bool already = (bool)getTexture(key, true);
+        singleton->loadThread.post([already, fileName, key, handler, srgb, option, linearSampler]() {
+            if (!already) {
+                pTexture ret = singleton->createTextureFromImage(fileName, INT32_MIN, srgb, option, linearSampler);
+                if (!ret) {
+                    variant8 _k = (uint32_t)key | ((uint64_t)D3D11Machine::reason << 32);
+                    return _k;
+                }
+                singleton->textureGuard.lock();
+                singleton->textures[key] = std::move(ret);
+                singleton->textureGuard.unlock();
+            }
+            return variant8((uint64_t)(uint32_t)key);
+            }, handler, vkm_strand::GENERAL);
+    }
+
+    void D3D11Machine::asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(variant8)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler) {
+        if (key == INT32_MIN) {
+            LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
+            return;
+        }
+        bool already = (bool)getTexture(key, true);
+        singleton->loadThread.post([already, mem, size, key, handler, srgb, option, linearSampler]() {
+            if (!already) {
+                pTexture ret = singleton->createTextureFromImage(mem, size, INT32_MIN, srgb, option, linearSampler);
+                if (!ret) {
+                    variant8 _k = (uint32_t)key | ((uint64_t)D3D11Machine::reason << 32);
+                    return _k;
+                }
+                singleton->textureGuard.lock();
+                singleton->textures[key] = std::move(ret);
+                singleton->textureGuard.unlock();
+            }
+            return variant8((uint64_t)(uint32_t)key);
+            }, handler, vkm_strand::GENERAL);
+    }
+
+    void D3D11Machine::asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(variant8)> handler, bool srgb, bool hq, bool linearSampler) {
+        if (key == INT32_MIN) {
+            LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
+            return;
+        }
+        bool already = (bool)getTexture(key, true);
+        singleton->loadThread.post([fileName, key, nChannels, handler, srgb, hq, already, linearSampler]() {
+            if (!already) {
+                pTexture ret = singleton->createTexture(fileName, INT32_MIN, nChannels, srgb, hq, linearSampler);
+                if (!ret) {
+                    variant8 _k = (uint32_t)key | ((uint64_t)D3D11Machine::reason << 32);
+                    return _k;
+                }
+                singleton->textureGuard.lock();
+                singleton->textures[key] = std::move(ret);
+                singleton->textureGuard.unlock();
+            }
+            return variant8((uint64_t)(uint32_t)key);
+            }, handler, vkm_strand::GENERAL);
     }
 
     D3D11Machine::pTexture D3D11Machine::createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler) {
@@ -481,6 +589,7 @@ namespace onart {
         if (result != S_OK) {
             LOGWITH("Failed to create d3d11 texture:", result);
             ktxTexture_Destroy(ktxTexture(texture));
+            reason = result;
             return pTexture();
         }
         uint16_t width = texture->baseWidth, height = texture->baseHeight;
@@ -494,11 +603,20 @@ namespace onart {
         if (result != S_OK) {
             LOGWITH("Failed to create d3d11 shader resource view:", result);
             newTex->Release();
+            reason = result;
             return pTexture();
         }
         struct txtr :public Texture { inline txtr(ID3D11Resource* _1, ID3D11ShaderResourceView* _2, uint16_t _3, uint16_t _4, bool _5, bool _6) :Texture(_1, _2, _3, _4, _5, _6) {} };
         if (key == INT32_MIN) return std::make_shared<txtr>(texture, srv, width, height, texture->isCubemap, linearSampler);
         return textures[key] = std::make_shared<txtr>(texture, srv, width, height, texture->isCubemap, linearSampler);
+    }
+
+    void D3D11Machine::handle() {
+        singleton->loadThread.handleCompleted();
+    }
+
+    mat4 D3D11Machine::preTransform() {
+        return mat4();
     }
 
     D3D11Machine::Texture::Texture(ID3D11Resource* texture, ID3D11ShaderResourceView* dset, uint16_t width, uint16_t height, bool isCubemap, bool linearSampled)
