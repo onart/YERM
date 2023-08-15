@@ -983,8 +983,8 @@ namespace onart {
         glBufferData(GL_UNIFORM_BUFFER, size, nullptr, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-        if(name == INT32_MIN) return new UniformBuffer(length, ubo, binding);
-        return singleton->uniformBuffers[name] = new UniformBuffer(length, ubo, binding);
+        if(name == INT32_MIN) return new UniformBuffer(size, ubo, binding);
+        return singleton->uniformBuffers[name] = new UniformBuffer(size, ubo, binding);
     }
 
     GLMachine::RenderTarget::~RenderTarget(){

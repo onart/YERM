@@ -229,6 +229,46 @@ namespace onart {
         return score;
     }
 
+    D3D11Machine::pMesh D3D11Machine::getMesh(int32_t key) {
+        auto it = singleton->meshes.find(key);
+        if (it != singleton->meshes.end()) {
+            return it->second;
+        }
+        return {};
+    }
+
+    D3D11Machine::UniformBuffer* D3D11Machine::getUniformBuffer(int32_t key) {
+        auto it = singleton->uniformBuffers.find(key);
+        if (it != singleton->uniformBuffers.find(key)) {
+            return it->second;
+        }
+        return {};
+    }
+
+    D3D11Machine::RenderTarget* D3D11Machine::getRenderTarget(int32_t key) {
+        auto it = singleton->renderTargets.find(key);
+        if (it != singleton->renderTargets.find(key)) {
+            return it->second;
+        }
+        return {};
+    }
+
+    D3D11Machine::RenderPass* D3D11Machine::getRenderPass(int32_t key) {
+        auto it = singleton->renderPasses.find(key);
+        if (it != singleton->renderPasses.find(key)) {
+            return it->second;
+        }
+        return {};
+    }
+
+    D3D11Machine::RenderPass2Cube* D3D11Machine::getRenderPass2Cube(int32_t key) {
+        auto it = singleton->cubePasses.find(key);
+        if (it != singleton->cubePasses.find(key)) {
+            return it->second;
+        }
+        return {};
+    }
+
     D3D11Machine::pMesh D3D11Machine::createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, int32_t key, bool stage) {
         pMesh ret = getMesh(key);
         if (ret) {
@@ -797,6 +837,57 @@ namespace onart {
 
     mat4 D3D11Machine::preTransform() {
         return mat4();
+    }
+
+    D3D11Machine::UniformBuffer::UniformBuffer(uint32_t length, ID3D11Buffer* ubo, uint32_t binding)
+        :length(length), ubo(ubo), binding(binding) {
+
+    }
+
+    D3D11Machine::UniformBuffer::~UniformBuffer() {
+        ubo->Release();
+    }
+
+    void D3D11Machine::UniformBuffer::update(const void* input, uint32_t index, uint32_t offset, uint32_t size) {
+        if (offset + size > length) {
+            LOGWITH("Requested buffer update range is invalid");
+            return;
+        }
+        if (size == length) {
+            singleton->context->UpdateSubresource(ubo, 0, nullptr, input, 0, 0);
+        }
+        else { // 일반적인 사용 패턴대로, 맵은 유지하지 않도록 함
+            D3D11_MAPPED_SUBRESOURCE mappedResource;
+            if (singleton->context->Map(ubo, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource) == S_OK)
+            {
+                std::memcpy((uint8_t*)mappedResource.pData + offset, input, size);
+                singleton->context->Unmap(ubo, 0);
+            }
+            else {
+                LOGWITH("Failed to map memory");
+                return;
+            }
+        }
+    }
+
+    D3D11Machine::UniformBuffer* D3D11Machine::createUniformBuffer(uint32_t length, uint32_t size, size_t stages, int32_t key, uint32_t binding = 0) {
+        if (auto ret = getUniformBuffer(key)) { return ret; }
+        ID3D11Buffer* buffer{};
+        D3D11_BUFFER_DESC bufferInfo{};
+        bufferInfo.ByteWidth = size;
+        bufferInfo.Usage = D3D11_USAGE_DYNAMIC;
+        bufferInfo.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        bufferInfo.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        
+        HRESULT result = singleton->device->CreateBuffer(&bufferInfo, nullptr, &buffer);
+        if (result != S_OK) {
+            LOGWITH("Failed to create d3d11 buffer:", result);
+            reason = result;
+            return {};
+        }
+
+        if (key == INT32_MIN) return new UniformBuffer(size, buffer, binding);
+        return singleton->uniformBuffers[key] = new UniformBuffer(size, buffer, binding);
     }
 
     D3D11Machine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet** sets, ID3D11RenderTargetView** rtvs, bool mmap)

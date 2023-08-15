@@ -187,7 +187,7 @@ namespace onart {
         /// @param key 이후 별도로 접근할 수 있는 이름을 지정합니다. 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다.
         static ID3D11DeviceChild* createShader(const char* code, size_t size, int32_t key, ShaderType type = ShaderType::VERTEX);
         /// @brief 셰이더에서 사용할 수 있는 uniform 버퍼를 생성하여 리턴합니다. 이것을 해제하는 방법은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
-        /// @param length OpenGL은 동시에 여러 개 렌더링 명령이 수행될 수 없으므로 사용되지 않습니다.
+        /// @param length D3D11은 동시에 여러 개 렌더링 명령이 수행될 수 없으므로 사용되지 않습니다.
         /// @param size 버퍼의 크기입니다.
         /// @param stages 사용되지 않습니다.
         /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다. 키 INT32_MIN + 1의 경우 push라는 인터페이스를 위해 사용되므로 이용할 수 없습니다.
@@ -351,6 +351,32 @@ namespace onart {
         const RenderTargetType type;
         RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet**, ID3D11RenderTargetView**, bool);
         ~RenderTarget();
+    };
+
+    class D3D11Machine::UniformBuffer {
+        friend class D3D11Machine;
+        friend class RenderPass;
+    public:
+        /// @brief 아무 동작도 하지 않습니다.
+        void resize(uint32_t size);
+        /// @brief 유니폼 버퍼의 내용을 갱신합니다. 넘치게 데이터를 줘도 추가 할당은 하지 않으므로 주의하세요.
+        /// @param input 입력 데이터
+        /// @param index 사용되지 않습니다.
+        /// @param offset 데이터 내에서 몇 바이트째부터 수정할지
+        /// @param size 덮어쓸 양
+        void update(const void* input, uint32_t index, uint32_t offset, uint32_t size);
+        /// @brief 0을 리턴합니다.
+        inline static uint16_t getIndex() { return 0; }
+        /// @brief 0을 리턴합니다.
+        inline static int getLayout() { return 0; }
+        /// @brief 128바이트 크기의 고정 유니폼버퍼를 업데이트합니다. 이것은 모든 파이프라인이 공유하며, 셰이더의 바인딩 11번으로 접근할 수 있습니다.
+        static void updatePush(const void* input, uint32_t offset, uint32_t size);
+    private:
+        UniformBuffer(uint32_t length, ID3D11Buffer* ubo, uint32_t binding);
+        ~UniformBuffer();
+        ID3D11Buffer* ubo;
+        uint32_t binding;
+        uint32_t length;
     };
 
     class D3D11Machine::Mesh {

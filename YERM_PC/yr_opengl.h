@@ -188,12 +188,12 @@ namespace onart {
             /// @param key 이후 별도로 접근할 수 있는 이름을 지정합니다. 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다.
             static unsigned createShader(const char* glsl, size_t size, int32_t key, ShaderType type = ShaderType::VERTEX);
             /// @brief 셰이더에서 사용할 수 있는 uniform 버퍼를 생성하여 리턴합니다. 이것을 해제하는 방법은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
-            /// @param length OpenGL은 동시에 여러 개 렌더링 명령이 수행될 수 없으므로 사용되지 않습니다.
+            /// @param _0 OpenGL은 동시에 여러 개 렌더링 명령이 수행될 수 없으므로 사용되지 않습니다.
             /// @param size 버퍼의 크기입니다.
             /// @param stages 사용되지 않습니다.
             /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다. 키 INT32_MIN + 1의 경우 push라는 인터페이스를 위해 사용되므로 이용할 수 없습니다.
             /// @param binding 바인딩 번호입니다. 11번 바인딩을 사용하려 하는 경우 렌더패스의 push() 인터페이스는 사용하실 수 없습니다.
-            static UniformBuffer* createUniformBuffer(uint32_t length, uint32_t size, size_t stages, int32_t key, uint32_t binding = 0);
+            static UniformBuffer* createUniformBuffer(uint32_t _0, uint32_t size, size_t stages, int32_t key, uint32_t binding = 0);
             /// @brief 주어진 렌더 타겟들을 대상으로 하는 렌더패스를 구성합니다. OpenGL API의 경우 서브패스의 개념을 사용하지 않고 보통의 파이프라인으로 구성됩니다.
             /// @param targets 렌더 타겟 포인터의 배열입니다.
             /// @param subpassCount targets 배열의 크기입니다.
