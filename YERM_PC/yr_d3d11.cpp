@@ -316,6 +316,20 @@ namespace onart {
         return {};
     }
 
+    D3D11Machine::Pipeline* D3D11Machine::getPipeline(int32_t key) {
+        if (auto it = singleton->pipelines.find(key); it != singleton->pipelines.end()) {
+            return it->second;
+        }
+        return {};
+    }
+
+    D3D11Machine::RenderPass2Screen* D3D11Machine::getRenderPass2Screen(int32_t key) {
+        if (auto it = singleton->finalPasses.find(key); it != singleton->finalPasses.end()) {
+            return it->second;
+        }
+        return {};
+    }
+
     ID3D11DeviceChild* D3D11Machine::createShader(const char* code, size_t size, int32_t key, ShaderType type) {
         if (auto sh = getShader(key)) return sh;
         HRESULT result{};
@@ -653,9 +667,81 @@ namespace onart {
         return textures[key] = std::make_shared<txtr>(texture, srv, width, height, texture->isCubemap, linearSampler);
     }
 
+    D3D11Machine::pStreamTexture D3D11Machine::createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler) {
+        D3D11_TEXTURE2D_DESC info{};
+        info.Width = width;
+        info.Height = height;
+        info.MipLevels = 1;
+        info.ArraySize = 1;
+        info.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        info.Usage = D3D11_USAGE_DYNAMIC;
+        info.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        info.SampleDesc.Count = 1;
+        info.SampleDesc.Quality = 0;
+
+        ID3D11Texture2D* newTex{};
+        ID3D11ShaderResourceView* srv{};
+        HRESULT result = singleton->device->CreateTexture2D(&info, nullptr, &newTex);
+        if (result != S_OK) {
+            LOGWITH("Failed to create d3d11 texture:", result);
+            reason = result;
+            return {};
+        }
+
+        D3D11_MAPPED_SUBRESOURCE mapInfo;
+        result = singleton->context->Map(newTex, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapInfo);
+        if (result != S_OK) {
+            LOGWITH("Failed to map memory", result);
+            memset(&mapInfo, 0, sizeof(mapInfo));
+        }
+
+        struct txtr :public StreamTexture { inline txtr(ID3D11Texture2D* _1, ID3D11ShaderResourceView* _2, uint16_t _3, uint16_t _4, bool _5, void* _6, uint64_t _7) :StreamTexture(_1, _2, _3, _4, _5, _6, _7) {} };
+        if (key == INT32_MIN) return std::make_shared<txtr>(newTex, srv, width, height, linearSampler, mapInfo.pData, mapInfo.RowPitch);
+        return singleton->streamTextures[key] = std::make_shared<txtr>(newTex, srv, width, height, linearSampler, mapInfo.pData, mapInfo.RowPitch);
+    }
+
     D3D11Machine::ImageSet::~ImageSet() {
         if (srv) { srv->Release(); }
         if (tex) { tex->Release(); }
+    }
+
+    D3D11Machine::RenderPass2Screen* D3D11Machine::createRenderPass2Screen(RenderTargetType* targets, uint32_t subpassCount, int32_t key, bool useDepth, bool* useDepthAsInput) {
+        RenderPass2Screen* r = getRenderPass2Screen(key);
+        if (r) return r;
+        if (subpassCount == 0) return nullptr;
+        std::vector<RenderTarget*> targs(subpassCount);
+        for (uint32_t i = 0; i < subpassCount - 1; i++) {
+            targs[i] = createRenderTarget2D(singleton->surfaceWidth, singleton->surfaceHeight, INT32_MIN, targets[i], RenderTargetInputOption::SAMPLED_LINEAR, useDepthAsInput ? useDepthAsInput[i] : false);
+            if (!targs[i]) {
+                LOGHERE;
+                for (RenderTarget* t : targs) delete t;
+                return nullptr;
+            }
+        }
+
+        RenderPass* ret = new RenderPass(targs.data(), subpassCount);
+        ret->targets = std::move(targs);
+        ret->setViewport((float)singleton->surfaceWidth, (float)singleton->surfaceHeight, 0.0f, 0.0f);
+        ret->setScissor(singleton->surfaceWidth, singleton->surfaceHeight, 0, 0);
+        if (key == INT32_MIN) return ret;
+        return singleton->finalPasses[key] = ret;
+    }
+
+    D3D11Machine::RenderPass* D3D11Machine::createRenderPass(RenderTarget** targets, uint32_t subpassCount, int32_t key) {
+        if (RenderPass* r = getRenderPass(key)) return r;
+        if (subpassCount == 0) return nullptr;
+
+        if (targets[subpassCount - 1] == nullptr) {
+            LOGWITH("Inavailable targets.");
+            return {};
+        }
+
+        RenderPass* ret = new RenderPass(targets, subpassCount);
+        std::memcpy(ret->targets.data(), targets, sizeof(RenderTarget*) * subpassCount);
+        ret->setViewport((float)targets[0]->width, (float)targets[0]->height, 0.0f, 0.0f);
+        ret->setScissor(targets[0]->width, targets[0]->height, 0, 0);
+        if (key == INT32_MIN) return ret;
+        return singleton->renderPasses[key] = ret;
     }
 
     D3D11Machine::RenderTarget* D3D11Machine::createRenderTarget2D(int width, int height, int32_t key, RenderTargetType type, RenderTargetInputOption sampled, bool useDepthInput, bool useStencil, bool mmap) {
@@ -830,6 +916,46 @@ namespace onart {
         return singleton->renderTargets[key] = new RenderTarget(type, width, height, params, params2, mmap);
     }
 
+    template<class T>
+    inline static T* downcastShader(ID3D11DeviceChild* child) {
+        if (!child) return nullptr;
+        T* obj;
+        if (SUCCEEDED(child->QueryInterface(__uuidof(T), &obj))) {
+            return obj;
+        }
+        return nullptr;
+    }
+
+    D3D11Machine::Pipeline* D3D11Machine::createPipeline(ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, ID3D11DeviceChild* tc, ID3D11DeviceChild* te, ID3D11DeviceChild* gs) {
+        if (auto ret = getPipeline(name)) { return ret; }
+        ID3D11VertexShader* vert = downcastShader<ID3D11VertexShader>(vs);
+        ID3D11PixelShader* frag = downcastShader<ID3D11PixelShader>(fs);
+        if (!vert || !frag) {
+            LOGWITH("Vertex shader and Pixel shader must be provided");
+            return {};
+        }
+        
+        ID3D11HullShader* tctrl = downcastShader<ID3D11HullShader>(tc);
+        if (tc && !tctrl) {
+            LOGWITH("Given hull shader is invalid");
+            return {};
+        }
+        ID3D11DomainShader* teval = downcastShader<ID3D11DomainShader>(te);
+        if (te && !teval) {
+            LOGWITH("Given domain shader is invalid");
+            return {};
+        }
+        ID3D11GeometryShader* geom = downcastShader<ID3D11GeometryShader>(gs);
+        if (gs && !geom) {
+            LOGWITH("Given geometry shader is invalid");
+            return {};
+        }
+        return singleton->pipelines[name] = new Pipeline(vert, tctrl, teval, geom, frag);
+    }
+
+    unsigned D3D11Machine::createPipelineLayout(...) { return 0; }
+    unsigned D3D11Machine::getPipelineLayout(int32_t) { return 0; }
+
 
     void D3D11Machine::handle() {
         singleton->loadThread.handleCompleted();
@@ -906,6 +1032,95 @@ namespace onart {
         delete ds;
     }
 
+    D3D11Machine::RenderPass::RenderPass(RenderTarget** fb, uint16_t stageCount)
+        :stageCount(stageCount), targets(stageCount) {
+
+    }
+
+    D3D11Machine::RenderPass::~RenderPass() {
+        if (targets[stageCount - 1] == nullptr) { // renderpass to screen이므로 타겟을 자체 생성해서 보유
+            for (RenderTarget* targ : targets) {
+                delete targ;
+            }
+        }
+    }
+
+    void D3D11Machine::RenderPass::usePipeline(Pipeline* pipeline, unsigned subpass) {
+        if (subpass >= stageCount) {
+            LOGWITH("Invalid subpass. This renderpass has", stageCount, "subpasses but", subpass, "given");
+            return;
+        }
+        pipelines[subpass] = pipeline;
+        if (currentPass == subpass) { 
+            singleton->context->VSSetShader(pipeline->vs, nullptr, 0);
+            singleton->context->HSSetShader(pipeline->tcs, nullptr, 0);
+            singleton->context->DSSetShader(pipeline->tes, nullptr, 0);
+            singleton->context->GSSetShader(pipeline->gs, nullptr, 0);
+            singleton->context->PSSetShader(pipeline->fs, nullptr, 0);
+        }
+    }
+
+    void D3D11Machine::RenderPass::bind(uint32_t pos, UniformBuffer* ub, uint32_t ubPos = 0) {
+        if (currentPass >= 0) {
+            singleton->context->VSSetConstantBuffers(pos, 1, &ub->ubo);
+            singleton->context->PSSetConstantBuffers(pos, 1, &ub->ubo); // 임시
+        }
+        else {
+            LOGWITH("No subpass is running");
+        }
+    }
+
+    void D3D11Machine::RenderPass::bind(uint32_t pos, const pTexture& tx) {
+        if (currentPass >= 0) {
+            singleton->context->VSSetShaderResources(pos, 1, &tx->dset);
+            singleton->context->PSSetShaderResources(pos, 1, &tx->dset); // 임시
+        }
+        else {
+            LOGWITH("No subpass is running");
+        }
+    }
+
+    void D3D11Machine::RenderPass::bind(uint32_t pos, RenderTarget* target, uint32_t index) {
+        if (currentPass >= 0) {
+            ID3D11ShaderResourceView* srv;
+            switch (index)
+            {
+            case 0:
+                srv = target->color1->srv;
+                break;
+            case 1:
+                srv = target->color2->srv;
+                break;
+            case 2:
+                srv = target->color3->srv;
+                break;
+            case 3:
+                srv = target->ds->srv;
+                break;
+            default:
+                LOGWITH("index must be 0~3");
+                return;
+            }
+            singleton->context->VSSetShaderResources(pos, 1, &srv);
+            singleton->context->PSSetShaderResources(pos, 1, &srv); // 임시
+        }
+        else {
+            LOGWITH("No subpass is running");
+        }
+    }
+
+    void D3D11Machine::RenderPass::setViewport(float width, float height, float x, float y, bool applyNow) {
+        viewport.Height = height;
+        viewport.Width = width;
+        viewport.MaxDepth = 1.0f;
+        viewport.MinDepth = 0.0f;
+        viewport.TopLeftX = x;
+        viewport.TopLeftY = y;
+        if (applyNow && currentPass != -1) {
+            singleton->context->RSSetViewports(1, &viewport);
+        }
+    }
+
     D3D11Machine::Texture::Texture(ID3D11Resource* texture, ID3D11ShaderResourceView* dset, uint16_t width, uint16_t height, bool isCubemap, bool linearSampled)
         :texture(texture), dset(dset), width(width), height(height), isCubemap(isCubemap), linearSampled(linearSampled) {
     }
@@ -913,6 +1128,41 @@ namespace onart {
     D3D11Machine::Texture::~Texture() {
         dset->Release();
         texture->Release();
+    }
+
+    D3D11Machine::StreamTexture::StreamTexture(ID3D11Texture2D* txo, ID3D11ShaderResourceView* srv, uint16_t width, uint16_t height, bool linearSampler, void* mmap, uint64_t rowPitch)
+        :txo(txo), dset(srv), width(width), height(height), linearSampled(linearSampler), mmap(mmap), rowPitch(rowPitch), copyFull(rowPitch == 4ULL * width) {
+
+    }
+
+    D3D11Machine::StreamTexture::~StreamTexture() {
+        if (mmap) {
+            singleton->context->Unmap(txo, 0);
+        }
+        dset->Release();
+        txo->Release();
+    }
+
+    void D3D11Machine::StreamTexture::update(void* img) {
+        uint64_t rowSize = (uint64_t)4 * width;
+        uint64_t size = rowSize * height;
+        uint8_t* src = (uint8_t*)img;
+        uint8_t* dest = (uint8_t*)mmap;
+        if (mmap) {
+            if (copyFull) {
+                std::memcpy(dest, src, size);
+            }
+            else {
+                for (uint16_t i = 0; i < height; i++) {
+                    std::memcpy(mmap, src, rowSize);
+                    src += rowSize;
+                    dest += rowPitch;
+                }
+            }
+        }
+        else {
+            singleton->context->UpdateSubresource(txo, 0, nullptr, img, rowSize, 0);
+        }
     }
 
     D3D11Machine::Mesh::Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib) :vb(vb), ib(ib), layout{} {}

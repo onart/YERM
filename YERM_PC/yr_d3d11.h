@@ -74,6 +74,7 @@ namespace onart {
         /// @brief 메모리 맵으로 고정된 텍스처입니다. 실시간으로 CPU단에서 데이터를 수정할 수 있습니다. 동영상이나 다른 창의 화면 등을 텍스처로 사용할 때 적합합니다.
         class StreamTexture;
         using pStreamTexture = std::shared_ptr<StreamTexture>;
+        class Pipeline;
         /// @brief 속성을 직접 정의하는 정점 객체입니다.
         template<class, class...>
         struct Vertex;
@@ -216,12 +217,12 @@ namespace onart {
         static unsigned createPipelineLayout(...);
         /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 사용할 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
         /// @param vs 정점 셰이더 모듈입니다.
-        /// @param fs 조각 셰이더 모듈입니다.
-        /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
-        /// @param tc 테셀레이션 컨트롤 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
-        /// @param te 테셀레이션 계산 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
+        /// @param fs 픽셀 셰이더 모듈입니다.
+        /// @param name 이름입니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
+        /// @param tc 테셀레이션 컨트롤(HULL) 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
+        /// @param te 테셀레이션 계산(DOMAIN) 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
         /// @param gs 지오메트리 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
-        static unsigned createPipeline(unsigned vs, unsigned fs, int32_t name, unsigned tc = 0, unsigned te = 0, unsigned gs = 0);
+        static Pipeline* createPipeline(ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, ID3D11DeviceChild* tc = nullptr, ID3D11DeviceChild* te = nullptr, ID3D11DeviceChild* gs = nullptr);
         /// @brief 정점 버퍼(모델) 객체를 생성합니다.
         /// @param vdata 정점 데이터
         /// @param vsize 정점 하나의 크기(바이트)
@@ -243,7 +244,7 @@ namespace onart {
         /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.
         static RenderPass2Cube* getRenderPass2Cube(int32_t key);
         /// @brief 만들어 둔 파이프라인을 리턴합니다. 없으면 nullptr를 리턴합니다.
-        static unsigned getPipeline(int32_t key);
+        static Pipeline* getPipeline(int32_t key);
         /// @brief 아무 동작도 하지 않습니다.
         static unsigned getPipelineLayout(int32_t key);
         /// @brief 만들어 둔 렌더 타겟을 리턴합니다. 없으면 nullptr를 리턴합니다.
@@ -289,7 +290,7 @@ namespace onart {
         std::map<int32_t, RenderTarget*> renderTargets;
         std::map<int32_t, ID3D11DeviceChild*> shaders;
         std::map<int32_t, UniformBuffer*> uniformBuffers;
-        std::map<int32_t, unsigned> pipelines;
+        std::map<int32_t, Pipeline*> pipelines;
         std::map<int32_t, pMesh> meshes;
         std::map<int32_t, pTexture> textures;
         std::map<int32_t, pStreamTexture> streamTextures;
@@ -336,14 +337,9 @@ namespace onart {
     class D3D11Machine::RenderTarget {
         friend class D3D11Machine;
         friend class RenderPass;
-        friend class RenderPass2Screen;
     public:
         RenderTarget& operator=(const RenderTarget&) = delete;
     private:
-        /// @brief 이 타겟을 위한 첨부물을 기술합니다.
-        /// @return 색 첨부물의 수(최대 3)
-        uint32_t attachmentRefs(VkAttachmentDescription* descr, bool forSample);
-        uint32_t getDescriptorSets(VkDescriptorSet* out);
         ID3D11RenderTargetView* dset1{}, *dset2{}, *dset3{}, *dsetDS{};
         ImageSet* color1{}, *color2{}, *color3{}, *ds{};
         unsigned width, height;
@@ -351,6 +347,138 @@ namespace onart {
         const RenderTargetType type;
         RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet**, ID3D11RenderTargetView**, bool);
         ~RenderTarget();
+    };
+
+    class D3D11Machine::StreamTexture {
+        friend class D3D11Machine;
+        friend class RenderPass;
+    public:
+        /// @brief 사용하지 않는 텍스처 데이터를 정리합니다.
+        /// @param removeUsing 사용하는 텍스처 데이터도 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getTexture로 찾을 수 없습니다.)
+        static void collect(bool removeUsing = false);
+        /// @brief 주어진 이름의 텍스처 데이터를 내립니다. 사용하고 있는 텍스처 데이터는 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getTexture로 찾을 수 없습니다.)
+        static void drop(int32_t name);
+        /// @brief 이미지 데이터를 다시 설정합니다.
+        void update(void* img);
+        const uint16_t width, height;
+    protected:
+        StreamTexture(ID3D11Texture2D* txo, ID3D11ShaderResourceView* srv, uint16_t width, uint16_t height, bool linearSampler, void* mmap, uint64_t rowPitch);
+        ~StreamTexture();
+    private:
+        ID3D11Texture2D* txo;
+        ID3D11ShaderResourceView* dset;
+        bool linearSampled;
+        void* mmap;
+        uint64_t rowPitch;
+        const bool copyFull;
+    };
+
+    class D3D11Machine::RenderTarget {
+        friend class D3D11Machine;
+        friend class RenderPass;
+    public:
+        RenderTarget& operator=(const RenderTarget&) = delete;
+    private:
+        ID3D11RenderTargetView* dset1{}, * dset2{}, * dset3{}, * dsetDS{};
+        ImageSet* color1{}, * color2{}, * color3{}, * ds{};
+        unsigned width, height;
+        const bool mapped;
+        const RenderTargetType type;
+        RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet**, ID3D11RenderTargetView**, bool);
+        ~RenderTarget();
+    };
+
+    class D3D11Machine::RenderPass {
+        friend class D3D11Machine;
+    public:
+        RenderPass& operator=(const RenderPass&) = delete;
+        /// @brief 뷰포트를 설정합니다. 기본 상태는 프레임버퍼 생성 당시의 크기들입니다. (즉 @ref reconstructFB 를 사용 시 여기서 수동으로 정한 값은 리셋됩니다.)
+        /// 이것은 패스 내의 모든 파이프라인이 공유합니다.
+        /// @param width 뷰포트 가로 길이(px)
+        /// @param height 뷰포트 세로 길이(px)
+        /// @param x 뷰포트 좌측 좌표(px, 맨 왼쪽이 0)
+        /// @param y 뷰포트 상단 좌표(px, 맨 위쪽이 0)
+        /// @param applyNow 이 값이 참이면 변경된 값이 파이프라인에 즉시 반영됩니다.
+        void setViewport(float width, float height, float x, float y, bool applyNow = false);
+        /// @brief 시저를 설정합니다. 기본 상태는 자름 없음입니다.
+        /// 이것은 패스 내의 모든 파이프라인이 공유합니다.
+        /// @param width 살릴 직사각형의 가로 길이(px)
+        /// @param height 살릴 직사각형의 세로 길이(px)
+        /// @param x 살릴 직사각형의 좌측 좌표(px, 맨 왼쪽이 0)
+        /// @param y 살릴 직사각형의 상단 좌표(px, 맨 위쪽이 0)
+        /// @param applyNow 이 값이 참이면 변경된 값이 파이프라인에 즉시 반영됩니다.
+        void setScissor(uint32_t width, uint32_t height, int32_t x, int32_t y, bool applyNow = false);
+        /// @brief 주어진 유니폼버퍼를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+        /// @param pos 바인드할 set 번호
+        /// @param ub 바인드할 버퍼
+        /// @param ubPos 버퍼가 동적 공유 버퍼인 경우, 그것의 몇 번째 성분을 바인드할지 정합니다. 아닌 경우 이 값은 무시됩니다.
+        void bind(uint32_t pos, UniformBuffer* ub, uint32_t ubPos = 0);
+        /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+        /// @param pos 바인드할 set 번호
+        /// @param tx 바인드할 텍스처
+        void bind(uint32_t pos, const pTexture& tx);
+        /// @brief 주어진 렌더 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다. 이 패스의 프레임버퍼에서 사용 중인 렌더타겟은 사용할 수 없습니다.
+        /// @param pos 바인드할 set 번호
+        /// @param target 바인드할 타겟
+        /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
+        void bind(uint32_t pos, RenderTarget* target, uint32_t index);
+        /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+        /// @param pos 바인드할 set 번호
+        /// @param tx 바인드할 텍스처
+        void bind(uint32_t pos, const pStreamTexture& tx);
+        /// @brief 주어진 파이프라인을 사용하게 합니다.
+        /// @param pipeline 파이프라인
+        /// @param subpass 서브패스 번호
+        void usePipeline(Pipeline* pipeline, unsigned subpass);
+        /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
+        void push(void* input, uint32_t start, uint32_t end);
+        /// @brief 메시를 그립니다. 정점 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
+        /// @param start 정점 시작 위치 (주어진 메시에 인덱스 버퍼가 있는 경우 그것을 기준으로 합니다.)
+        /// @param count 정점 수. 0이 주어진 경우 주어진 start부터 끝까지 그립니다.
+        void invoke(const pMesh&, uint32_t start = 0, uint32_t count = 0);
+        /// @brief 메시를 그립니다. 정점 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
+        /// @param mesh 기본 정점버퍼
+        /// @param instanceInfo 인스턴스 속성 버퍼
+        /// @param instanceCount 인스턴스 수
+        /// @param istart 인스턴스 시작 위치
+        /// @param start 정점 시작 위치 (주어진 메시에 인덱스 버퍼가 있는 경우 그것을 기준으로 합니다.)
+        /// @param count 정점 수. 0이 주어진 경우 주어진 start부터 끝까지 그립니다.
+        void invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart = 0, uint32_t start = 0, uint32_t count = 0);
+        /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다. 주어진 파이프라인이 없으면 동작이 실패합니다.
+        /// @param pos 이전 서브패스의 결과인 입력 첨부물을 바인드할 위치의 시작점입니다. 예를 들어, pos=0이고 이전 타겟이 색 첨부물 2개, 깊이 첨부물 1개였으면 0, 1, 2번에 바인드됩니다. 셰이더를 그에 맞게 만들어야 합니다.
+        void start(uint32_t pos = 0);
+        /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
+        /// @param other 이 패스가 시작하기 전에 기다릴 다른 렌더패스입니다. 전후 의존성이 존재할 경우 사용하는 것이 좋습니다. (Vk세마포어 동기화를 사용) 현재 버전에서 기다리는 단계는 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT 하나로 고정입니다.
+        void execute(RenderPass* other = nullptr);
+        /// @brief true를 리턴합니다.
+        bool wait(uint64_t timeout = UINT64_MAX);
+        /// @brief 아무것도 하지 않습니다.
+        inline void reconstructFB(...) {}
+    private:
+        RenderPass(RenderTarget** fb, uint16_t stageCount); // 이후 다수의 서브패스를 쓸 수 있도록 변경
+        ~RenderPass();
+        const uint16_t stageCount;
+        std::vector<Pipeline*> pipelines;
+        std::vector<RenderTarget*> targets;
+        int currentPass = -1;
+        D3D11_VIEWPORT viewport;
+        struct {
+            int x, y, width, height;
+        }scissor;
+    };
+
+    /// @brief D3D11 셰이더 객체의 집합입니다. 어떤 멤버도 직접 사용할 수 없습니다.
+    class D3D11Machine::Pipeline {
+        friend class D3D11Machine;
+        friend class RenderPass;
+        private:
+            Pipeline(ID3D11VertexShader*, ID3D11HullShader*, ID3D11DomainShader*, ID3D11GeometryShader*, ID3D11PixelShader*);
+            ~Pipeline() = default;
+            ID3D11VertexShader* vs;
+            ID3D11HullShader* tcs;
+            ID3D11DomainShader* tes;
+            ID3D11GeometryShader* gs;
+            ID3D11PixelShader* fs;
     };
 
     class D3D11Machine::UniformBuffer {

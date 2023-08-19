@@ -2448,7 +2448,7 @@ namespace onart {
     }
 
     void VkMachine::RenderPass::usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass){
-        if(subpass > stageCount){
+        if(subpass >= stageCount){
             LOGWITH("Invalid subpass. This renderpass has", stageCount, "subpasses but", subpass, "given");
             return;
         }
