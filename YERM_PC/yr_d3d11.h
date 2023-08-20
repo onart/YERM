@@ -518,13 +518,15 @@ namespace onart {
     class D3D11Machine::Mesh {
         friend class D3D11Machine;
         public:
-            template<class... VATTR> void setInputLayout(void* vs, size_t size, unsigned locationPlus = 0, unsigned inputSlot = 0);
+            template<class... VATTR> void setInputLayout(void* vs, size_t size, unsigned locationPlus = 0, unsigned inputSlot = 0); // todo: 동일 타입 조합은 input layout 공유, todo 2: 여러 mesh 객체로 input layout 생성하는 static 함수로 대체
         private:
-            Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib);
+            Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib, DXGI_FORMAT indexFormat, size_t vcount, size_t icount);
             ~Mesh();
             ID3D11InputLayout* layout{};
             ID3D11Buffer* vb;
             ID3D11Buffer* ib;
+            const DXGI_FORMAT indexFormat;
+            const size_t vcount, icount;
     };
 
     constexpr LPCSTR VS_SEMANTIC[] = { u8"_0",u8"_1",u8"_2",u8"_3",u8"_4",u8"_5",u8"_6",u8"_7",u8"_8",u8"_9",u8"_10",u8"_11",u8"_12",u8"_13",u8"_14",u8"_15" };

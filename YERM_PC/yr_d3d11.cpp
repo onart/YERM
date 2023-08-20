@@ -367,6 +367,7 @@ namespace onart {
         vertexData.pSysMem = vdata;
 
         ID3D11Buffer* vb{}, *ib{};
+        DXGI_FORMAT iFormat{};
 
         HRESULT result = singleton->device->CreateBuffer(&bufferInfo, &vertexData, &vb);
         if (result != S_OK) {
@@ -378,6 +379,15 @@ namespace onart {
         if (idata) {
             bufferInfo.ByteWidth = isize * icount;
             bufferInfo.BindFlags = D3D11_BIND_INDEX_BUFFER;
+            if (isize == 2) {
+                iFormat = DXGI_FORMAT_R16_UINT;
+            }
+            else if (isize == 4) {
+                iFormat = DXGI_FORMAT_R32_UINT;
+            }
+            else {
+                LOGWITH("Warning: index buffer size is not 2 nor 4");
+            }
             HRESULT result = singleton->device->CreateBuffer(&bufferInfo, &vertexData, &ib);
             if (result != S_OK) {
                 LOGWITH("Failed to create index buffer:", result);
@@ -387,8 +397,8 @@ namespace onart {
             }
         }
 
-        struct publicmesh :public Mesh { publicmesh(ID3D11Buffer* _1, ID3D11Buffer* _2) :Mesh(_1,_2) {} };
-        ret = std::make_shared<publicmesh>(vb, ib);
+        struct publicmesh :public Mesh { publicmesh(ID3D11Buffer* _1, ID3D11Buffer* _2, DXGI_FORMAT _3, size_t _4, size_t _5) :Mesh(_1,_2,_3,_4,_5) {} };
+        ret = std::make_shared<publicmesh>(vb, ib, iFormat, vcount, icount);
         return singleton->meshes[key] = ret;
     }
 
@@ -1297,7 +1307,54 @@ namespace onart {
     }
 
     void D3D11Machine::RenderPass::invoke(const pMesh& mesh, uint32_t start, uint32_t count) {
+        if (!mesh->layout) {
+            LOGWITH("Given mesh has no layout. Call setInputLayout() with desired types");
+            return;
+        }
+        if (bound != mesh.get()) {
+            singleton->context->IASetVertexBuffers(0, 1, &mesh->vb, nullptr, nullptr);
+            singleton->context->IASetInputLayout(mesh->layout);
+            singleton->context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            bound = mesh.get();
+        }
+        
+        if (mesh->ib) {
+            if (count == 0)count = mesh->icount - start;
+            singleton->context->DrawIndexed(count, 0, 0);
+        }
+        else {
+            if (count == 0)count = mesh->vcount - start;
+            singleton->context->Draw(count, start);
+        }        
+    }
 
+    void D3D11Machine::RenderPass::invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart, uint32_t start, uint32_t count) {
+        if (!mesh->layout || !instanceInfo->layout) {
+            LOGWITH("Given mesh has no layout. Call setInputLayout() with desired types");
+            return;
+        }
+        ID3D11Buffer* buf[2] = { mesh->vb,instanceInfo->vb };
+        singleton->context->IASetVertexBuffers(0, 2, buf, nullptr, nullptr);
+        // TODO: ¿ŒΩ∫≈œΩÃ
+    }
+
+    void D3D11Machine::RenderPass::execute(RenderPass* other) {
+        if (reinterpret_cast<uint64_t>(this) != currentRenderPass) {
+            return;
+        }
+        if (currentPass != pipelines.size() - 1) {
+            LOGWITH("Renderpass not started. This message can be ignored safely if the rendering goes fine after now");
+            return;
+        }
+        if (targets.back() == nullptr) {
+            singleton->swapchain->Present(1, 0);
+        }
+        currentPass = -1;
+        currentRenderPass = 0;
+    }
+
+    bool D3D11Machine::RenderPass::wait(uint64_t) {
+        return true;
     }
 
     void D3D11Machine::RenderPass::setViewport(float width, float height, float x, float y, bool applyNow) {
@@ -1356,7 +1413,8 @@ namespace onart {
         }
     }
 
-    D3D11Machine::Mesh::Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib) :vb(vb), ib(ib), layout{} {}
+    D3D11Machine::Mesh::Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib, DXGI_FORMAT indexFormat, size_t vcount, size_t icount)
+        :vb(vb), ib(ib), indexFormat(indexFormat), vcount(vcount), icount(icount), layout{} {}
 
     D3D11Machine::Mesh::~Mesh() {
         if(vb) vb->Release();
