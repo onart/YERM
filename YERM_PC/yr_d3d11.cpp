@@ -13,12 +13,12 @@
 
 namespace onart {
 	D3D11Machine* D3D11Machine::singleton = nullptr;
+    uint64_t D3D11Machine::currentRenderPass = 0;
 	thread_local HRESULT D3D11Machine::reason = 0;
 
     constexpr uint64_t BC7_SCORE = 1LL << 53;
 
     static uint64_t assessAdapter(IDXGIAdapter*);
-    static DXGI_FORMAT ktx2Format2DX(VkFormat);
     static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, D3D11Machine::ImageTextureFormatOptions& option);
     static ktx_error_code_e tryTranscode(ktxTexture2* texture, ID3D11Device* device, uint32_t nChannels, bool srgb, bool hq);
 
@@ -27,7 +27,7 @@ namespace onart {
             LOGWITH("Tried to create multiple GLMachine objects");
             return;
         }
-
+        
         constexpr D3D_FEATURE_LEVEL FEATURE_LEVELS[] = { D3D_FEATURE_LEVEL_11_0 };
         D3D_FEATURE_LEVEL lv = D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_1_0_CORE;
 
@@ -92,6 +92,16 @@ namespace onart {
     void D3D11Machine::createSwapchain(uint32_t width, uint32_t height, Window* window) {
         HRESULT result{};
         if (swapchain) {
+            for (auto& buf : screenTargets) {
+                buf.first->Release();
+                buf.second->Release();
+            }
+            screenTargets.clear();
+
+            if (screenDSView) {
+                screenDSView->Release();
+                screenDSView = nullptr;
+            }
             result = swapchain->ResizeBuffers(2, width, height, DXGI_FORMAT_UNKNOWN, 0);
             if (result != S_OK) {
                 _com_error err(result);
@@ -139,8 +149,8 @@ namespace onart {
         swapchainInfo.SampleDesc.Count = 1;
         swapchainInfo.SampleDesc.Quality = 0;
         swapchainInfo.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        swapchainInfo.BufferCount = 2;
-        swapchainInfo.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+        swapchainInfo.BufferCount = 1; // TODO: 트리플버퍼링 하려면 seqencial_flip으로 하고 여기 2로 조절, 스레드 따로
+        swapchainInfo.SwapEffect = DXGI_SWAP_EFFECT_DISCARD; // TODO: 트리플버퍼링 하려면 seqencial_flip으로 하고 기타 조절
         swapchainInfo.OutputWindow = (HWND)window->getWin32Handle();
         //swapchainInfo.BufferDesc.ScanlineOrdering = 0;
 
@@ -154,12 +164,47 @@ namespace onart {
             _com_error err(result);
             LOGWITH("Failed to create swapchain:", result, err.ErrorMessage());
             reason = result;
+            dxgiFactory->Release();
+            dxgiAdapter->Release();
+            dxgiDevice->Release();
             return;
         }
         
         dxgiFactory->Release();
         dxgiAdapter->Release();
         dxgiDevice->Release();
+
+        ID3D11Texture2D* dsTex{};
+
+        D3D11_TEXTURE2D_DESC dsInfo{};
+        dsInfo.Width = width;
+        dsInfo.Height = height;
+        dsInfo.MipLevels = 1;
+        dsInfo.ArraySize = 1;
+        dsInfo.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+        dsInfo.Usage = D3D11_USAGE_DEFAULT;
+        dsInfo.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+        dsInfo.SampleDesc.Count = 1;
+        dsInfo.SampleDesc.Quality = 0;
+        result = device->CreateTexture2D(&dsInfo, nullptr, &dsTex);
+        if (result != S_OK) {
+            LOGWITH("Failed to create screen target depth stencil buffer:", result);
+            reason = result;
+            return;
+        }
+        D3D11_DEPTH_STENCIL_VIEW_DESC dsvInfo{};
+        dsvInfo.Format = dsInfo.Format;
+        dsvInfo.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+        dsvInfo.Texture2D.MipSlice = 0;
+        result = device->CreateDepthStencilView(dsTex, &dsvInfo, &screenDSView);
+        if (result != S_OK) {
+            LOGWITH("Failed to create screen target depth stencil buffer view:", result);
+            reason = result;
+            dsTex->Release();
+            return;
+        }
+        
+        dsTex->Release();
     }
 
     D3D11Machine::~D3D11Machine() {
@@ -173,9 +218,47 @@ namespace onart {
         shaders.clear();
         meshes.clear();
         textures.clear();
-        swapchain->Release();
+
+        for (auto& buf : screenTargets) {
+            buf.first->Release();
+            buf.second->Release();
+        }
+        screenTargets.clear();
+
+        if (screenDSView) screenDSView->Release();
+        if (swapchain) swapchain->Release();
         device->Release();
         context->Release();
+    }
+
+    ID3D11RenderTargetView* D3D11Machine::getSwapchainTarget() {
+        ID3D11Texture2D* pBackBuffer = nullptr;
+        HRESULT result = swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&pBackBuffer));
+        if (result != S_OK) {
+            LOGWITH("Failed to get swap chain buffer image:", result);
+            return {};
+        }
+        auto it = screenTargets.find(pBackBuffer);
+        if (it != screenTargets.end()) {
+            pBackBuffer->Release();
+            return it->second;
+        }
+        else {
+            D3D11_RENDER_TARGET_VIEW_DESC rtvInfo{};
+            D3D11_TEXTURE2D_DESC txInfo{};
+            pBackBuffer->GetDesc(&txInfo);
+            rtvInfo.Format = txInfo.Format;
+            rtvInfo.Texture2D.MipSlice = 0;
+            rtvInfo.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+            ID3D11RenderTargetView* rtv{};
+            result = device->CreateRenderTargetView(pBackBuffer, &rtvInfo, &rtv);
+            if (result != S_OK) {
+                LOGWITH("Failed to create swapchain render target view:", result);
+                pBackBuffer->Release();
+                return {};
+            }
+            return screenTargets[pBackBuffer] = rtv;
+        }
     }
 
     uint64_t assessAdapter(IDXGIAdapter* adapter) {
@@ -769,7 +852,8 @@ namespace onart {
         targetInfo.Texture2D.MipSlice = 0;
 
         ImageSet* color1{}, *color2{}, *color3{}, *ds{};
-        ID3D11RenderTargetView* rtv1{}, * rtv2{}, * rtv3{}, * rtvds{};
+        ID3D11RenderTargetView* rtv1{}, * rtv2{}, * rtv3{};
+        ID3D11DepthStencilView* rtvds{};
 
         D3D11_SHADER_RESOURCE_VIEW_DESC descInfo{};
         descInfo.Format = textureInfo.Format;
@@ -886,7 +970,7 @@ namespace onart {
             }
             result = singleton->device->CreateShaderResourceView(ds->tex, &descInfo, &ds->srv);
             if (result != S_OK) {
-                LOGWITH("Failed to create color target shader resoruce view:", result);
+                LOGWITH("Failed to create depth-stencil shader resoruce view:", result);
                 reason = result;
                 delete color1;
                 delete color2;
@@ -897,9 +981,15 @@ namespace onart {
                 if (rtv3) rtv3->Release();
                 return {};
             }
-            result = singleton->device->CreateRenderTargetView(ds->tex, &targetInfo, &rtvds);
+            
+            D3D11_DEPTH_STENCIL_VIEW_DESC dsInfo{};
+            dsInfo.Format = textureInfo.Format;
+            dsInfo.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+            dsInfo.Texture2D.MipSlice = 0;
+
+            result = singleton->device->CreateDepthStencilView(ds->tex, &dsInfo, &rtvds);
             if (result != S_OK) {
-                LOGWITH("Failed to create color target render target view:", result);
+                LOGWITH("Failed to create color depth-stencil view:", result);
                 reason = result;
                 delete color1;
                 delete color2;
@@ -911,9 +1001,9 @@ namespace onart {
             }
         }
         ImageSet* params[] = {color1, color2, color3, ds};
-        ID3D11RenderTargetView* params2[] = {rtv1, rtv2, rtv3, rtvds};
-        if (key == INT32_MIN) return new RenderTarget(type, width, height, params, params2, mmap);
-        return singleton->renderTargets[key] = new RenderTarget(type, width, height, params, params2, mmap);
+        ID3D11RenderTargetView* params2[] = {rtv1, rtv2, rtv3};
+        if (key == INT32_MIN) return new RenderTarget(type, width, height, params, params2, mmap, rtvds);
+        return singleton->renderTargets[key] = new RenderTarget(type, width, height, params, params2, mmap, rtvds);
     }
 
     template<class T>
@@ -926,7 +1016,7 @@ namespace onart {
         return nullptr;
     }
 
-    D3D11Machine::Pipeline* D3D11Machine::createPipeline(ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, ID3D11DeviceChild* tc, ID3D11DeviceChild* te, ID3D11DeviceChild* gs) {
+    D3D11Machine::Pipeline* D3D11Machine::createPipeline(ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, D3D11_COMPARISON_FUNC depth, UINT stencilRef, D3D11_DEPTH_STENCILOP_DESC* front, D3D11_DEPTH_STENCILOP_DESC* back, ID3D11DeviceChild* tc, ID3D11DeviceChild* te, ID3D11DeviceChild* gs) {
         if (auto ret = getPipeline(name)) { return ret; }
         ID3D11VertexShader* vert = downcastShader<ID3D11VertexShader>(vs);
         ID3D11PixelShader* frag = downcastShader<ID3D11PixelShader>(fs);
@@ -950,11 +1040,37 @@ namespace onart {
             LOGWITH("Given geometry shader is invalid");
             return {};
         }
-        return singleton->pipelines[name] = new Pipeline(vert, tctrl, teval, geom, frag);
+        ID3D11DepthStencilState* dsState = nullptr;
+        D3D11_DEPTH_STENCIL_DESC dsStateInfo{};
+        if (depth != D3D11_COMPARISON_ALWAYS) {
+            dsStateInfo.DepthEnable = true;
+            dsStateInfo.DepthFunc = D3D11_COMPARISON_LESS;
+        }
+        dsStateInfo.StencilEnable = (back || front);
+        dsStateInfo.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+        dsStateInfo.StencilReadMask = 0xff;
+        dsStateInfo.StencilReadMask = 0xff;
+        if (back) dsStateInfo.BackFace = *back;
+        if (front)dsStateInfo.FrontFace = *front;
+        HRESULT result = singleton->device->CreateDepthStencilState(&dsStateInfo, &dsState);
+        if (result != S_OK) {
+            LOGWITH("Failed to create depth stencil state:", result);
+            return {};
+        }
+
+        return singleton->pipelines[name] = new Pipeline(vert, tctrl, teval, geom, frag, dsState, stencilRef);
     }
 
     unsigned D3D11Machine::createPipelineLayout(...) { return 0; }
     unsigned D3D11Machine::getPipelineLayout(int32_t) { return 0; }
+
+    D3D11Machine::Pipeline::Pipeline(ID3D11VertexShader* v, ID3D11HullShader* h, ID3D11DomainShader* d, ID3D11GeometryShader* g, ID3D11PixelShader* p, ID3D11DepthStencilState* dss, UINT stencilRef)
+        :vs(v), tcs(h), tes(d), gs(g), fs(p), dsState(dss), stencilRef(stencilRef) {
+    }
+    
+    D3D11Machine::Pipeline::~Pipeline() {
+        dsState->Release();
+    }
 
 
     void D3D11Machine::handle() {
@@ -1016,8 +1132,8 @@ namespace onart {
         return singleton->uniformBuffers[key] = new UniformBuffer(size, buffer, binding);
     }
 
-    D3D11Machine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet** sets, ID3D11RenderTargetView** rtvs, bool mmap)
-        :width(width), height(height), mapped(mmap), type(type), color1(sets[0]), color2(sets[1]), color3(sets[2]), ds(sets[3]), dset1(rtvs[0]), dset2(rtvs[1]), dset3(rtvs[2]), dsetDS(rtvs[3]) {
+    D3D11Machine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet** sets, ID3D11RenderTargetView** rtvs, bool mmap, ID3D11DepthStencilView* dsv)
+        :width(width), height(height), mapped(mmap), type(type), color1(sets[0]), color2(sets[1]), color3(sets[2]), ds(sets[3]), dset1(rtvs[0]), dset2(rtvs[1]), dset3(rtvs[2]), dsetDS(dsv) {
 
     }
 
@@ -1045,6 +1161,75 @@ namespace onart {
         }
     }
 
+    void D3D11Machine::RenderPass::start(uint32_t pos, bool clearTarget) {
+        if (currentRenderPass && currentRenderPass != reinterpret_cast<uint64_t>(this)) {
+            LOGWITH("You can't make multiple renderpass being started in d3d11machine. Call RendrePass::execute() to end renderpass");
+            return;
+        }
+        else {
+            currentRenderPass = reinterpret_cast<uint64_t>(this);
+        }
+
+        if (currentPass == stageCount - 1) {
+            LOGWITH("Invalid call. The last subpass already started");
+            return;
+        }
+        bound = nullptr;
+        currentPass++;
+        if (!pipelines[currentPass]) {
+            LOGWITH("Pipeline not set.");
+            currentPass--;
+            return;
+        }
+
+        if (targets[currentPass]) {
+            ID3D11RenderTargetView* rtvs[4] = {};
+            UINT idx = 0;
+            if (targets[currentPass]->color1) {
+                rtvs[idx++] = targets[currentPass]->dset1;
+                if (targets[currentPass]->color2) {
+                    rtvs[idx++] = targets[currentPass]->dset2;
+                    if (targets[currentPass]->color3) {
+                        rtvs[idx++] = targets[currentPass]->dset3;
+                    }
+                }
+            }
+
+            singleton->context->OMSetRenderTargets(idx, rtvs, targets[currentPass]->dsetDS);
+        }
+        else {
+            if (currentPass != stageCount - 1) {
+                LOGWITH("Warning: No render target set. Rendering to swapchain target");
+            }
+            ID3D11RenderTargetView* rtv = singleton->getSwapchainTarget();
+            singleton->context->OMSetRenderTargets(1, &rtv, singleton->screenDSView);
+        }
+
+        if (currentPass > 0) {
+            RenderTarget* prev = targets[currentPass - 1];
+            if (prev->color1) bind(pos, prev, 0);
+            if (prev->color2) bind(pos + 1, prev, 1);
+            if (prev->color3) bind(pos + 2, prev, 2);
+            if (prev->ds) bind(pos + 3, prev, 3);
+        }
+        singleton->context->RSSetViewports(1, &viewport);
+        singleton->context->RSSetScissorRects(1, &scissor);
+        usePipeline(pipelines[currentPass], currentPass);
+        if (clearTarget) {
+            if(targets[currentPass]->dsetDS) singleton->context->ClearDepthStencilView(targets[currentPass]->dsetDS, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+            vec4 clearColor{};
+            if (targets[currentPass]->dset1) {
+                singleton->context->ClearRenderTargetView(targets[currentPass]->dset1, clearColor.entry);
+                if (targets[currentPass]->dset2) {
+                    singleton->context->ClearRenderTargetView(targets[currentPass]->dset2, clearColor.entry);
+                    if (targets[currentPass]->dset3) {
+                        singleton->context->ClearRenderTargetView(targets[currentPass]->dset3, clearColor.entry);
+                    }
+                }
+            }
+        }
+    }
+
     void D3D11Machine::RenderPass::usePipeline(Pipeline* pipeline, unsigned subpass) {
         if (subpass >= stageCount) {
             LOGWITH("Invalid subpass. This renderpass has", stageCount, "subpasses but", subpass, "given");
@@ -1057,6 +1242,8 @@ namespace onart {
             singleton->context->DSSetShader(pipeline->tes, nullptr, 0);
             singleton->context->GSSetShader(pipeline->gs, nullptr, 0);
             singleton->context->PSSetShader(pipeline->fs, nullptr, 0);
+            auto& currentTarget = targets[currentPass];
+            singleton->context->OMSetDepthStencilState(pipelines[currentPass]->dsState, 0);
         }
     }
 
@@ -1107,6 +1294,10 @@ namespace onart {
         else {
             LOGWITH("No subpass is running");
         }
+    }
+
+    void D3D11Machine::RenderPass::invoke(const pMesh& mesh, uint32_t start, uint32_t count) {
+
     }
 
     void D3D11Machine::RenderPass::setViewport(float width, float height, float x, float y, bool applyNow) {
@@ -1171,15 +1362,6 @@ namespace onart {
         if(vb) vb->Release();
         if (ib) ib->Release();
         if (layout) layout->Release();
-    }
-
-    DXGI_FORMAT ktx2Format2DX(VkFormat fmt) {
-        switch (fmt)
-        {
-        case VK_FORMAT_BC7_UNORM_BLOCK: return DXGI_FORMAT_BC7_UNORM;
-        case VK_FORMAT_BC3_UNORM_BLOCK: return DXGI_FORMAT_BC3_UNORM;
-        default: return DXGI_FORMAT::DXGI_FORMAT_FORCE_UINT;
-        }
     }
 
     bool isThisFormatAvailable(ID3D11Device* device, DXGI_FORMAT format, UINT flags) {

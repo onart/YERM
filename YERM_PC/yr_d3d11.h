@@ -222,7 +222,7 @@ namespace onart {
         /// @param tc 테셀레이션 컨트롤(HULL) 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
         /// @param te 테셀레이션 계산(DOMAIN) 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
         /// @param gs 지오메트리 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
-        static Pipeline* createPipeline(ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, ID3D11DeviceChild* tc = nullptr, ID3D11DeviceChild* te = nullptr, ID3D11DeviceChild* gs = nullptr);
+        static Pipeline* createPipeline(ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, D3D11_COMPARISON_FUNC depth, UINT stencilRef = 0, D3D11_DEPTH_STENCILOP_DESC* front = nullptr, D3D11_DEPTH_STENCILOP_DESC* back = nullptr, ID3D11DeviceChild* tc = nullptr, ID3D11DeviceChild* te = nullptr, ID3D11DeviceChild* gs = nullptr);
         /// @brief 정점 버퍼(모델) 객체를 생성합니다.
         /// @param vdata 정점 데이터
         /// @param vsize 정점 하나의 크기(바이트)
@@ -268,6 +268,8 @@ namespace onart {
         D3D11Machine(Window*);
         /// @brief 화면으로 그리기 위해 필요한 크기를 전달합니다.
         void createSwapchain(uint32_t width, uint32_t height, Window* window = nullptr);
+        /// @brief 스왑체인 대상의 유효한 렌더 타겟을 얻습니다.
+        ID3D11RenderTargetView* getSwapchainTarget();
         /// @brief ktxTexture2 객체로 텍스처를 생성합니다.
         pTexture createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler = true);
         /// @brief vulkan 객체를 없앱니다.
@@ -277,9 +279,11 @@ namespace onart {
         inline void operator delete(void* p) { ::operator delete(p); }
     private:
         static D3D11Machine* singleton;
+        static uint64_t currentRenderPass;
         ID3D11Device* device{};
         ID3D11DeviceContext* context{};
         IDXGISwapChain* swapchain{};
+        ID3D11DepthStencilView* screenDSView{};
 
         bool canUseBC7 = false;
 
@@ -294,6 +298,8 @@ namespace onart {
         std::map<int32_t, pMesh> meshes;
         std::map<int32_t, pTexture> textures;
         std::map<int32_t, pStreamTexture> streamTextures;
+
+        std::map<ID3D11Texture2D*, ID3D11RenderTargetView*> screenTargets;
 
         struct ImageSet {
             ID3D11Resource* tex{};
@@ -340,12 +346,13 @@ namespace onart {
     public:
         RenderTarget& operator=(const RenderTarget&) = delete;
     private:
-        ID3D11RenderTargetView* dset1{}, *dset2{}, *dset3{}, *dsetDS{};
+        ID3D11RenderTargetView* dset1{}, * dset2{}, * dset3{};
+        ID3D11DepthStencilView* dsetDS{};
         ImageSet* color1{}, *color2{}, *color3{}, *ds{};
         unsigned width, height;
         const bool mapped;
         const RenderTargetType type;
-        RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet**, ID3D11RenderTargetView**, bool);
+        RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet**, ID3D11RenderTargetView**, bool, ID3D11DepthStencilView*);
         ~RenderTarget();
     };
 
@@ -446,7 +453,7 @@ namespace onart {
         void invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart = 0, uint32_t start = 0, uint32_t count = 0);
         /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다. 주어진 파이프라인이 없으면 동작이 실패합니다.
         /// @param pos 이전 서브패스의 결과인 입력 첨부물을 바인드할 위치의 시작점입니다. 예를 들어, pos=0이고 이전 타겟이 색 첨부물 2개, 깊이 첨부물 1개였으면 0, 1, 2번에 바인드됩니다. 셰이더를 그에 맞게 만들어야 합니다.
-        void start(uint32_t pos = 0);
+        void start(uint32_t pos = 0, bool clearTarget = true);
         /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
         /// @param other 이 패스가 시작하기 전에 기다릴 다른 렌더패스입니다. 전후 의존성이 존재할 경우 사용하는 것이 좋습니다. (Vk세마포어 동기화를 사용) 현재 버전에서 기다리는 단계는 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT 하나로 고정입니다.
         void execute(RenderPass* other = nullptr);
@@ -462,9 +469,8 @@ namespace onart {
         std::vector<RenderTarget*> targets;
         int currentPass = -1;
         D3D11_VIEWPORT viewport;
-        struct {
-            int x, y, width, height;
-        }scissor;
+        D3D11_RECT scissor;
+        const Mesh* bound = nullptr;
     };
 
     /// @brief D3D11 셰이더 객체의 집합입니다. 어떤 멤버도 직접 사용할 수 없습니다.
@@ -472,13 +478,15 @@ namespace onart {
         friend class D3D11Machine;
         friend class RenderPass;
         private:
-            Pipeline(ID3D11VertexShader*, ID3D11HullShader*, ID3D11DomainShader*, ID3D11GeometryShader*, ID3D11PixelShader*);
-            ~Pipeline() = default;
+            Pipeline(ID3D11VertexShader*, ID3D11HullShader*, ID3D11DomainShader*, ID3D11GeometryShader*, ID3D11PixelShader*, ID3D11DepthStencilState*, UINT stencilRef);
+            ~Pipeline();
             ID3D11VertexShader* vs;
             ID3D11HullShader* tcs;
             ID3D11DomainShader* tes;
             ID3D11GeometryShader* gs;
             ID3D11PixelShader* fs;
+            ID3D11DepthStencilState* dsState;
+            UINT stencilRef;
     };
 
     class D3D11Machine::UniformBuffer {
