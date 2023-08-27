@@ -1,4 +1,4 @@
-// Copyright 2022 onart@github. All rights reserved.
+ï»¿// Copyright 2022 onart@github. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -55,35 +55,35 @@ namespace onart {
     class D3D11Machine {
         friend class Game;
     public:
-        /// @brief ½º·¹µå¿¡¼­ ÃÖ±Ù¿¡ È£ÃâµÈ ÇÔ¼öÀÇ ½ÇÆĞ ¿äÀÎÀ» ÀÏºÎ È®ÀÎÇÒ ¼ö ÀÖ½À´Ï´Ù. D3D11 È£Ãâ¿¡ ÀÇÇÑ ½ÇÆĞ°¡ ¾Æ´Ñ °æ¿ì MAX_ENUM °ªÀÌ µé¾î°©´Ï´Ù.
+        /// @brief ìŠ¤ë ˆë“œì—ì„œ ìµœê·¼ì— í˜¸ì¶œëœ í•¨ìˆ˜ì˜ ì‹¤íŒ¨ ìš”ì¸ì„ ì¼ë¶€ í™•ì¸í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤. D3D11 í˜¸ì¶œì— ì˜í•œ ì‹¤íŒ¨ê°€ ì•„ë‹Œ ê²½ìš° MAX_ENUM ê°’ì´ ë“¤ì–´ê°‘ë‹ˆë‹¤.
         static thread_local HRESULT reason;
         constexpr static bool VULKAN_GRAPHICS = false, D3D12_GRAPHICS = false, D3D11_GRAPHICS = true, OPENGL_GRAPHICS = false, OPENGLES_GRAPHICS = false, METAL_GRAPHICS = false;
-        /// @brief OpenGL ¿À·ù Äİ¹éÀ» »ç¿ëÇÏ·Á¸é ÀÌ°ÍÀ» È°¼ºÈ­ÇØ ÁÖ¼¼¿ä.
+        /// @brief OpenGL ì˜¤ë¥˜ ì½œë°±ì„ ì‚¬ìš©í•˜ë ¤ë©´ ì´ê²ƒì„ í™œì„±í™”í•´ ì£¼ì„¸ìš”.
         constexpr static bool USE_D3D11_DEBUG = true;
-        /// @brief ±×¸®±â ´ë»óÀÔ´Ï´Ù. ÅØ½ºÃ³·Î »ç¿ëÇÏ°Å³ª ¸Ş¸ğ¸® ¸ÊÀ¸·Î µ¥ÀÌÅÍ¿¡ Á¢±ÙÇÒ ¼ö ÀÖ½À´Ï´Ù. 
+        /// @brief ê·¸ë¦¬ê¸° ëŒ€ìƒì…ë‹ˆë‹¤. í…ìŠ¤ì²˜ë¡œ ì‚¬ìš©í•˜ê±°ë‚˜ ë©”ëª¨ë¦¬ ë§µìœ¼ë¡œ ë°ì´í„°ì— ì ‘ê·¼í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤. 
         class RenderTarget;
-        /// @brief ¿ÀÇÁ½ºÅ©¸°¿ë ·»´õ ÆĞ½ºÀÔ´Ï´Ù.
+        /// @brief ì˜¤í”„ìŠ¤í¬ë¦°ìš© ë Œë” íŒ¨ìŠ¤ì…ë‹ˆë‹¤.
         class RenderPass;
-        /// @brief È­¸é¿¡ ±×¸®±â À§ÇÑ ·»´õ ÆĞ½ºÀÔ´Ï´Ù. ¿©·¯ °³ °®°í ÀÖÀ» ¼ö´Â ÀÖÁö¸¸ µ¿½Ã¿¡ ¿©·¯ °³¸¦ »ç¿ëÇÒ ¼ö´Â ¾ø½À´Ï´Ù.
+        /// @brief í™”ë©´ì— ê·¸ë¦¬ê¸° ìœ„í•œ ë Œë” íŒ¨ìŠ¤ì…ë‹ˆë‹¤. ì—¬ëŸ¬ ê°œ ê°–ê³  ìˆì„ ìˆ˜ëŠ” ìˆì§€ë§Œ ë™ì‹œì— ì—¬ëŸ¬ ê°œë¥¼ ì‚¬ìš©í•  ìˆ˜ëŠ” ì—†ìŠµë‹ˆë‹¤.
         using RenderPass2Screen = RenderPass;
-        /// @brief Å¥ºê¸Ê¿¡ ±×¸®±â À§ÇÑ ·»´õ ÆĞ½ºÀÔ´Ï´Ù.
+        /// @brief íë¸Œë§µì— ê·¸ë¦¬ê¸° ìœ„í•œ ë Œë” íŒ¨ìŠ¤ì…ë‹ˆë‹¤.
         class RenderPass2Cube;
-        /// @brief Á÷Á¢ ºÒ·¯¿À´Â ÅØ½ºÃ³ÀÔ´Ï´Ù.
+        /// @brief ì§ì ‘ ë¶ˆëŸ¬ì˜¤ëŠ” í…ìŠ¤ì²˜ì…ë‹ˆë‹¤.
         class Texture;
         using pTexture = std::shared_ptr<Texture>;
-        /// @brief ¸Ş¸ğ¸® ¸ÊÀ¸·Î °íÁ¤µÈ ÅØ½ºÃ³ÀÔ´Ï´Ù. ½Ç½Ã°£À¸·Î CPU´Ü¿¡¼­ µ¥ÀÌÅÍ¸¦ ¼öÁ¤ÇÒ ¼ö ÀÖ½À´Ï´Ù. µ¿¿µ»óÀÌ³ª ´Ù¸¥ Ã¢ÀÇ È­¸é µîÀ» ÅØ½ºÃ³·Î »ç¿ëÇÒ ¶§ ÀûÇÕÇÕ´Ï´Ù.
+        /// @brief ë©”ëª¨ë¦¬ ë§µìœ¼ë¡œ ê³ ì •ëœ í…ìŠ¤ì²˜ì…ë‹ˆë‹¤. ì‹¤ì‹œê°„ìœ¼ë¡œ CPUë‹¨ì—ì„œ ë°ì´í„°ë¥¼ ìˆ˜ì •í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤. ë™ì˜ìƒì´ë‚˜ ë‹¤ë¥¸ ì°½ì˜ í™”ë©´ ë“±ì„ í…ìŠ¤ì²˜ë¡œ ì‚¬ìš©í•  ë•Œ ì í•©í•©ë‹ˆë‹¤.
         class StreamTexture;
         using pStreamTexture = std::shared_ptr<StreamTexture>;
         class Pipeline;
-        /// @brief ¼Ó¼ºÀ» Á÷Á¢ Á¤ÀÇÇÏ´Â Á¤Á¡ °´Ã¼ÀÔ´Ï´Ù.
+        /// @brief ì†ì„±ì„ ì§ì ‘ ì •ì˜í•˜ëŠ” ì •ì  ê°ì²´ì…ë‹ˆë‹¤.
         template<class, class...>
         struct Vertex;
-        /// @brief Á¤Á¡ ¹öÆÛ¿Í ÀÎµ¦½º ¹öÆÛ¸¦ ÇÕÄ£ °ÍÀÔ´Ï´Ù. »ç¾çÀº ÅÛÇÃ¸´ »ı¼ºÀÚ¸¦ ÅëÇØ Á¤ÇÒ ¼ö ÀÖ½À´Ï´Ù.
+        /// @brief ì •ì  ë²„í¼ì™€ ì¸ë±ìŠ¤ ë²„í¼ë¥¼ í•©ì¹œ ê²ƒì…ë‹ˆë‹¤. ì‚¬ì–‘ì€ í…œí”Œë¦¿ ìƒì„±ìë¥¼ í†µí•´ ì •í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
         class Mesh;
         using pMesh = std::shared_ptr<Mesh>;
-        /// @brief ¼ÎÀÌ´õ ÀÚ¿øÀ» ³ªÅ¸³À´Ï´Ù. µ¿½Ã¿¡ »ç¿ëµÇÁö¸¸ ¾Ê´Â´Ù¸é ¿©·¯ ·»´õÆĞ½º °£¿¡ °øÀ¯µÉ ¼ö ÀÖ½À´Ï´Ù.
+        /// @brief ì…°ì´ë” ìì›ì„ ë‚˜íƒ€ëƒ…ë‹ˆë‹¤. ë™ì‹œì— ì‚¬ìš©ë˜ì§€ë§Œ ì•ŠëŠ”ë‹¤ë©´ ì—¬ëŸ¬ ë Œë”íŒ¨ìŠ¤ ê°„ì— ê³µìœ ë  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
         class UniformBuffer;
-        /// @brief ¼ÎÀÌ´õ À¯ÇüÀÔ´Ï´Ù.
+        /// @brief ì…°ì´ë” ìœ í˜•ì…ë‹ˆë‹¤.
         enum class ShaderType {
             VERTEX = 0,
             FRAGMENT = 1,
@@ -91,198 +91,204 @@ namespace onart {
             TESS_CTRL = 3,
             TESS_EVAL = 4
         };
-        /// @brief ·»´õ Å¸°ÙÀÇ À¯ÇüÀÔ´Ï´Ù.
+        /// @brief ë Œë” íƒ€ê²Ÿì˜ ìœ í˜•ì…ë‹ˆë‹¤.
         enum class RenderTargetType {
-            /// @brief »ö ¹öÆÛ 1°³¸¦ º¸À¯ÇÕ´Ï´Ù.
+            /// @brief ìƒ‰ ë²„í¼ 1ê°œë¥¼ ë³´ìœ í•©ë‹ˆë‹¤.
             COLOR1 = 0b1,
-            /// @brief »ö ¹öÆÛ 2°³¸¦ º¸À¯ÇÕ´Ï´Ù.
+            /// @brief ìƒ‰ ë²„í¼ 2ê°œë¥¼ ë³´ìœ í•©ë‹ˆë‹¤.
             COLOR2 = 0b11,
-            /// @brief »ö ¹öÆÛ 3°³¸¦ º¸À¯ÇÕ´Ï´Ù.
+            /// @brief ìƒ‰ ë²„í¼ 3ê°œë¥¼ ë³´ìœ í•©ë‹ˆë‹¤.
             COLOR3 = 0b111,
-            /// @brief ±íÀÌ/½ºÅÙ½Ç ¹öÆÛ¸¸À» º¸À¯ÇÕ´Ï´Ù.
+            /// @brief ê¹Šì´/ìŠ¤í…ì‹¤ ë²„í¼ë§Œì„ ë³´ìœ í•©ë‹ˆë‹¤.
             DEPTH = 0b1000,
-            /// @brief »ö ¹öÆÛ 1°³¿Í ±íÀÌ/½ºÅÙ½Ç ¹öÆÛ¸¦ º¸À¯ÇÕ´Ï´Ù.
+            /// @brief ìƒ‰ ë²„í¼ 1ê°œì™€ ê¹Šì´/ìŠ¤í…ì‹¤ ë²„í¼ë¥¼ ë³´ìœ í•©ë‹ˆë‹¤.
             COLOR1DEPTH = 0b1001,
-            /// @brief »ö ¹öÆÛ 2°³¿Í ±íÀÌ/½ºÅÙ½Ç ¹öÆÛ¸¦ º¸À¯ÇÕ´Ï´Ù.
+            /// @brief ìƒ‰ ë²„í¼ 2ê°œì™€ ê¹Šì´/ìŠ¤í…ì‹¤ ë²„í¼ë¥¼ ë³´ìœ í•©ë‹ˆë‹¤.
             COLOR2DEPTH = 0b1011,
-            /// @brief »ö ¹öÆÛ 3°³¿Í ±íÀÌ/½ºÅÙ½Ç ¹öÆÛ¸¦ º¸À¯ÇÕ´Ï´Ù.
+            /// @brief ìƒ‰ ë²„í¼ 3ê°œì™€ ê¹Šì´/ìŠ¤í…ì‹¤ ë²„í¼ë¥¼ ë³´ìœ í•©ë‹ˆë‹¤.
             COLOR3DEPTH = 0b1111
         };
-        /// @brief ·»´õÅ¸°ÙÀÎ ÅØ½ºÃ³¿¡¼­ »ùÇÃ¸µÇÒ ¹æ½ÄÀ» ¼±ÅÃÇÕ´Ï´Ù.
+        /// @brief ë Œë”íƒ€ê²Ÿì¸ í…ìŠ¤ì²˜ì—ì„œ ìƒ˜í”Œë§í•  ë°©ì‹ì„ ì„ íƒí•©ë‹ˆë‹¤.
         enum class RenderTargetInputOption {
-            INPUT_ATTACHMENT = 1, // GL ±â¹İ¿¡¼­ ÀÌ ¿É¼ÇÀº »ç¿ëµÇÁö ¾ÊÀ¸¸ç SAMPLED_LINEAR·Î ³Ñ¾î°©´Ï´Ù.
+            INPUT_ATTACHMENT = 1, // GL ê¸°ë°˜ì—ì„œ ì´ ì˜µì…˜ì€ ì‚¬ìš©ë˜ì§€ ì•Šìœ¼ë©° SAMPLED_LINEARë¡œ ë„˜ì–´ê°‘ë‹ˆë‹¤.
             SAMPLED_LINEAR = 1,
             SAMPLED_NEAREST = 2
         };
-        /// @brief ÆÄÀÌÇÁ¶óÀÎ »ı¼º ½Ã ÁÙ ¼ö ÀÖ´Â ¿É¼ÇÀÔ´Ï´Ù. ¿©±âÀÇ ¼ººĞµéÀ» ºñÆ® orÇÏ¿© »ı¼º ÇÔ¼ö¿¡ Àü´ŞÇÕ´Ï´Ù.
+        /// @brief íŒŒì´í”„ë¼ì¸ ìƒì„± ì‹œ ì¤„ ìˆ˜ ìˆëŠ” ì˜µì…˜ì…ë‹ˆë‹¤. ì—¬ê¸°ì˜ ì„±ë¶„ë“¤ì„ ë¹„íŠ¸ orí•˜ì—¬ ìƒì„± í•¨ìˆ˜ì— ì „ë‹¬í•©ë‹ˆë‹¤.
         enum PipelineOptions : uint32_t {
             USE_DEPTH = 0b1,
             USE_STENCIL = 0b10,
             CULL_BACK = 0b100,
         };
-        /// @brief ÀÌ¹ÌÁö ÆÄÀÏ·ÎºÎÅÍ ÅØ½ºÃ³¸¦ »ı¼ºÇÒ ¶§ ÁÙ ¼ö ÀÖ´Â ¿É¼ÇÀÔ´Ï´Ù.
+        /// @brief ì´ë¯¸ì§€ íŒŒì¼ë¡œë¶€í„° í…ìŠ¤ì²˜ë¥¼ ìƒì„±í•  ë•Œ ì¤„ ìˆ˜ ìˆëŠ” ì˜µì…˜ì…ë‹ˆë‹¤.
         enum ImageTextureFormatOptions {
-            /// @brief ÀÌ¹ÌÁö ¿øº» Çü½ÄÀ» »ç¿ëÇÕ´Ï´Ù.
+            /// @brief ì´ë¯¸ì§€ ì›ë³¸ í˜•ì‹ì„ ì‚¬ìš©í•©ë‹ˆë‹¤.
             IT_USE_ORIGINAL = 0,
-            /// @brief °¡´ÉÇÏ¸é Ç°ÁúÀ» ÃÖ´ëÇÑ À¯ÁöÇÏ´Â ¾ĞÃà ÅØ½ºÃ³¸¦ »ç¿ëÇÕ´Ï´Ù.
+            /// @brief ê°€ëŠ¥í•˜ë©´ í’ˆì§ˆì„ ìµœëŒ€í•œ ìœ ì§€í•˜ëŠ” ì••ì¶• í…ìŠ¤ì²˜ë¥¼ ì‚¬ìš©í•©ë‹ˆë‹¤.
             IT_USE_HQCOMPRESS = 1,
-            /// @brief °¡´ÉÇÏ¸é ¾ĞÃà ÅØ½ºÃ³¸¦ »ç¿ëÇÕ´Ï´Ù.
+            /// @brief ê°€ëŠ¥í•˜ë©´ ì••ì¶• í…ìŠ¤ì²˜ë¥¼ ì‚¬ìš©í•©ë‹ˆë‹¤.
             IT_USE_COMPRESS = 2
         };
-        /// @brief ¿äÃ»ÇÑ ºñµ¿±â µ¿ÀÛ Áß ¿Ï·áµÈ °ÍÀÌ ÀÖÀ¸¸é Ã³¸®ÇÕ´Ï´Ù.
+        /// @brief ìš”ì²­í•œ ë¹„ë™ê¸° ë™ì‘ ì¤‘ ì™„ë£Œëœ ê²ƒì´ ìˆìœ¼ë©´ ì²˜ë¦¬í•©ë‹ˆë‹¤.
         static void handle();
-        /// @brief ´ÜÀ§Çà·ÄÀÌ ¸®ÅÏµË´Ï´Ù.
+        /// @brief ë‹¨ìœ„í–‰ë ¬ì´ ë¦¬í„´ë©ë‹ˆë‹¤.
         static mat4 preTransform();
-        /// @brief º¸Åë ÀÌ¹ÌÁö ÆÄÀÏÀ» ºÒ·¯¿Í ÅØ½ºÃ³¸¦ »ı¼ºÇÕ´Ï´Ù. ¹Ó ¼öÁØÀº ¹İµå½Ã 1ÀÌ¸ç ±× ÀÌ»óÀ» ¿øÇÏ´Â °æ¿ì ktx2 Çü½ÄÀ» ÀÌ¿ëÇØ ÁÖ¼¼¿ä.
-        /// @param fileName ÆÄÀÏ ÀÌ¸§
-        /// @param key ÇÁ·Î±×·¥ ³»ºÎ¿¡¼­ »ç¿ëÇÒ ÀÌ¸§À¸·Î, ÀÌ°ÍÀÌ ±âÁ¸ÀÇ °Í°ú °ãÄ¡¸é ÆÄÀÏ°ú °ü°è ¾øÀÌ ±âÁ¸¿¡ ºÒ·¯¿Ô´ø °´Ã¼¸¦ ¸®ÅÏÇÕ´Ï´Ù.
-        /// @param srgb true¸é ÅØ½ºÃ³ ¿øº»ÀÇ »öÀ» srgb °ø°£¿¡ ÀÖ´Â °ÍÀ¸·Î Ãë±ŞÇÕ´Ï´Ù.
-        /// @param option ÀÌ¹ÌÁö¸¦ ¾ĞÃà ÅØ½ºÃ³ Çü½ÄÀ¸·Î ¹Ù²ÜÁö °áÁ¤ÇÒ ¼ö ÀÖ½À´Ï´Ù.
+        /// @brief ë³´í†µ ì´ë¯¸ì§€ íŒŒì¼ì„ ë¶ˆëŸ¬ì™€ í…ìŠ¤ì²˜ë¥¼ ìƒì„±í•©ë‹ˆë‹¤. ë°‰ ìˆ˜ì¤€ì€ ë°˜ë“œì‹œ 1ì´ë©° ê·¸ ì´ìƒì„ ì›í•˜ëŠ” ê²½ìš° ktx2 í˜•ì‹ì„ ì´ìš©í•´ ì£¼ì„¸ìš”.
+        /// @param fileName íŒŒì¼ ì´ë¦„
+        /// @param key í”„ë¡œê·¸ë¨ ë‚´ë¶€ì—ì„œ ì‚¬ìš©í•  ì´ë¦„ìœ¼ë¡œ, ì´ê²ƒì´ ê¸°ì¡´ì˜ ê²ƒê³¼ ê²¹ì¹˜ë©´ íŒŒì¼ê³¼ ê´€ê³„ ì—†ì´ ê¸°ì¡´ì— ë¶ˆëŸ¬ì™”ë˜ ê°ì²´ë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤.
+        /// @param srgb trueë©´ í…ìŠ¤ì²˜ ì›ë³¸ì˜ ìƒ‰ì„ srgb ê³µê°„ì— ìˆëŠ” ê²ƒìœ¼ë¡œ ì·¨ê¸‰í•©ë‹ˆë‹¤.
+        /// @param option ì´ë¯¸ì§€ë¥¼ ì••ì¶• í…ìŠ¤ì²˜ í˜•ì‹ìœ¼ë¡œ ë°”ê¿€ì§€ ê²°ì •í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
         static pTexture createTextureFromImage(const char* fileName, int32_t key, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true);
-        /// @brief createTextureFromImage¸¦ ºñµ¿±âÀûÀ¸·Î ½ÇÇàÇÕ´Ï´Ù. ÇÚµé·¯¿¡ ÁÖ¾îÁö´Â ¸Å°³º¯¼ö´Â ÇÏÀ§ 32ºñÆ® key, »óÀ§ 32ºñÆ® VkResultÀÔ´Ï´Ù(key¸¦ °¡¸®Å°´Â Æ÷ÀÎÅÍ°¡ ¾Æ´Ñ ±×³É key). ¸Å°³º¯¼ö ¼³¸íÀº createTextureFromImage¸¦ Âü°íÇÏ¼¼¿ä.
+        /// @brief createTextureFromImageë¥¼ ë¹„ë™ê¸°ì ìœ¼ë¡œ ì‹¤í–‰í•©ë‹ˆë‹¤. í•¸ë“¤ëŸ¬ì— ì£¼ì–´ì§€ëŠ” ë§¤ê°œë³€ìˆ˜ëŠ” í•˜ìœ„ 32ë¹„íŠ¸ key, ìƒìœ„ 32ë¹„íŠ¸ VkResultì…ë‹ˆë‹¤(keyë¥¼ ê°€ë¦¬í‚¤ëŠ” í¬ì¸í„°ê°€ ì•„ë‹Œ ê·¸ëƒ¥ key). ë§¤ê°œë³€ìˆ˜ ì„¤ëª…ì€ createTextureFromImageë¥¼ ì°¸ê³ í•˜ì„¸ìš”.
         static void asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(variant8)> handler, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true);
-        /// @brief º¸Åë ÀÌ¹ÌÁö µ¥ÀÌÅÍ¸¦ ¸Ş¸ğ¸®¿¡¼­ ºÒ·¯¿Í ÅØ½ºÃ³¸¦ »ı¼ºÇÕ´Ï´Ù. ¹Ó ¼öÁØÀº ¹İµå½Ã 1ÀÌ¸ç ±× ÀÌ»óÀ» ¿øÇÏ´Â °æ¿ì ktx2 Çü½ÄÀ» ÀÌ¿ëÇØ ÁÖ¼¼¿ä.
-        /// @param mem ÀÌ¹ÌÁö ½ÃÀÛ ÁÖ¼Ò
-        /// @param size mem ¹è¿­ÀÇ ±æÀÌ(¹ÙÀÌÆ®)
-        /// @param key ÇÁ·Î±×·¥ ³»ºÎ¿¡¼­ »ç¿ëÇÒ ÀÌ¸§À¸·Î, ÀÌ°ÍÀÌ ±âÁ¸ÀÇ °Í°ú °ãÄ¡¸é ÆÄÀÏ°ú °ü°è ¾øÀÌ ±âÁ¸¿¡ ºÒ·¯¿Ô´ø °´Ã¼¸¦ ¸®ÅÏÇÕ´Ï´Ù.
-        /// @param srgb true¸é ÅØ½ºÃ³ ¿øº»ÀÇ »öÀ» srgb °ø°£¿¡ ÀÖ´Â °ÍÀ¸·Î Ãë±ŞÇÕ´Ï´Ù.
-        /// @param option ÀÌ¹ÌÁö¸¦ ¾ĞÃà ÅØ½ºÃ³ Çü½ÄÀ¸·Î ¹Ù²ÜÁö °áÁ¤ÇÒ ¼ö ÀÖ½À´Ï´Ù.
+        /// @brief ë³´í†µ ì´ë¯¸ì§€ ë°ì´í„°ë¥¼ ë©”ëª¨ë¦¬ì—ì„œ ë¶ˆëŸ¬ì™€ í…ìŠ¤ì²˜ë¥¼ ìƒì„±í•©ë‹ˆë‹¤. ë°‰ ìˆ˜ì¤€ì€ ë°˜ë“œì‹œ 1ì´ë©° ê·¸ ì´ìƒì„ ì›í•˜ëŠ” ê²½ìš° ktx2 í˜•ì‹ì„ ì´ìš©í•´ ì£¼ì„¸ìš”.
+        /// @param mem ì´ë¯¸ì§€ ì‹œì‘ ì£¼ì†Œ
+        /// @param size mem ë°°ì—´ì˜ ê¸¸ì´(ë°”ì´íŠ¸)
+        /// @param key í”„ë¡œê·¸ë¨ ë‚´ë¶€ì—ì„œ ì‚¬ìš©í•  ì´ë¦„ìœ¼ë¡œ, ì´ê²ƒì´ ê¸°ì¡´ì˜ ê²ƒê³¼ ê²¹ì¹˜ë©´ íŒŒì¼ê³¼ ê´€ê³„ ì—†ì´ ê¸°ì¡´ì— ë¶ˆëŸ¬ì™”ë˜ ê°ì²´ë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤.
+        /// @param srgb trueë©´ í…ìŠ¤ì²˜ ì›ë³¸ì˜ ìƒ‰ì„ srgb ê³µê°„ì— ìˆëŠ” ê²ƒìœ¼ë¡œ ì·¨ê¸‰í•©ë‹ˆë‹¤.
+        /// @param option ì´ë¯¸ì§€ë¥¼ ì••ì¶• í…ìŠ¤ì²˜ í˜•ì‹ìœ¼ë¡œ ë°”ê¿€ì§€ ê²°ì •í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
         static pTexture createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true);
-        /// @brief createTextureFromImage¸¦ ºñµ¿±âÀûÀ¸·Î ½ÇÇàÇÕ´Ï´Ù. ÇÚµé·¯¿¡ ÁÖ¾îÁö´Â ¸Å°³º¯¼ö´Â ÇÏÀ§ 32ºñÆ® key, »óÀ§ 32ºñÆ® VkResultÀÔ´Ï´Ù(key¸¦ °¡¸®Å°´Â Æ÷ÀÎÅÍ°¡ ¾Æ´Ñ ±×³É key). ¸Å°³º¯¼ö ¼³¸íÀº createTextureFromImage¸¦ Âü°íÇÏ¼¼¿ä.
+        /// @brief createTextureFromImageë¥¼ ë¹„ë™ê¸°ì ìœ¼ë¡œ ì‹¤í–‰í•©ë‹ˆë‹¤. í•¸ë“¤ëŸ¬ì— ì£¼ì–´ì§€ëŠ” ë§¤ê°œë³€ìˆ˜ëŠ” í•˜ìœ„ 32ë¹„íŠ¸ key, ìƒìœ„ 32ë¹„íŠ¸ VkResultì…ë‹ˆë‹¤(keyë¥¼ ê°€ë¦¬í‚¤ëŠ” í¬ì¸í„°ê°€ ì•„ë‹Œ ê·¸ëƒ¥ key). ë§¤ê°œë³€ìˆ˜ ì„¤ëª…ì€ createTextureFromImageë¥¼ ì°¸ê³ í•˜ì„¸ìš”.
         static void asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(variant8)> handler, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true);
-        /// @brief ktx2, BasisU ÆÄÀÏÀ» ºÒ·¯¿Í ÅØ½ºÃ³¸¦ »ı¼ºÇÕ´Ï´Ù. (KTX2 ÆÄÀÏÀÌ¶óµµ BasisU°¡ ¾Æ´Ï¸é ½ÇÆĞÇÒ °¡´É¼ºÀÌ ÀÖ½À´Ï´Ù.) ¿©±â¿¡µµ libktx·Î ±× Çü½ÄÀ» ¸¸µå´Â º°µµÀÇ µµ±¸°¡ ÀÖÀ¸´Ï ÇÊ¿äÇÏ¸é »ç¿ëÇÒ ¼ö ÀÖ½À´Ï´Ù.
-        /// @param fileName ÆÄÀÏ ÀÌ¸§
-        /// @param key ÇÁ·Î±×·¥ ³»ºÎ¿¡¼­ »ç¿ëÇÒ ÀÌ¸§À¸·Î, ÀÌ°ÍÀÌ ±âÁ¸ÀÇ °Í°ú °ãÄ¡¸é ÆÄÀÏ°ú °ü°è ¾øÀÌ ±âÁ¸¿¡ ºÒ·¯¿Ô´ø °´Ã¼¸¦ ¸®ÅÏÇÕ´Ï´Ù.
-        /// @param nChannels Ã¤³Î ¼ö(»ö»ó)
-        /// @param srgb true¸é ÅØ½ºÃ³ ¿øº»ÀÇ »öÀ» srgb °ø°£¿¡ ÀÖ´Â °ÍÀ¸·Î Ãë±ŞÇÕ´Ï´Ù.
-        /// @param hq ¿øº»ÀÌ ÃÖ´ëÇÑ ¼¶¼¼ÇÏ°Ô ³²¾Æ ÀÖ¾î¾ß ÇÑ´Ù¸é true¸¦ Áİ´Ï´Ù. false¸¦ ÁÖ¸é ¸Ş¸ğ¸®¸¦ Å©°Ô Àı¾àÇÒ ¼öµµ ÀÖÁö¸¸ Ç°ÁúÀÌ ³·¾ÆÁú ¼ö ÀÖ½À´Ï´Ù.
+        /// @brief ktx2, BasisU íŒŒì¼ì„ ë¶ˆëŸ¬ì™€ í…ìŠ¤ì²˜ë¥¼ ìƒì„±í•©ë‹ˆë‹¤. (KTX2 íŒŒì¼ì´ë¼ë„ BasisUê°€ ì•„ë‹ˆë©´ ì‹¤íŒ¨í•  ê°€ëŠ¥ì„±ì´ ìˆìŠµë‹ˆë‹¤.) ì—¬ê¸°ì—ë„ libktxë¡œ ê·¸ í˜•ì‹ì„ ë§Œë“œëŠ” ë³„ë„ì˜ ë„êµ¬ê°€ ìˆìœ¼ë‹ˆ í•„ìš”í•˜ë©´ ì‚¬ìš©í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
+        /// @param fileName íŒŒì¼ ì´ë¦„
+        /// @param key í”„ë¡œê·¸ë¨ ë‚´ë¶€ì—ì„œ ì‚¬ìš©í•  ì´ë¦„ìœ¼ë¡œ, ì´ê²ƒì´ ê¸°ì¡´ì˜ ê²ƒê³¼ ê²¹ì¹˜ë©´ íŒŒì¼ê³¼ ê´€ê³„ ì—†ì´ ê¸°ì¡´ì— ë¶ˆëŸ¬ì™”ë˜ ê°ì²´ë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤.
+        /// @param nChannels ì±„ë„ ìˆ˜(ìƒ‰ìƒ)
+        /// @param srgb trueë©´ í…ìŠ¤ì²˜ ì›ë³¸ì˜ ìƒ‰ì„ srgb ê³µê°„ì— ìˆëŠ” ê²ƒìœ¼ë¡œ ì·¨ê¸‰í•©ë‹ˆë‹¤.
+        /// @param hq ì›ë³¸ì´ ìµœëŒ€í•œ ì„¬ì„¸í•˜ê²Œ ë‚¨ì•„ ìˆì–´ì•¼ í•œë‹¤ë©´ trueë¥¼ ì¤ë‹ˆë‹¤. falseë¥¼ ì£¼ë©´ ë©”ëª¨ë¦¬ë¥¼ í¬ê²Œ ì ˆì•½í•  ìˆ˜ë„ ìˆì§€ë§Œ í’ˆì§ˆì´ ë‚®ì•„ì§ˆ ìˆ˜ ìˆìŠµë‹ˆë‹¤.
         static pTexture createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb = true, bool hq = true, bool linearSampler = true);
-        /// @brief createTexture¸¦ ºñµ¿±âÀûÀ¸·Î ½ÇÇàÇÕ´Ï´Ù. ÇÚµé·¯¿¡ ÁÖ¾îÁö´Â ¸Å°³º¯¼ö´Â ÇÏÀ§ 32ºñÆ® key, »óÀ§ 32ºñÆ® VkResultÀÔ´Ï´Ù(key¸¦ °¡¸®Å°´Â Æ÷ÀÎÅÍ°¡ ¾Æ´Ï¶ó ±×³É key). ¸Å°³º¯¼ö ¼³¸íÀº createTexture¸¦ Âü°íÇÏ¼¼¿ä.
+        /// @brief createTextureë¥¼ ë¹„ë™ê¸°ì ìœ¼ë¡œ ì‹¤í–‰í•©ë‹ˆë‹¤. í•¸ë“¤ëŸ¬ì— ì£¼ì–´ì§€ëŠ” ë§¤ê°œë³€ìˆ˜ëŠ” í•˜ìœ„ 32ë¹„íŠ¸ key, ìƒìœ„ 32ë¹„íŠ¸ VkResultì…ë‹ˆë‹¤(keyë¥¼ ê°€ë¦¬í‚¤ëŠ” í¬ì¸í„°ê°€ ì•„ë‹ˆë¼ ê·¸ëƒ¥ key). ë§¤ê°œë³€ìˆ˜ ì„¤ëª…ì€ createTextureë¥¼ ì°¸ê³ í•˜ì„¸ìš”.
         static void asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(variant8)> handler, bool srgb = true, bool hq = true, bool linearSampler = true);
-        /// @brief ¸Ş¸ğ¸® »óÀÇ ktx2 ÆÄÀÏÀ» ÅëÇØ ÅØ½ºÃ³¸¦ »ı¼ºÇÕ´Ï´Ù. (KTX2 ÆÄÀÏÀÌ¶óµµ BasisU°¡ ¾Æ´Ï¸é ½ÇÆĞÇÒ °¡´É¼ºÀÌ ÀÖ½À´Ï´Ù.) ¿©±â¿¡µµ libktx·Î ±× Çü½ÄÀ» ¸¸µå´Â º°µµÀÇ µµ±¸°¡ ÀÖÀ¸´Ï ÇÊ¿äÇÏ¸é »ç¿ëÇÒ ¼ö ÀÖ½À´Ï´Ù.
-        /// @param mem ÀÌ¹ÌÁö ½ÃÀÛ ÁÖ¼Ò
-        /// @param size mem ¹è¿­ÀÇ ±æÀÌ(¹ÙÀÌÆ®)
-        /// @param nChannels Ã¤³Î ¼ö(»ö»ó)
-        /// @param key ÇÁ·Î±×·¥ ³»ºÎ¿¡¼­ »ç¿ëÇÒ ÀÌ¸§ÀÔ´Ï´Ù. ÀÌ°ÍÀÌ ±âÁ¸ÀÇ °Í°ú °ãÄ¡¸é ÆÄÀÏ°ú °ü°è ¾øÀÌ ±âÁ¸¿¡ ºÒ·¯¿Ô´ø °´Ã¼¸¦ ¸®ÅÏÇÕ´Ï´Ù.
-        /// @param srgb true¸é ÅØ½ºÃ³ ¿øº»ÀÇ »öÀ» srgb °ø°£¿¡ ÀÖ´Â °ÍÀ¸·Î Ãë±ŞÇÕ´Ï´Ù.
-        /// @param hq ¿øº»ÀÌ ÃÖ´ëÇÑ ¼¶¼¼ÇÏ°Ô ³²¾Æ ÀÖ¾î¾ß ÇÑ´Ù¸é true¸¦ Áİ´Ï´Ù. false¸¦ ÁÖ¸é ¸Ş¸ğ¸®¸¦ Å©°Ô Àı¾àÇÒ ¼öµµ ÀÖÁö¸¸ Ç°ÁúÀÌ ³·¾ÆÁú ¼ö ÀÖ½À´Ï´Ù.
+        /// @brief ë©”ëª¨ë¦¬ ìƒì˜ ktx2 íŒŒì¼ì„ í†µí•´ í…ìŠ¤ì²˜ë¥¼ ìƒì„±í•©ë‹ˆë‹¤. (KTX2 íŒŒì¼ì´ë¼ë„ BasisUê°€ ì•„ë‹ˆë©´ ì‹¤íŒ¨í•  ê°€ëŠ¥ì„±ì´ ìˆìŠµë‹ˆë‹¤.) ì—¬ê¸°ì—ë„ libktxë¡œ ê·¸ í˜•ì‹ì„ ë§Œë“œëŠ” ë³„ë„ì˜ ë„êµ¬ê°€ ìˆìœ¼ë‹ˆ í•„ìš”í•˜ë©´ ì‚¬ìš©í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
+        /// @param mem ì´ë¯¸ì§€ ì‹œì‘ ì£¼ì†Œ
+        /// @param size mem ë°°ì—´ì˜ ê¸¸ì´(ë°”ì´íŠ¸)
+        /// @param nChannels ì±„ë„ ìˆ˜(ìƒ‰ìƒ)
+        /// @param key í”„ë¡œê·¸ë¨ ë‚´ë¶€ì—ì„œ ì‚¬ìš©í•  ì´ë¦„ì…ë‹ˆë‹¤. ì´ê²ƒì´ ê¸°ì¡´ì˜ ê²ƒê³¼ ê²¹ì¹˜ë©´ íŒŒì¼ê³¼ ê´€ê³„ ì—†ì´ ê¸°ì¡´ì— ë¶ˆëŸ¬ì™”ë˜ ê°ì²´ë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤.
+        /// @param srgb trueë©´ í…ìŠ¤ì²˜ ì›ë³¸ì˜ ìƒ‰ì„ srgb ê³µê°„ì— ìˆëŠ” ê²ƒìœ¼ë¡œ ì·¨ê¸‰í•©ë‹ˆë‹¤.
+        /// @param hq ì›ë³¸ì´ ìµœëŒ€í•œ ì„¬ì„¸í•˜ê²Œ ë‚¨ì•„ ìˆì–´ì•¼ í•œë‹¤ë©´ trueë¥¼ ì¤ë‹ˆë‹¤. falseë¥¼ ì£¼ë©´ ë©”ëª¨ë¦¬ë¥¼ í¬ê²Œ ì ˆì•½í•  ìˆ˜ë„ ìˆì§€ë§Œ í’ˆì§ˆì´ ë‚®ì•„ì§ˆ ìˆ˜ ìˆìŠµë‹ˆë‹¤.
         static pTexture createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb = true, bool hq = true, bool linearSampler = true);
-        /// @brief createTexture¸¦ ºñµ¿±âÀûÀ¸·Î ½ÇÇàÇÕ´Ï´Ù. ÇÚµé·¯¿¡ ÁÖ¾îÁö´Â ¸Å°³º¯¼ö´Â ÇÏÀ§ 32ºñÆ® key, »óÀ§ 32ºñÆ® VkResultÀÔ´Ï´Ù(key¸¦ °¡¸®Å°´Â Æ÷ÀÎÅÍ°¡ ¾Æ´Ï¶ó ±×³É key). ¸Å°³º¯¼ö ¼³¸íÀº createTexture¸¦ Âü°íÇÏ¼¼¿ä.
+        /// @brief createTextureë¥¼ ë¹„ë™ê¸°ì ìœ¼ë¡œ ì‹¤í–‰í•©ë‹ˆë‹¤. í•¸ë“¤ëŸ¬ì— ì£¼ì–´ì§€ëŠ” ë§¤ê°œë³€ìˆ˜ëŠ” í•˜ìœ„ 32ë¹„íŠ¸ key, ìƒìœ„ 32ë¹„íŠ¸ VkResultì…ë‹ˆë‹¤(keyë¥¼ ê°€ë¦¬í‚¤ëŠ” í¬ì¸í„°ê°€ ì•„ë‹ˆë¼ ê·¸ëƒ¥ key). ë§¤ê°œë³€ìˆ˜ ì„¤ëª…ì€ createTextureë¥¼ ì°¸ê³ í•˜ì„¸ìš”.
         static void asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(variant8)> handler, int32_t key, bool srgb = true, bool hq = true, bool linearSampler = true);
-        /// @brief ºó ÅØ½ºÃ³¸¦ ¸¸µì´Ï´Ù. ¸Ş¸ğ¸® ¸ÊÀ¸·Î µ¥ÀÌÅÍ¸¦ ¿Ã¸± ¼ö ÀÖ½À´Ï´Ù. ¿Ã¸®´Â µ¥ÀÌÅÍÀÇ ±âº» ÇüÅÂ´Â BGRA ¼ø¼­ÀÌ¸ç, ÇÊ¿äÇÑ °æ¿ì ¼ÎÀÌ´õ¿¡¼­ Á÷Á¢ ½ºÀ§Áñ¸µÇÏ¿© »ç¿ëÇÕ´Ï´Ù.
+        /// @brief ë¹ˆ í…ìŠ¤ì²˜ë¥¼ ë§Œë“­ë‹ˆë‹¤. ë©”ëª¨ë¦¬ ë§µìœ¼ë¡œ ë°ì´í„°ë¥¼ ì˜¬ë¦´ ìˆ˜ ìˆìŠµë‹ˆë‹¤. ì˜¬ë¦¬ëŠ” ë°ì´í„°ì˜ ê¸°ë³¸ í˜•íƒœëŠ” BGRA ìˆœì„œì´ë©°, í•„ìš”í•œ ê²½ìš° ì…°ì´ë”ì—ì„œ ì§ì ‘ ìŠ¤ìœ„ì¦ë§í•˜ì—¬ ì‚¬ìš©í•©ë‹ˆë‹¤.
         static pStreamTexture createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler = true);
-        /// @brief 2D ·»´õ Å¸°ÙÀ» »ı¼ºÇÏ°í ÇÚµéÀ» ¸®ÅÏÇÕ´Ï´Ù. ÀÌ°ÍÀ» ÇØÁ¦ÇÏ´Â ¼ö´ÜÀº ¾øÀ¸¸ç, ÇÁ·Î±×·¥ Á¾·á ½Ã ÀÚµ¿À¸·Î ÇØÁ¦µË´Ï´Ù.
-        /// @param width °¡·Î ±æÀÌ(px).
-        /// @param height ¼¼·Î ±æÀÌ(px).
-        /// @param key ÀÌÈÄ º°µµ·Î Á¢±ÙÇÒ ¼ö ÀÖ´Â ÀÌ¸§À» ÁöÁ¤ÇÕ´Ï´Ù. ´Ü, Áßº¹µÈ ÀÌ¸§À» ÀÔ·ÂÇÏ´Â °æ¿ì »õ·Î »ı¼ºµÇÁö ¾Ê°í ±âÁ¸ÀÇ °ÍÀÌ ¸®ÅÏµË´Ï´Ù. INT32_MIN, Áï -2147483648 °ªÀº ¿¹¾àµÇ¾î ÀÖ¾î »ç¿ëÀÌ ºÒ°¡´ÉÇÕ´Ï´Ù.
-        /// @param type @ref RenderTargetType Âü°íÇÏ¼¼¿ä.
-        /// @param sampled »ç¿ëµÇÁö ¾Ê½À´Ï´Ù.
-        /// @param useDepthInput ±íÀÌ ¹öÆÛ¸¦ ·»´õ¹öÆÛ°¡ ¾Æ´Ñ ÅØ½ºÃ³·Î »ı¼ºÇÕ´Ï´Ù.
-        /// @param useStencil true¸é ±íÀÌ ÀÌ¹ÌÁö¿¡ ´õºÒ¾î ½ºÅÙ½Ç ¹öÆÛ¸¦ »ç¿ëÇÕ´Ï´Ù.
-        /// @param mmap ÀÌ°ÍÀÌ true¶ó¸é ÇÈ¼¿ µ¥ÀÌÅÍ¿¡ ¼øÂ÷·Î Á¢±ÙÇÒ ¼ö ÀÖ½À´Ï´Ù. ´Ü, ·»´õ¸µ ¼º´ÉÀÌ ³·¾ÆÁú °¡´É¼ºÀÌ ¸Å¿ì ³ô½À´Ï´Ù.
-        /// @return ÀÌ°ÍÀ» ÅëÇØ ·»´õ ÆĞ½º¸¦ »ı¼ºÇÒ ¼ö ÀÖ½À´Ï´Ù.
+        /// @brief 2D ë Œë” íƒ€ê²Ÿì„ ìƒì„±í•˜ê³  í•¸ë“¤ì„ ë¦¬í„´í•©ë‹ˆë‹¤. ì´ê²ƒì„ í•´ì œí•˜ëŠ” ìˆ˜ë‹¨ì€ ì—†ìœ¼ë©°, í”„ë¡œê·¸ë¨ ì¢…ë£Œ ì‹œ ìë™ìœ¼ë¡œ í•´ì œë©ë‹ˆë‹¤.
+        /// @param width ê°€ë¡œ ê¸¸ì´(px).
+        /// @param height ì„¸ë¡œ ê¸¸ì´(px).
+        /// @param key ì´í›„ ë³„ë„ë¡œ ì ‘ê·¼í•  ìˆ˜ ìˆëŠ” ì´ë¦„ì„ ì§€ì •í•©ë‹ˆë‹¤. ë‹¨, ì¤‘ë³µëœ ì´ë¦„ì„ ì…ë ¥í•˜ëŠ” ê²½ìš° ìƒˆë¡œ ìƒì„±ë˜ì§€ ì•Šê³  ê¸°ì¡´ì˜ ê²ƒì´ ë¦¬í„´ë©ë‹ˆë‹¤. INT32_MIN, ì¦‰ -2147483648 ê°’ì€ ì˜ˆì•½ë˜ì–´ ìˆì–´ ì‚¬ìš©ì´ ë¶ˆê°€ëŠ¥í•©ë‹ˆë‹¤.
+        /// @param type @ref RenderTargetType ì°¸ê³ í•˜ì„¸ìš”.
+        /// @param sampled ì‚¬ìš©ë˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
+        /// @param useDepthInput ê¹Šì´ ë²„í¼ë¥¼ ë Œë”ë²„í¼ê°€ ì•„ë‹Œ í…ìŠ¤ì²˜ë¡œ ìƒì„±í•©ë‹ˆë‹¤.
+        /// @param useStencil trueë©´ ê¹Šì´ ì´ë¯¸ì§€ì— ë”ë¶ˆì–´ ìŠ¤í…ì‹¤ ë²„í¼ë¥¼ ì‚¬ìš©í•©ë‹ˆë‹¤.
+        /// @param mmap ì´ê²ƒì´ trueë¼ë©´ í”½ì…€ ë°ì´í„°ì— ìˆœì°¨ë¡œ ì ‘ê·¼í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤. ë‹¨, ë Œë”ë§ ì„±ëŠ¥ì´ ë‚®ì•„ì§ˆ ê°€ëŠ¥ì„±ì´ ë§¤ìš° ë†’ìŠµë‹ˆë‹¤.
+        /// @return ì´ê²ƒì„ í†µí•´ ë Œë” íŒ¨ìŠ¤ë¥¼ ìƒì„±í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
         static RenderTarget* createRenderTarget2D(int width, int height, int32_t key, RenderTargetType type = RenderTargetType::COLOR1DEPTH, RenderTargetInputOption sampled = RenderTargetInputOption::SAMPLED_LINEAR, bool useDepthInput = false, bool useStencil = false, bool mmap = false);
-        /// @brief HLSL ¼ÎÀÌ´õ ¹ÙÀÌ³Ê¸®¸¦ ÅëÇØ ¿ÀºêÁ§Æ®·Î ÀúÀåÇÏ°í °¡Á®¿É´Ï´Ù.
-        /// @param code ÄÄÆÄÀÏµÈ HLSL ¹ÙÀÌ³Ê¸®
-        /// @param size codeÀÇ ±æÀÌ
-        /// @param key ÀÌÈÄ º°µµ·Î Á¢±ÙÇÒ ¼ö ÀÖ´Â ÀÌ¸§À» ÁöÁ¤ÇÕ´Ï´Ù. Áßº¹µÈ ÀÌ¸§À» ÀÔ·ÂÇÏ´Â °æ¿ì »õ·Î »ı¼ºµÇÁö ¾Ê°í ±âÁ¸ÀÇ °ÍÀÌ ¸®ÅÏµË´Ï´Ù.
+        /// @brief HLSL ì…°ì´ë” ë°”ì´ë„ˆë¦¬ë¥¼ í†µí•´ ì˜¤ë¸Œì íŠ¸ë¡œ ì €ì¥í•˜ê³  ê°€ì ¸ì˜µë‹ˆë‹¤.
+        /// @param code ì»´íŒŒì¼ëœ HLSL ë°”ì´ë„ˆë¦¬
+        /// @param size codeì˜ ê¸¸ì´
+        /// @param key ì´í›„ ë³„ë„ë¡œ ì ‘ê·¼í•  ìˆ˜ ìˆëŠ” ì´ë¦„ì„ ì§€ì •í•©ë‹ˆë‹¤. ì¤‘ë³µëœ ì´ë¦„ì„ ì…ë ¥í•˜ëŠ” ê²½ìš° ìƒˆë¡œ ìƒì„±ë˜ì§€ ì•Šê³  ê¸°ì¡´ì˜ ê²ƒì´ ë¦¬í„´ë©ë‹ˆë‹¤.
         static ID3D11DeviceChild* createShader(const char* code, size_t size, int32_t key, ShaderType type = ShaderType::VERTEX);
-        /// @brief ¼ÎÀÌ´õ¿¡¼­ »ç¿ëÇÒ ¼ö ÀÖ´Â uniform ¹öÆÛ¸¦ »ı¼ºÇÏ¿© ¸®ÅÏÇÕ´Ï´Ù. ÀÌ°ÍÀ» ÇØÁ¦ÇÏ´Â ¹æ¹ıÀº ¾øÀ¸¸ç, ÇÁ·Î±×·¥ Á¾·á ½Ã ÀÚµ¿À¸·Î ÇØÁ¦µË´Ï´Ù.
-        /// @param length D3D11Àº µ¿½Ã¿¡ ¿©·¯ °³ ·»´õ¸µ ¸í·ÉÀÌ ¼öÇàµÉ ¼ö ¾øÀ¸¹Ç·Î »ç¿ëµÇÁö ¾Ê½À´Ï´Ù.
-        /// @param size ¹öÆÛÀÇ Å©±âÀÔ´Ï´Ù.
-        /// @param stages »ç¿ëµÇÁö ¾Ê½À´Ï´Ù.
-        /// @param key ÇÁ·Î±×·¥ ³»¿¡¼­ »ç¿ëÇÒ ÀÌ¸§ÀÔ´Ï´Ù. Áßº¹µÈ ÀÌ¸§ÀÌ ÀÔ·ÂµÈ °æ¿ì ÁÖ¾îÁø ³ª¸ÓÁö ÀÎ¼ö¸¦ ¹«½ÃÇÏ°í ±× ÀÌ¸§À» °¡Áø ¹öÆÛ¸¦ ¸®ÅÏÇÕ´Ï´Ù. Å° INT32_MIN + 1ÀÇ °æ¿ì push¶ó´Â ÀÎÅÍÆäÀÌ½º¸¦ À§ÇØ »ç¿ëµÇ¹Ç·Î ÀÌ¿ëÇÒ ¼ö ¾ø½À´Ï´Ù.
-        /// @param binding ¹ÙÀÎµù ¹øÈ£ÀÔ´Ï´Ù. 11¹ø ¹ÙÀÎµùÀ» »ç¿ëÇÏ·Á ÇÏ´Â °æ¿ì ·»´õÆĞ½ºÀÇ push() ÀÎÅÍÆäÀÌ½º´Â »ç¿ëÇÏ½Ç ¼ö ¾ø½À´Ï´Ù.
+        /// @brief ì…°ì´ë”ì—ì„œ ì‚¬ìš©í•  ìˆ˜ ìˆëŠ” uniform ë²„í¼ë¥¼ ìƒì„±í•˜ì—¬ ë¦¬í„´í•©ë‹ˆë‹¤. ì´ê²ƒì„ í•´ì œí•˜ëŠ” ë°©ë²•ì€ ì—†ìœ¼ë©°, í”„ë¡œê·¸ë¨ ì¢…ë£Œ ì‹œ ìë™ìœ¼ë¡œ í•´ì œë©ë‹ˆë‹¤.
+        /// @param length D3D11ì€ ë™ì‹œì— ì—¬ëŸ¬ ê°œ ë Œë”ë§ ëª…ë ¹ì´ ìˆ˜í–‰ë  ìˆ˜ ì—†ìœ¼ë¯€ë¡œ ì‚¬ìš©ë˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
+        /// @param size ë²„í¼ì˜ í¬ê¸°ì…ë‹ˆë‹¤.
+        /// @param stages ì‚¬ìš©ë˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
+        /// @param key í”„ë¡œê·¸ë¨ ë‚´ì—ì„œ ì‚¬ìš©í•  ì´ë¦„ì…ë‹ˆë‹¤. ì¤‘ë³µëœ ì´ë¦„ì´ ì…ë ¥ëœ ê²½ìš° ì£¼ì–´ì§„ ë‚˜ë¨¸ì§€ ì¸ìˆ˜ë¥¼ ë¬´ì‹œí•˜ê³  ê·¸ ì´ë¦„ì„ ê°€ì§„ ë²„í¼ë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤. í‚¤ INT32_MIN + 1ì˜ ê²½ìš° pushë¼ëŠ” ì¸í„°í˜ì´ìŠ¤ë¥¼ ìœ„í•´ ì‚¬ìš©ë˜ë¯€ë¡œ ì´ìš©í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤.
+        /// @param binding ë°”ì¸ë”© ë²ˆí˜¸ì…ë‹ˆë‹¤. 11ë²ˆ ë°”ì¸ë”©ì„ ì‚¬ìš©í•˜ë ¤ í•˜ëŠ” ê²½ìš° ë Œë”íŒ¨ìŠ¤ì˜ push() ì¸í„°í˜ì´ìŠ¤ëŠ” ì‚¬ìš©í•˜ì‹¤ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.
         static UniformBuffer* createUniformBuffer(uint32_t length, uint32_t size, size_t stages, int32_t key, uint32_t binding = 0);
-        /// @brief ÁÖ¾îÁø ·»´õ Å¸°ÙµéÀ» ´ë»óÀ¸·Î ÇÏ´Â ·»´õÆĞ½º¸¦ ±¸¼ºÇÕ´Ï´Ù. OpenGL APIÀÇ °æ¿ì ¼­ºêÆĞ½ºÀÇ °³³äÀ» »ç¿ëÇÏÁö ¾Ê°í º¸ÅëÀÇ ÆÄÀÌÇÁ¶óÀÎÀ¸·Î ±¸¼ºµË´Ï´Ù.
-        /// @param targets ·»´õ Å¸°Ù Æ÷ÀÎÅÍÀÇ ¹è¿­ÀÔ´Ï´Ù.
-        /// @param subpassCount targets ¹è¿­ÀÇ Å©±âÀÔ´Ï´Ù.
-        /// @param key ÀÌ¸§ÀÔ´Ï´Ù. ÀÌ¹Ì ÀÖ´Â ÀÌ¸§À» ÀÔ·ÂÇÏ¸é ³ª¸ÓÁö ÀÎ¼ö¿Í °ü°è ¾øÀÌ ±âÁ¸ÀÇ °ÍÀ» ¸®ÅÏÇÕ´Ï´Ù. INT32_MIN, Áï -2147483648Àº ¿¹¾àµÈ °ªÀÌ±â ¶§¹®¿¡ »ç¿ëÇÒ ¼ö ¾ø½À´Ï´Ù.
+        /// @brief ì£¼ì–´ì§„ ë Œë” íƒ€ê²Ÿë“¤ì„ ëŒ€ìƒìœ¼ë¡œ í•˜ëŠ” ë Œë”íŒ¨ìŠ¤ë¥¼ êµ¬ì„±í•©ë‹ˆë‹¤. OpenGL APIì˜ ê²½ìš° ì„œë¸ŒíŒ¨ìŠ¤ì˜ ê°œë…ì„ ì‚¬ìš©í•˜ì§€ ì•Šê³  ë³´í†µì˜ íŒŒì´í”„ë¼ì¸ìœ¼ë¡œ êµ¬ì„±ë©ë‹ˆë‹¤.
+        /// @param targets ë Œë” íƒ€ê²Ÿ í¬ì¸í„°ì˜ ë°°ì—´ì…ë‹ˆë‹¤.
+        /// @param subpassCount targets ë°°ì—´ì˜ í¬ê¸°ì…ë‹ˆë‹¤.
+        /// @param key ì´ë¦„ì…ë‹ˆë‹¤. ì´ë¯¸ ìˆëŠ” ì´ë¦„ì„ ì…ë ¥í•˜ë©´ ë‚˜ë¨¸ì§€ ì¸ìˆ˜ì™€ ê´€ê³„ ì—†ì´ ê¸°ì¡´ì˜ ê²ƒì„ ë¦¬í„´í•©ë‹ˆë‹¤. INT32_MIN, ì¦‰ -2147483648ì€ ì˜ˆì•½ëœ ê°’ì´ê¸° ë•Œë¬¸ì— ì‚¬ìš©í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤.
         static RenderPass* createRenderPass(RenderTarget** targets, uint32_t subpassCount, int32_t key);
-        /// @brief Å¥ºê¸Ê ´ë»óÀÇ ·»´õÆĞ½º¸¦ »ı¼ºÇÕ´Ï´Ù.
-        /// @param width Å¸°ÙÀ¸·Î »ı¼ºµÇ´Â °¢ ÀÌ¹ÌÁöÀÇ °¡·Î ±æÀÌÀÔ´Ï´Ù.
-        /// @param height Å¸°ÙÀ¸·Î »ı¼ºµÇ´Â °¢ ÀÌ¹ÌÁöÀÇ ¼¼·Î ±æÀÌÀÔ´Ï´Ù.
-        /// @param key ÀÌ¸§ÀÔ´Ï´Ù.
-        /// @param useColor trueÀÎ °æ¿ì »ö ¹öÆÛ 1°³¸¦ ÀÌ¹ÌÁö¿¡ »ç¿ëÇÕ´Ï´Ù.
-        /// @param useDepth trueÀÎ °æ¿ì ±íÀÌ ¹öÆÛ¸¦ ÀÌ¹ÌÁö¿¡ »ç¿ëÇÕ´Ï´Ù. useDepth¿Í useColor°¡ ¸ğµÎ trueÀÎ °æ¿ì »ùÇÃ¸µÀº »ö ¹öÆÛ¿¡ ´ëÇØ¼­¸¸ °¡´ÉÇÕ´Ï´Ù.
+        /// @brief íë¸Œë§µ ëŒ€ìƒì˜ ë Œë”íŒ¨ìŠ¤ë¥¼ ìƒì„±í•©ë‹ˆë‹¤.
+        /// @param width íƒ€ê²Ÿìœ¼ë¡œ ìƒì„±ë˜ëŠ” ê° ì´ë¯¸ì§€ì˜ ê°€ë¡œ ê¸¸ì´ì…ë‹ˆë‹¤.
+        /// @param height íƒ€ê²Ÿìœ¼ë¡œ ìƒì„±ë˜ëŠ” ê° ì´ë¯¸ì§€ì˜ ì„¸ë¡œ ê¸¸ì´ì…ë‹ˆë‹¤.
+        /// @param key ì´ë¦„ì…ë‹ˆë‹¤.
+        /// @param useColor trueì¸ ê²½ìš° ìƒ‰ ë²„í¼ 1ê°œë¥¼ ì´ë¯¸ì§€ì— ì‚¬ìš©í•©ë‹ˆë‹¤.
+        /// @param useDepth trueì¸ ê²½ìš° ê¹Šì´ ë²„í¼ë¥¼ ì´ë¯¸ì§€ì— ì‚¬ìš©í•©ë‹ˆë‹¤. useDepthì™€ useColorê°€ ëª¨ë‘ trueì¸ ê²½ìš° ìƒ˜í”Œë§ì€ ìƒ‰ ë²„í¼ì— ëŒ€í•´ì„œë§Œ ê°€ëŠ¥í•©ë‹ˆë‹¤.
         static RenderPass2Cube* createRenderPass2Cube(uint32_t width, uint32_t height, int32_t key, bool useColor, bool useDepth);
-        /// @brief È­¸éÀ¸·Î ÀÌ¾îÁö´Â ·»´õÆĞ½º¸¦ »ı¼ºÇÕ´Ï´Ù. °¢ ÆĞ½ºÀÇ Å¸°ÙµéÀº ÇöÀç Ã¢ÀÇ ÇØ»óµµ¿Í µ¿ÀÏÇÏ°Ô ¸ÂÃçÁı´Ï´Ù.
-        /// @param targets »ı¼ºÇÒ ·»´õ Å¸°ÙµéÀÇ Å¸ÀÔ ¹è¿­ÀÔ´Ï´Ù. ¼­ºêÆĞ½ºÀÇ ¸¶Áö¸·Àº ÀÌ°ÍÀ» Á¦¿ÜÇÑ ½º¿ÒÃ¼ÀÎ ÀÌ¹ÌÁöÀÔ´Ï´Ù.
-        /// @param subpassCount ÃÖÁ¾ ¼­ºêÆĞ½ºÀÇ ¼öÀÔ´Ï´Ù. Áï targets ¹è¿­ ±æÀÌ + 1À» ÀÔ·ÂÇØ¾ß ÇÕ´Ï´Ù.
-        /// @param key ÀÌ¸§ÀÔ´Ï´Ù. (RenderPass °´Ã¼¿Í °°Àº ÁıÇÕÀ» °øÀ¯ÇÏÁö ¾ÊÀ½) ÀÌ¹Ì ÀÖ´Â ÀÌ¸§À» ÀÔ·ÂÇÏ¸é ³ª¸ÓÁö ÀÎ¼ö¿Í °ü°è ¾øÀÌ ±âÁ¸ÀÇ °ÍÀ» ¸®ÅÏÇÕ´Ï´Ù. INT32_MIN, Áï -2147483648Àº ¿¹¾àµÈ °ªÀÌ±â ¶§¹®¿¡ »ç¿ëÇÒ ¼ö ¾ø½À´Ï´Ù.
-        /// @param useDepth subpassCount°¡ 1ÀÌ°í ÀÌ °ªÀÌ trueÀÎ °æ¿ì ÃÖÁ¾ ÆĞ½º¿¡¼­ ±íÀÌ/½ºÅÙ½Ç ÀÌ¹ÌÁö¸¦ »ç¿ëÇÏ°Ô µË´Ï´Ù. subpassCount°¡ 1ÀÌ ¾Æ´Ï¸é ¹«½ÃµË´Ï´Ù.
-        /// @param useDepthAsInput targets¿Í ÀÏ´ëÀÏ ´ëÀÀÇÏ¸ç, ´ëÀÀÇÏ´Â ¼ººĞÀÇ ±íÀÌ ¼ººĞÀ» ´ÙÀ½ ¼­ºêÆĞ½ºÀÇ ÀÔ·ÂÀ¸·Î »ç¿ëÇÏ·Á¸é true¸¦ Áİ´Ï´Ù. nullptr¸¦ ÁÖ´Â °æ¿ì ÀÏ°ı false·Î Ãë±ŞµË´Ï´Ù. Áï nullptr°¡ ¾Æ´Ï¶ó¸é ¹İµå½Ã subpassCount - 1 ±æÀÌÀÇ ¹è¿­ÀÌ ÁÖ¾îÁ®¾ß ÇÕ´Ï´Ù.
+        /// @brief í™”ë©´ìœ¼ë¡œ ì´ì–´ì§€ëŠ” ë Œë”íŒ¨ìŠ¤ë¥¼ ìƒì„±í•©ë‹ˆë‹¤. ê° íŒ¨ìŠ¤ì˜ íƒ€ê²Ÿë“¤ì€ í˜„ì¬ ì°½ì˜ í•´ìƒë„ì™€ ë™ì¼í•˜ê²Œ ë§ì¶°ì§‘ë‹ˆë‹¤.
+        /// @param targets ìƒì„±í•  ë Œë” íƒ€ê²Ÿë“¤ì˜ íƒ€ì… ë°°ì—´ì…ë‹ˆë‹¤. ì„œë¸ŒíŒ¨ìŠ¤ì˜ ë§ˆì§€ë§‰ì€ ì´ê²ƒì„ ì œì™¸í•œ ìŠ¤ì™‘ì²´ì¸ ì´ë¯¸ì§€ì…ë‹ˆë‹¤.
+        /// @param subpassCount ìµœì¢… ì„œë¸ŒíŒ¨ìŠ¤ì˜ ìˆ˜ì…ë‹ˆë‹¤. ì¦‰ targets ë°°ì—´ ê¸¸ì´ + 1ì„ ì…ë ¥í•´ì•¼ í•©ë‹ˆë‹¤.
+        /// @param key ì´ë¦„ì…ë‹ˆë‹¤. (RenderPass ê°ì²´ì™€ ê°™ì€ ì§‘í•©ì„ ê³µìœ í•˜ì§€ ì•ŠìŒ) ì´ë¯¸ ìˆëŠ” ì´ë¦„ì„ ì…ë ¥í•˜ë©´ ë‚˜ë¨¸ì§€ ì¸ìˆ˜ì™€ ê´€ê³„ ì—†ì´ ê¸°ì¡´ì˜ ê²ƒì„ ë¦¬í„´í•©ë‹ˆë‹¤. INT32_MIN, ì¦‰ -2147483648ì€ ì˜ˆì•½ëœ ê°’ì´ê¸° ë•Œë¬¸ì— ì‚¬ìš©í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤.
+        /// @param useDepth subpassCountê°€ 1ì´ê³  ì´ ê°’ì´ trueì¸ ê²½ìš° ìµœì¢… íŒ¨ìŠ¤ì—ì„œ ê¹Šì´/ìŠ¤í…ì‹¤ ì´ë¯¸ì§€ë¥¼ ì‚¬ìš©í•˜ê²Œ ë©ë‹ˆë‹¤. subpassCountê°€ 1ì´ ì•„ë‹ˆë©´ ë¬´ì‹œë©ë‹ˆë‹¤.
+        /// @param useDepthAsInput targetsì™€ ì¼ëŒ€ì¼ ëŒ€ì‘í•˜ë©°, ëŒ€ì‘í•˜ëŠ” ì„±ë¶„ì˜ ê¹Šì´ ì„±ë¶„ì„ ë‹¤ìŒ ì„œë¸ŒíŒ¨ìŠ¤ì˜ ì…ë ¥ìœ¼ë¡œ ì‚¬ìš©í•˜ë ¤ë©´ trueë¥¼ ì¤ë‹ˆë‹¤. nullptrë¥¼ ì£¼ëŠ” ê²½ìš° ì¼ê´„ falseë¡œ ì·¨ê¸‰ë©ë‹ˆë‹¤. ì¦‰ nullptrê°€ ì•„ë‹ˆë¼ë©´ ë°˜ë“œì‹œ subpassCount - 1 ê¸¸ì´ì˜ ë°°ì—´ì´ ì£¼ì–´ì ¸ì•¼ í•©ë‹ˆë‹¤.
         static RenderPass2Screen* createRenderPass2Screen(RenderTargetType* targets, uint32_t subpassCount, int32_t key, bool useDepth = true, bool* useDepthAsInput = nullptr);
-        /// @brief ¾Æ¹« µ¿ÀÛµµ ÇÏÁö ¾Ê½À´Ï´Ù.
+        /// @brief ì•„ë¬´ ë™ì‘ë„ í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
         static unsigned createPipelineLayout(...);
-        /// @brief ÆÄÀÌÇÁ¶óÀÎÀ» »ı¼ºÇÕ´Ï´Ù. »ı¼ºµÈ ÆÄÀÌÇÁ¶óÀÎÀº ÀÌÈÄ¿¡ ÀÌ¸§À¸·Î »ç¿ëÇÒ ¼öµµ ÀÖ°í, ÁÖ¾îÁø ·»´õÆĞ½ºÀÇ ÇØ´ç ¼­ºêÆĞ½º À§Ä¡·Î µé¾î°©´Ï´Ù.
-        /// @param vs Á¤Á¡ ¼ÎÀÌ´õ ¸ğµâÀÔ´Ï´Ù.
-        /// @param fs ÇÈ¼¿ ¼ÎÀÌ´õ ¸ğµâÀÔ´Ï´Ù.
-        /// @param name ÀÌ¸§ÀÔ´Ï´Ù. ÀÌ¹Ì ÀÖ´Â ÀÌ¸§À» ÀÔ·ÂÇÏ¸é ³ª¸ÓÁö ÀÎ¼ö¿Í °ü°è ¾øÀÌ ±âÁ¸ÀÇ °ÍÀ» ¸®ÅÏÇÕ´Ï´Ù.
-        /// @param tc Å×¼¿·¹ÀÌ¼Ç ÄÁÆ®·Ñ(HULL) ¼ÎÀÌ´õ ¸ğµâÀÔ´Ï´Ù. »ç¿ëÇÏÁö ¾ÊÀ¸·Á¸é 0À» ÁÖ¸é µË´Ï´Ù.
-        /// @param te Å×¼¿·¹ÀÌ¼Ç °è»ê(DOMAIN) ¼ÎÀÌ´õ ¸ğµâÀÔ´Ï´Ù. »ç¿ëÇÏÁö ¾ÊÀ¸·Á¸é 0À» ÁÖ¸é µË´Ï´Ù.
-        /// @param gs Áö¿À¸ŞÆ®¸® ¼ÎÀÌ´õ ¸ğµâÀÔ´Ï´Ù. »ç¿ëÇÏÁö ¾ÊÀ¸·Á¸é 0À» ÁÖ¸é µË´Ï´Ù.
-        static Pipeline* createPipeline(ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, D3D11_COMPARISON_FUNC depth, UINT stencilRef = 0, D3D11_DEPTH_STENCILOP_DESC* front = nullptr, D3D11_DEPTH_STENCILOP_DESC* back = nullptr, ID3D11DeviceChild* tc = nullptr, ID3D11DeviceChild* te = nullptr, ID3D11DeviceChild* gs = nullptr);
-        /// @brief Á¤Á¡ ¹öÆÛ(¸ğµ¨) °´Ã¼¸¦ »ı¼ºÇÕ´Ï´Ù.
-        /// @param vdata Á¤Á¡ µ¥ÀÌÅÍ
-        /// @param vsize Á¤Á¡ ÇÏ³ªÀÇ Å©±â(¹ÙÀÌÆ®)
-        /// @param vcount Á¤Á¡ÀÇ ¼ö
-        /// @param idata ÀÎµ¦½º µ¥ÀÌÅÍÀÔ´Ï´Ù. ÀÌ °ªÀº vcount°¡ 65536 ÀÌ»óÀÏ °æ¿ì 32ºñÆ® Á¤¼ö·Î, ±× ¿Ü¿¡´Â 16ºñÆ® Á¤¼ö·Î Ãë±ŞµË´Ï´Ù.
-        /// @param isize ÀÎµ¦½º ÇÏ³ªÀÇ Å©±âÀÔ´Ï´Ù. ÀÌ °ªÀº ¹İµå½Ã 2 ¶Ç´Â 4¿©¾ß ÇÕ´Ï´Ù.
-        /// @param icount ÀÎµ¦½ºÀÇ ¼öÀÔ´Ï´Ù. ÀÌ °ªÀÌ 0ÀÌ¸é ÀÎµ¦½º ¹öÆÛ¸¦ »ç¿ëÇÏÁö ¾Ê½À´Ï´Ù.
-        /// @param key ÇÁ·Î±×·¥ ³»¿¡¼­ »ç¿ëÇÒ ÀÌ¸§ÀÔ´Ï´Ù.
-        /// @param stage ¸Ş¸ğ¸® ¸ÊÀ» ÅëÇØ Áö¼ÓÀûÀ¸·Î µ¥ÀÌÅÍ¸¦ ¹Ù²Ù¾î º¸³¾Áö ¼±ÅÃÇÕ´Ï´Ù. stage°¡ false¶ó¼­ ¸Ş¸ğ¸® ¸ÊÀ» »ç¿ëÇÏ°Ô µÇ´Â °æ¿ì vdata, idata¸¦ nullptr·Î ÁÖ¾îµµ µË´Ï´Ù.
+        /// @brief íŒŒì´í”„ë¼ì¸ì„ ìƒì„±í•©ë‹ˆë‹¤. ìƒì„±ëœ íŒŒì´í”„ë¼ì¸ì€ ì´í›„ì— ì´ë¦„ìœ¼ë¡œ ì‚¬ìš©í•  ìˆ˜ë„ ìˆê³ , ì£¼ì–´ì§„ ë Œë”íŒ¨ìŠ¤ì˜ í•´ë‹¹ ì„œë¸ŒíŒ¨ìŠ¤ ìœ„ì¹˜ë¡œ ë“¤ì–´ê°‘ë‹ˆë‹¤.
+        /// @param vs ì •ì  ì…°ì´ë” ëª¨ë“ˆì…ë‹ˆë‹¤.
+        /// @param fs í”½ì…€ ì…°ì´ë” ëª¨ë“ˆì…ë‹ˆë‹¤.
+        /// @param name ì´ë¦„ì…ë‹ˆë‹¤. ì´ë¯¸ ìˆëŠ” ì´ë¦„ì„ ì…ë ¥í•˜ë©´ ë‚˜ë¨¸ì§€ ì¸ìˆ˜ì™€ ê´€ê³„ ì—†ì´ ê¸°ì¡´ì˜ ê²ƒì„ ë¦¬í„´í•©ë‹ˆë‹¤.
+        /// @param depth ê¹Šì´ í…ŒìŠ¤íŠ¸ë¥¼ ì‚¬ìš©í• ì§€ ê²°ì •í•©ë‹ˆë‹¤.
+        /// @param clearColor ìƒ‰ë²„í¼ í´ë¦¬ì–´ ê°’ì…ë‹ˆë‹¤. ìŒìˆ˜ë¥¼ ì£¼ë©´ í´ë¦¬ì–´í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
+        /// @param tc í…Œì…€ë ˆì´ì…˜ ì»¨íŠ¸ë¡¤(HULL) ì…°ì´ë” ëª¨ë“ˆì…ë‹ˆë‹¤. ì‚¬ìš©í•˜ì§€ ì•Šìœ¼ë ¤ë©´ 0ì„ ì£¼ë©´ ë©ë‹ˆë‹¤.
+        /// @param te í…Œì…€ë ˆì´ì…˜ ê³„ì‚°(DOMAIN) ì…°ì´ë” ëª¨ë“ˆì…ë‹ˆë‹¤. ì‚¬ìš©í•˜ì§€ ì•Šìœ¼ë ¤ë©´ 0ì„ ì£¼ë©´ ë©ë‹ˆë‹¤.
+        /// @param gs ì§€ì˜¤ë©”íŠ¸ë¦¬ ì…°ì´ë” ëª¨ë“ˆì…ë‹ˆë‹¤. ì‚¬ìš©í•˜ì§€ ì•Šìœ¼ë ¤ë©´ 0ì„ ì£¼ë©´ ë©ë‹ˆë‹¤.
+        static Pipeline* createPipeline(ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, bool depth, vec4 clearColor = {}, UINT stencilRef = 0, D3D11_DEPTH_STENCILOP_DESC* front = nullptr, D3D11_DEPTH_STENCILOP_DESC* back = nullptr, ID3D11DeviceChild* tc = nullptr, ID3D11DeviceChild* te = nullptr, ID3D11DeviceChild* gs = nullptr);
+        /// @brief ì •ì  ë²„í¼(ëª¨ë¸) ê°ì²´ë¥¼ ìƒì„±í•©ë‹ˆë‹¤.
+        /// @param vdata ì •ì  ë°ì´í„°
+        /// @param vsize ì •ì  í•˜ë‚˜ì˜ í¬ê¸°(ë°”ì´íŠ¸)
+        /// @param vcount ì •ì ì˜ ìˆ˜
+        /// @param idata ì¸ë±ìŠ¤ ë°ì´í„°ì…ë‹ˆë‹¤. ì´ ê°’ì€ vcountê°€ 65536 ì´ìƒì¼ ê²½ìš° 32ë¹„íŠ¸ ì •ìˆ˜ë¡œ, ê·¸ ì™¸ì—ëŠ” 16ë¹„íŠ¸ ì •ìˆ˜ë¡œ ì·¨ê¸‰ë©ë‹ˆë‹¤.
+        /// @param isize ì¸ë±ìŠ¤ í•˜ë‚˜ì˜ í¬ê¸°ì…ë‹ˆë‹¤. ì´ ê°’ì€ ë°˜ë“œì‹œ 2 ë˜ëŠ” 4ì—¬ì•¼ í•©ë‹ˆë‹¤.
+        /// @param icount ì¸ë±ìŠ¤ì˜ ìˆ˜ì…ë‹ˆë‹¤. ì´ ê°’ì´ 0ì´ë©´ ì¸ë±ìŠ¤ ë²„í¼ë¥¼ ì‚¬ìš©í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
+        /// @param key í”„ë¡œê·¸ë¨ ë‚´ì—ì„œ ì‚¬ìš©í•  ì´ë¦„ì…ë‹ˆë‹¤.
+        /// @param stage ë©”ëª¨ë¦¬ ë§µì„ í†µí•´ ì§€ì†ì ìœ¼ë¡œ ë°ì´í„°ë¥¼ ë°”ê¾¸ì–´ ë³´ë‚¼ì§€ ì„ íƒí•©ë‹ˆë‹¤. stageê°€ falseë¼ì„œ ë©”ëª¨ë¦¬ ë§µì„ ì‚¬ìš©í•˜ê²Œ ë˜ëŠ” ê²½ìš° vdata, idataë¥¼ nullptrë¡œ ì£¼ì–´ë„ ë©ë‹ˆë‹¤.
         static pMesh createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, int32_t key, bool stage = true);
-        /// @brief Á¤Á¡ÀÇ ¼ö Á¤º¸¸¸ ÀúÀåÇÏ´Â ¸Ş½Ã °´Ã¼¸¦ »ı¼ºÇÕ´Ï´Ù. ÀÌ°ÍÀº ÆÄÀÌÇÁ¶óÀÎ ÀÚÃ¼¿¡¼­ Á¤Á¡ µ¥ÀÌÅÍ°¡ Á¤ÀÇµÇ¾î ÀÖ´Â °æ¿ì¸¦ À§ÇÑ °ÍÀÔ´Ï´Ù.
-        /// @param vcount Á¤Á¡ÀÇ ¼ö
-        /// @param name ÇÁ·Î±×·¥ ³»¿¡¼­ »ç¿ëÇÒ ÀÌ¸§ÀÔ´Ï´Ù.
+        /// @brief ì •ì ì˜ ìˆ˜ ì •ë³´ë§Œ ì €ì¥í•˜ëŠ” ë©”ì‹œ ê°ì²´ë¥¼ ìƒì„±í•©ë‹ˆë‹¤. ì´ê²ƒì€ íŒŒì´í”„ë¼ì¸ ìì²´ì—ì„œ ì •ì  ë°ì´í„°ê°€ ì •ì˜ë˜ì–´ ìˆëŠ” ê²½ìš°ë¥¼ ìœ„í•œ ê²ƒì…ë‹ˆë‹¤.
+        /// @param vcount ì •ì ì˜ ìˆ˜
+        /// @param name í”„ë¡œê·¸ë¨ ë‚´ì—ì„œ ì‚¬ìš©í•  ì´ë¦„ì…ë‹ˆë‹¤.
         static pMesh createNullMesh(size_t vcount, int32_t key);
-        /// @brief ¸¸µé¾î µĞ ·»´õÆĞ½º¸¦ ¸®ÅÏÇÕ´Ï´Ù. ¾øÀ¸¸é nullptr¸¦ ¸®ÅÏÇÕ´Ï´Ù.
+        /// @brief ë§Œë“¤ì–´ ë‘” ë Œë”íŒ¨ìŠ¤ë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤. ì—†ìœ¼ë©´ nullptrë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤.
         static RenderPass2Screen* getRenderPass2Screen(int32_t key);
-        /// @brief ¸¸µé¾î µĞ ·»´õÆĞ½º¸¦ ¸®ÅÏÇÕ´Ï´Ù. ¾øÀ¸¸é nullptr¸¦ ¸®ÅÏÇÕ´Ï´Ù.
+        /// @brief ë§Œë“¤ì–´ ë‘” ë Œë”íŒ¨ìŠ¤ë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤. ì—†ìœ¼ë©´ nullptrë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤.
         static RenderPass* getRenderPass(int32_t key);
-        /// @brief ¸¸µé¾î µĞ ·»´õÆĞ½º¸¦ ¸®ÅÏÇÕ´Ï´Ù. ¾øÀ¸¸é nullptr¸¦ ¸®ÅÏÇÕ´Ï´Ù.
+        /// @brief ë§Œë“¤ì–´ ë‘” ë Œë”íŒ¨ìŠ¤ë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤. ì—†ìœ¼ë©´ nullptrë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤.
         static RenderPass2Cube* getRenderPass2Cube(int32_t key);
-        /// @brief ¸¸µé¾î µĞ ÆÄÀÌÇÁ¶óÀÎÀ» ¸®ÅÏÇÕ´Ï´Ù. ¾øÀ¸¸é nullptr¸¦ ¸®ÅÏÇÕ´Ï´Ù.
+        /// @brief ë§Œë“¤ì–´ ë‘” íŒŒì´í”„ë¼ì¸ì„ ë¦¬í„´í•©ë‹ˆë‹¤. ì—†ìœ¼ë©´ nullptrë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤.
         static Pipeline* getPipeline(int32_t key);
-        /// @brief ¾Æ¹« µ¿ÀÛµµ ÇÏÁö ¾Ê½À´Ï´Ù.
+        /// @brief ì•„ë¬´ ë™ì‘ë„ í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
         static unsigned getPipelineLayout(int32_t key);
-        /// @brief ¸¸µé¾î µĞ ·»´õ Å¸°ÙÀ» ¸®ÅÏÇÕ´Ï´Ù. ¾øÀ¸¸é nullptr¸¦ ¸®ÅÏÇÕ´Ï´Ù.
+        /// @brief ë§Œë“¤ì–´ ë‘” ë Œë” íƒ€ê²Ÿì„ ë¦¬í„´í•©ë‹ˆë‹¤. ì—†ìœ¼ë©´ nullptrë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤.
         static RenderTarget* getRenderTarget(int32_t key);
-        /// @brief ¸¸µé¾î µĞ °øÀ¯ ¹öÆÛ¸¦ ¸®ÅÏÇÕ´Ï´Ù. ¾øÀ¸¸é nullptr¸¦ ¸®ÅÏÇÕ´Ï´Ù.
+        /// @brief ë§Œë“¤ì–´ ë‘” ê³µìœ  ë²„í¼ë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤. ì—†ìœ¼ë©´ nullptrë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤.
         static UniformBuffer* getUniformBuffer(int32_t key);
-        /// @brief ¸¸µé¾î µĞ ¼ÎÀÌ´õ ¸ğµâÀ» ¸®ÅÏÇÕ´Ï´Ù. ¾øÀ¸¸é 0À» ¸®ÅÏÇÕ´Ï´Ù.
+        /// @brief ë§Œë“¤ì–´ ë‘” ì…°ì´ë” ëª¨ë“ˆì„ ë¦¬í„´í•©ë‹ˆë‹¤. ì—†ìœ¼ë©´ 0ì„ ë¦¬í„´í•©ë‹ˆë‹¤.
         static ID3D11DeviceChild* getShader(int32_t key);
-        /// @brief ¿Ã·Á µĞ ÅØ½ºÃ³ °´Ã¼¸¦ ¸®ÅÏÇÕ´Ï´Ù. ¾øÀ¸¸é ºó Æ÷ÀÎÅÍ¸¦ ¸®ÅÏÇÕ´Ï´Ù.
+        /// @brief ì˜¬ë ¤ ë‘” í…ìŠ¤ì²˜ ê°ì²´ë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤. ì—†ìœ¼ë©´ ë¹ˆ í¬ì¸í„°ë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤.
         static pTexture getTexture(int32_t key, bool lock = false);
-        /// @brief ¸¸µé¾î µĞ ¸Ş½Ã °´Ã¼¸¦ ¸®ÅÏÇÕ´Ï´Ù. ¾øÀ¸¸é ºó Æ÷ÀÎÅÍ¸¦ ¸®ÅÏÇÕ´Ï´Ù.
+        /// @brief ë§Œë“¤ì–´ ë‘” ë©”ì‹œ ê°ì²´ë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤. ì—†ìœ¼ë©´ ë¹ˆ í¬ì¸í„°ë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤.
         static pMesh getMesh(int32_t key);
-        /// @brief Ã¢ Ç¥¸éÀÌ SRGB °ø°£À» »ç¿ëÇÏ´ÂÁö ¸®ÅÏÇÕ´Ï´Ù. 
+        /// @brief ì°½ í‘œë©´ì´ SRGB ê³µê°„ì„ ì‚¬ìš©í•˜ëŠ”ì§€ ë¦¬í„´í•©ë‹ˆë‹¤. 
         inline static bool isSurfaceSRGB() { return false; }
-        /// @brief ¾Æ¹« °Íµµ ÇÏÁö ¾Ê½À´Ï´Ù.
+        /// @brief ì•„ë¬´ ê²ƒë„ í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
         inline static int getTextureLayout(uint32_t binding) { return 0; }
-        /// @brief ¾Æ¹« °Íµµ ÇÏÁö ¾Ê½À´Ï´Ù.
+        /// @brief ì•„ë¬´ ê²ƒë„ í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
         inline static int getInputAttachmentLayout(uint32_t binding) { return 0; }
     private:
-        /// @brief ±âº» OpenGL ÄÁÅØ½ºÆ®¸¦ »ı¼ºÇÕ´Ï´Ù.
+        /// @brief ê¸°ë³¸ OpenGL ì»¨í…ìŠ¤íŠ¸ë¥¼ ìƒì„±í•©ë‹ˆë‹¤.
         D3D11Machine(Window*);
-        /// @brief È­¸éÀ¸·Î ±×¸®±â À§ÇØ ÇÊ¿äÇÑ Å©±â¸¦ Àü´ŞÇÕ´Ï´Ù.
+        /// @brief í™”ë©´ìœ¼ë¡œ ê·¸ë¦¬ê¸° ìœ„í•´ í•„ìš”í•œ í¬ê¸°ë¥¼ ì „ë‹¬í•©ë‹ˆë‹¤.
         void createSwapchain(uint32_t width, uint32_t height, Window* window = nullptr);
-        /// @brief ½º¿ÒÃ¼ÀÎ ´ë»óÀÇ À¯È¿ÇÑ ·»´õ Å¸°ÙÀ» ¾ò½À´Ï´Ù.
+        /// @brief ìŠ¤ì™‘ì²´ì¸ ëŒ€ìƒì˜ ìœ íš¨í•œ ë Œë” íƒ€ê²Ÿì„ ì–»ìŠµë‹ˆë‹¤.
         ID3D11RenderTargetView* getSwapchainTarget();
-        /// @brief ktxTexture2 °´Ã¼·Î ÅØ½ºÃ³¸¦ »ı¼ºÇÕ´Ï´Ù.
+        /// @brief ktxTexture2 ê°ì²´ë¡œ í…ìŠ¤ì²˜ë¥¼ ìƒì„±í•©ë‹ˆë‹¤.
         pTexture createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler = true);
-        /// @brief vulkan °´Ã¼¸¦ ¾ø¾Û´Ï´Ù.
+        /// @brief vulkan ê°ì²´ë¥¼ ì—†ì•±ë‹ˆë‹¤.
         void free();
         ~D3D11Machine();
-        /// @brief ÀÌ Å¬·¡½º °´Ã¼´Â Game ¹Û¿¡¼­´Â »ı¼º, ¼Ò¸ê È£ÃâÀÌ ºÒ°¡´ÉÇÕ´Ï´Ù.
+        /// @brief ì´ í´ë˜ìŠ¤ ê°ì²´ëŠ” Game ë°–ì—ì„œëŠ” ìƒì„±, ì†Œë©¸ í˜¸ì¶œì´ ë¶ˆê°€ëŠ¥í•©ë‹ˆë‹¤.
         inline void operator delete(void* p) { ::operator delete(p); }
     private:
         static D3D11Machine* singleton;
         static uint64_t currentRenderPass;
         ID3D11Device* device{};
         ID3D11DeviceContext* context{};
-        IDXGISwapChain* swapchain{};
+        struct {
+            IDXGISwapChain* handle{};
+            int width;
+            int height;
+        }swapchain;
         ID3D11DepthStencilView* screenDSView{};
 
         bool canUseBC7 = false;
@@ -300,6 +306,10 @@ namespace onart {
         std::map<int32_t, pStreamTexture> streamTextures;
 
         std::map<ID3D11Texture2D*, ID3D11RenderTargetView*> screenTargets;
+
+        ID3D11BlendState* basicBlend;
+        ID3D11SamplerState* linearBorderSampler;
+        ID3D11SamplerState* nearestBorderSampler;
 
         struct ImageSet {
             ID3D11Resource* tex{};
@@ -322,16 +332,15 @@ namespace onart {
         friend class D3D11Machine;
         friend class RenderPass;
     public:
-        /// @brief »ç¿ëÇÏÁö ¾Ê´Â ÅØ½ºÃ³ µ¥ÀÌÅÍ¸¦ Á¤¸®ÇÕ´Ï´Ù.
-        /// @param removeUsing »ç¿ëÇÏ´Â ÅØ½ºÃ³ µ¥ÀÌÅÍµµ »ç¿ëÀÌ ³¡³ª´Â Áï½Ã ÇØÁ¦µÇ°Ô ÇÕ´Ï´Ù. (ÀÌ È£Ãâ ÀÌÈÄ·Î´Â getTexture·Î Ã£À» ¼ö ¾ø½À´Ï´Ù.)
+        /// @brief ì‚¬ìš©í•˜ì§€ ì•ŠëŠ” í…ìŠ¤ì²˜ ë°ì´í„°ë¥¼ ì •ë¦¬í•©ë‹ˆë‹¤.
+        /// @param removeUsing ì‚¬ìš©í•˜ëŠ” í…ìŠ¤ì²˜ ë°ì´í„°ë„ ì‚¬ìš©ì´ ëë‚˜ëŠ” ì¦‰ì‹œ í•´ì œë˜ê²Œ í•©ë‹ˆë‹¤. (ì´ í˜¸ì¶œ ì´í›„ë¡œëŠ” getTextureë¡œ ì°¾ì„ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.)
         static void collect(bool removeUsing = false);
-        /// @brief ÁÖ¾îÁø ÀÌ¸§ÀÇ ÅØ½ºÃ³ µ¥ÀÌÅÍ¸¦ ³»¸³´Ï´Ù. »ç¿ëÇÏ°í ÀÖ´Â ÅØ½ºÃ³ µ¥ÀÌÅÍ´Â »ç¿ëÀÌ ³¡³ª´Â Áï½Ã ÇØÁ¦µÇ°Ô ÇÕ´Ï´Ù. (ÀÌ È£Ãâ ÀÌÈÄ·Î´Â getTexture·Î Ã£À» ¼ö ¾ø½À´Ï´Ù.)
+        /// @brief ì£¼ì–´ì§„ ì´ë¦„ì˜ í…ìŠ¤ì²˜ ë°ì´í„°ë¥¼ ë‚´ë¦½ë‹ˆë‹¤. ì‚¬ìš©í•˜ê³  ìˆëŠ” í…ìŠ¤ì²˜ ë°ì´í„°ëŠ” ì‚¬ìš©ì´ ëë‚˜ëŠ” ì¦‰ì‹œ í•´ì œë˜ê²Œ í•©ë‹ˆë‹¤. (ì´ í˜¸ì¶œ ì´í›„ë¡œëŠ” getTextureë¡œ ì°¾ì„ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.)
         static void drop(int32_t name);
-        /// @brief ¿øº» ÅØ½ºÃ³ÀÇ Å©±âÀÔ´Ï´Ù.
+        /// @brief ì›ë³¸ í…ìŠ¤ì²˜ì˜ í¬ê¸°ì…ë‹ˆë‹¤.
         const uint16_t width, height;
     protected:
         Texture(ID3D11Resource* texture, ID3D11ShaderResourceView* dset, uint16_t width, uint16_t height, bool isCubemap, bool linearSampled);
-        VkDescriptorSetLayout getLayout();
         ~Texture();
     private:
         ID3D11Resource* texture;
@@ -351,8 +360,9 @@ namespace onart {
         ImageSet* color1{}, *color2{}, *color3{}, *ds{};
         unsigned width, height;
         const bool mapped;
+        const bool linearSampled;
         const RenderTargetType type;
-        RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet**, ID3D11RenderTargetView**, bool, ID3D11DepthStencilView*);
+        RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet**, ID3D11RenderTargetView**, bool, ID3D11DepthStencilView*, bool);
         ~RenderTarget();
     };
 
@@ -360,12 +370,12 @@ namespace onart {
         friend class D3D11Machine;
         friend class RenderPass;
     public:
-        /// @brief »ç¿ëÇÏÁö ¾Ê´Â ÅØ½ºÃ³ µ¥ÀÌÅÍ¸¦ Á¤¸®ÇÕ´Ï´Ù.
-        /// @param removeUsing »ç¿ëÇÏ´Â ÅØ½ºÃ³ µ¥ÀÌÅÍµµ »ç¿ëÀÌ ³¡³ª´Â Áï½Ã ÇØÁ¦µÇ°Ô ÇÕ´Ï´Ù. (ÀÌ È£Ãâ ÀÌÈÄ·Î´Â getTexture·Î Ã£À» ¼ö ¾ø½À´Ï´Ù.)
+        /// @brief ì‚¬ìš©í•˜ì§€ ì•ŠëŠ” í…ìŠ¤ì²˜ ë°ì´í„°ë¥¼ ì •ë¦¬í•©ë‹ˆë‹¤.
+        /// @param removeUsing ì‚¬ìš©í•˜ëŠ” í…ìŠ¤ì²˜ ë°ì´í„°ë„ ì‚¬ìš©ì´ ëë‚˜ëŠ” ì¦‰ì‹œ í•´ì œë˜ê²Œ í•©ë‹ˆë‹¤. (ì´ í˜¸ì¶œ ì´í›„ë¡œëŠ” getTextureë¡œ ì°¾ì„ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.)
         static void collect(bool removeUsing = false);
-        /// @brief ÁÖ¾îÁø ÀÌ¸§ÀÇ ÅØ½ºÃ³ µ¥ÀÌÅÍ¸¦ ³»¸³´Ï´Ù. »ç¿ëÇÏ°í ÀÖ´Â ÅØ½ºÃ³ µ¥ÀÌÅÍ´Â »ç¿ëÀÌ ³¡³ª´Â Áï½Ã ÇØÁ¦µÇ°Ô ÇÕ´Ï´Ù. (ÀÌ È£Ãâ ÀÌÈÄ·Î´Â getTexture·Î Ã£À» ¼ö ¾ø½À´Ï´Ù.)
+        /// @brief ì£¼ì–´ì§„ ì´ë¦„ì˜ í…ìŠ¤ì²˜ ë°ì´í„°ë¥¼ ë‚´ë¦½ë‹ˆë‹¤. ì‚¬ìš©í•˜ê³  ìˆëŠ” í…ìŠ¤ì²˜ ë°ì´í„°ëŠ” ì‚¬ìš©ì´ ëë‚˜ëŠ” ì¦‰ì‹œ í•´ì œë˜ê²Œ í•©ë‹ˆë‹¤. (ì´ í˜¸ì¶œ ì´í›„ë¡œëŠ” getTextureë¡œ ì°¾ì„ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.)
         static void drop(int32_t name);
-        /// @brief ÀÌ¹ÌÁö µ¥ÀÌÅÍ¸¦ ´Ù½Ã ¼³Á¤ÇÕ´Ï´Ù.
+        /// @brief ì´ë¯¸ì§€ ë°ì´í„°ë¥¼ ë‹¤ì‹œ ì„¤ì •í•©ë‹ˆë‹¤.
         void update(void* img);
         const uint16_t width, height;
     protected:
@@ -380,89 +390,74 @@ namespace onart {
         const bool copyFull;
     };
 
-    class D3D11Machine::RenderTarget {
-        friend class D3D11Machine;
-        friend class RenderPass;
-    public:
-        RenderTarget& operator=(const RenderTarget&) = delete;
-    private:
-        ID3D11RenderTargetView* dset1{}, * dset2{}, * dset3{}, * dsetDS{};
-        ImageSet* color1{}, * color2{}, * color3{}, * ds{};
-        unsigned width, height;
-        const bool mapped;
-        const RenderTargetType type;
-        RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet**, ID3D11RenderTargetView**, bool);
-        ~RenderTarget();
-    };
-
     class D3D11Machine::RenderPass {
         friend class D3D11Machine;
     public:
         RenderPass& operator=(const RenderPass&) = delete;
-        /// @brief ºäÆ÷Æ®¸¦ ¼³Á¤ÇÕ´Ï´Ù. ±âº» »óÅÂ´Â ÇÁ·¹ÀÓ¹öÆÛ »ı¼º ´ç½ÃÀÇ Å©±âµéÀÔ´Ï´Ù. (Áï @ref reconstructFB ¸¦ »ç¿ë ½Ã ¿©±â¼­ ¼öµ¿À¸·Î Á¤ÇÑ °ªÀº ¸®¼ÂµË´Ï´Ù.)
-        /// ÀÌ°ÍÀº ÆĞ½º ³»ÀÇ ¸ğµç ÆÄÀÌÇÁ¶óÀÎÀÌ °øÀ¯ÇÕ´Ï´Ù.
-        /// @param width ºäÆ÷Æ® °¡·Î ±æÀÌ(px)
-        /// @param height ºäÆ÷Æ® ¼¼·Î ±æÀÌ(px)
-        /// @param x ºäÆ÷Æ® ÁÂÃø ÁÂÇ¥(px, ¸Ç ¿ŞÂÊÀÌ 0)
-        /// @param y ºäÆ÷Æ® »ó´Ü ÁÂÇ¥(px, ¸Ç À§ÂÊÀÌ 0)
-        /// @param applyNow ÀÌ °ªÀÌ ÂüÀÌ¸é º¯°æµÈ °ªÀÌ ÆÄÀÌÇÁ¶óÀÎ¿¡ Áï½Ã ¹İ¿µµË´Ï´Ù.
+        /// @brief ë·°í¬íŠ¸ë¥¼ ì„¤ì •í•©ë‹ˆë‹¤. ê¸°ë³¸ ìƒíƒœëŠ” í”„ë ˆì„ë²„í¼ ìƒì„± ë‹¹ì‹œì˜ í¬ê¸°ë“¤ì…ë‹ˆë‹¤. (ì¦‰ @ref reconstructFB ë¥¼ ì‚¬ìš© ì‹œ ì—¬ê¸°ì„œ ìˆ˜ë™ìœ¼ë¡œ ì •í•œ ê°’ì€ ë¦¬ì…‹ë©ë‹ˆë‹¤.)
+        /// ì´ê²ƒì€ íŒ¨ìŠ¤ ë‚´ì˜ ëª¨ë“  íŒŒì´í”„ë¼ì¸ì´ ê³µìœ í•©ë‹ˆë‹¤.
+        /// @param width ë·°í¬íŠ¸ ê°€ë¡œ ê¸¸ì´(px)
+        /// @param height ë·°í¬íŠ¸ ì„¸ë¡œ ê¸¸ì´(px)
+        /// @param x ë·°í¬íŠ¸ ì¢Œì¸¡ ì¢Œí‘œ(px, ë§¨ ì™¼ìª½ì´ 0)
+        /// @param y ë·°í¬íŠ¸ ìƒë‹¨ ì¢Œí‘œ(px, ë§¨ ìœ„ìª½ì´ 0)
+        /// @param applyNow ì´ ê°’ì´ ì°¸ì´ë©´ ë³€ê²½ëœ ê°’ì´ íŒŒì´í”„ë¼ì¸ì— ì¦‰ì‹œ ë°˜ì˜ë©ë‹ˆë‹¤.
         void setViewport(float width, float height, float x, float y, bool applyNow = false);
-        /// @brief ½ÃÀú¸¦ ¼³Á¤ÇÕ´Ï´Ù. ±âº» »óÅÂ´Â ÀÚ¸§ ¾øÀ½ÀÔ´Ï´Ù.
-        /// ÀÌ°ÍÀº ÆĞ½º ³»ÀÇ ¸ğµç ÆÄÀÌÇÁ¶óÀÎÀÌ °øÀ¯ÇÕ´Ï´Ù.
-        /// @param width »ì¸± Á÷»ç°¢ÇüÀÇ °¡·Î ±æÀÌ(px)
-        /// @param height »ì¸± Á÷»ç°¢ÇüÀÇ ¼¼·Î ±æÀÌ(px)
-        /// @param x »ì¸± Á÷»ç°¢ÇüÀÇ ÁÂÃø ÁÂÇ¥(px, ¸Ç ¿ŞÂÊÀÌ 0)
-        /// @param y »ì¸± Á÷»ç°¢ÇüÀÇ »ó´Ü ÁÂÇ¥(px, ¸Ç À§ÂÊÀÌ 0)
-        /// @param applyNow ÀÌ °ªÀÌ ÂüÀÌ¸é º¯°æµÈ °ªÀÌ ÆÄÀÌÇÁ¶óÀÎ¿¡ Áï½Ã ¹İ¿µµË´Ï´Ù.
+        /// @brief ì‹œì €ë¥¼ ì„¤ì •í•©ë‹ˆë‹¤. ê¸°ë³¸ ìƒíƒœëŠ” ìë¦„ ì—†ìŒì…ë‹ˆë‹¤.
+        /// ì´ê²ƒì€ íŒ¨ìŠ¤ ë‚´ì˜ ëª¨ë“  íŒŒì´í”„ë¼ì¸ì´ ê³µìœ í•©ë‹ˆë‹¤.
+        /// @param width ì‚´ë¦´ ì§ì‚¬ê°í˜•ì˜ ê°€ë¡œ ê¸¸ì´(px)
+        /// @param height ì‚´ë¦´ ì§ì‚¬ê°í˜•ì˜ ì„¸ë¡œ ê¸¸ì´(px)
+        /// @param x ì‚´ë¦´ ì§ì‚¬ê°í˜•ì˜ ì¢Œì¸¡ ì¢Œí‘œ(px, ë§¨ ì™¼ìª½ì´ 0)
+        /// @param y ì‚´ë¦´ ì§ì‚¬ê°í˜•ì˜ ìƒë‹¨ ì¢Œí‘œ(px, ë§¨ ìœ„ìª½ì´ 0)
+        /// @param applyNow ì´ ê°’ì´ ì°¸ì´ë©´ ë³€ê²½ëœ ê°’ì´ íŒŒì´í”„ë¼ì¸ì— ì¦‰ì‹œ ë°˜ì˜ë©ë‹ˆë‹¤.
         void setScissor(uint32_t width, uint32_t height, int32_t x, int32_t y, bool applyNow = false);
-        /// @brief ÁÖ¾îÁø À¯´ÏÆû¹öÆÛ¸¦ ¹ÙÀÎµåÇÕ´Ï´Ù. ¼­ºêÆĞ½º ÁøÇàÁßÀÌ ¾Æ´Ï¸é ½ÇÆĞÇÕ´Ï´Ù.
-        /// @param pos ¹ÙÀÎµåÇÒ set ¹øÈ£
-        /// @param ub ¹ÙÀÎµåÇÒ ¹öÆÛ
-        /// @param ubPos ¹öÆÛ°¡ µ¿Àû °øÀ¯ ¹öÆÛÀÎ °æ¿ì, ±×°ÍÀÇ ¸î ¹øÂ° ¼ººĞÀ» ¹ÙÀÎµåÇÒÁö Á¤ÇÕ´Ï´Ù. ¾Æ´Ñ °æ¿ì ÀÌ °ªÀº ¹«½ÃµË´Ï´Ù.
+        /// @brief ì£¼ì–´ì§„ ìœ ë‹ˆí¼ë²„í¼ë¥¼ ë°”ì¸ë“œí•©ë‹ˆë‹¤. ì„œë¸ŒíŒ¨ìŠ¤ ì§„í–‰ì¤‘ì´ ì•„ë‹ˆë©´ ì‹¤íŒ¨í•©ë‹ˆë‹¤.
+        /// @param pos ë°”ì¸ë“œí•  set ë²ˆí˜¸
+        /// @param ub ë°”ì¸ë“œí•  ë²„í¼
+        /// @param ubPos ë²„í¼ê°€ ë™ì  ê³µìœ  ë²„í¼ì¸ ê²½ìš°, ê·¸ê²ƒì˜ ëª‡ ë²ˆì§¸ ì„±ë¶„ì„ ë°”ì¸ë“œí• ì§€ ì •í•©ë‹ˆë‹¤. ì•„ë‹Œ ê²½ìš° ì´ ê°’ì€ ë¬´ì‹œë©ë‹ˆë‹¤.
         void bind(uint32_t pos, UniformBuffer* ub, uint32_t ubPos = 0);
-        /// @brief ÁÖ¾îÁø ÅØ½ºÃ³¸¦ ¹ÙÀÎµåÇÕ´Ï´Ù. ¼­ºêÆĞ½º ÁøÇàÁßÀÌ ¾Æ´Ï¸é ½ÇÆĞÇÕ´Ï´Ù.
-        /// @param pos ¹ÙÀÎµåÇÒ set ¹øÈ£
-        /// @param tx ¹ÙÀÎµåÇÒ ÅØ½ºÃ³
+        /// @brief ì£¼ì–´ì§„ í…ìŠ¤ì²˜ë¥¼ ë°”ì¸ë“œí•©ë‹ˆë‹¤. ì„œë¸ŒíŒ¨ìŠ¤ ì§„í–‰ì¤‘ì´ ì•„ë‹ˆë©´ ì‹¤íŒ¨í•©ë‹ˆë‹¤.
+        /// @param pos ë°”ì¸ë“œí•  set ë²ˆí˜¸
+        /// @param tx ë°”ì¸ë“œí•  í…ìŠ¤ì²˜
         void bind(uint32_t pos, const pTexture& tx);
-        /// @brief ÁÖ¾îÁø ·»´õ Å¸°ÙÀ» ÅØ½ºÃ³ÀÇ ÇüÅÂ·Î ¹ÙÀÎµåÇÕ´Ï´Ù. ¼­ºêÆĞ½º ÁøÇà ÁßÀÌ ¾Æ´Ï¸é ½ÇÆĞÇÕ´Ï´Ù. ÀÌ ÆĞ½ºÀÇ ÇÁ·¹ÀÓ¹öÆÛ¿¡¼­ »ç¿ë ÁßÀÎ ·»´õÅ¸°ÙÀº »ç¿ëÇÒ ¼ö ¾ø½À´Ï´Ù.
-        /// @param pos ¹ÙÀÎµåÇÒ set ¹øÈ£
-        /// @param target ¹ÙÀÎµåÇÒ Å¸°Ù
-        /// @param index ·»´õ Å¸°Ù ³»ÀÇ ÀÎµ¦½ºÀÔ´Ï´Ù. (0~2´Â »ö ¹öÆÛ, 3Àº ±íÀÌ ¹öÆÛ)
+        /// @brief ì£¼ì–´ì§„ ë Œë” íƒ€ê²Ÿì„ í…ìŠ¤ì²˜ì˜ í˜•íƒœë¡œ ë°”ì¸ë“œí•©ë‹ˆë‹¤. ì„œë¸ŒíŒ¨ìŠ¤ ì§„í–‰ ì¤‘ì´ ì•„ë‹ˆë©´ ì‹¤íŒ¨í•©ë‹ˆë‹¤. ì´ íŒ¨ìŠ¤ì˜ í”„ë ˆì„ë²„í¼ì—ì„œ ì‚¬ìš© ì¤‘ì¸ ë Œë”íƒ€ê²Ÿì€ ì‚¬ìš©í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤.
+        /// @param pos ë°”ì¸ë“œí•  set ë²ˆí˜¸
+        /// @param target ë°”ì¸ë“œí•  íƒ€ê²Ÿ
+        /// @param index ë Œë” íƒ€ê²Ÿ ë‚´ì˜ ì¸ë±ìŠ¤ì…ë‹ˆë‹¤. (0~2ëŠ” ìƒ‰ ë²„í¼, 3ì€ ê¹Šì´ ë²„í¼)
         void bind(uint32_t pos, RenderTarget* target, uint32_t index);
-        /// @brief ÁÖ¾îÁø ÅØ½ºÃ³¸¦ ¹ÙÀÎµåÇÕ´Ï´Ù. ¼­ºêÆĞ½º ÁøÇàÁßÀÌ ¾Æ´Ï¸é ½ÇÆĞÇÕ´Ï´Ù.
-        /// @param pos ¹ÙÀÎµåÇÒ set ¹øÈ£
-        /// @param tx ¹ÙÀÎµåÇÒ ÅØ½ºÃ³
+        /// @brief ì£¼ì–´ì§„ í…ìŠ¤ì²˜ë¥¼ ë°”ì¸ë“œí•©ë‹ˆë‹¤. ì„œë¸ŒíŒ¨ìŠ¤ ì§„í–‰ì¤‘ì´ ì•„ë‹ˆë©´ ì‹¤íŒ¨í•©ë‹ˆë‹¤.
+        /// @param pos ë°”ì¸ë“œí•  set ë²ˆí˜¸
+        /// @param tx ë°”ì¸ë“œí•  í…ìŠ¤ì²˜
         void bind(uint32_t pos, const pStreamTexture& tx);
-        /// @brief ÁÖ¾îÁø ÆÄÀÌÇÁ¶óÀÎÀ» »ç¿ëÇÏ°Ô ÇÕ´Ï´Ù.
-        /// @param pipeline ÆÄÀÌÇÁ¶óÀÎ
-        /// @param subpass ¼­ºêÆĞ½º ¹øÈ£
+        /// @brief ì£¼ì–´ì§„ íŒŒì´í”„ë¼ì¸ì„ ì‚¬ìš©í•˜ê²Œ í•©ë‹ˆë‹¤.
+        /// @param pipeline íŒŒì´í”„ë¼ì¸
+        /// @param subpass ì„œë¸ŒíŒ¨ìŠ¤ ë²ˆí˜¸
         void usePipeline(Pipeline* pipeline, unsigned subpass);
-        /// @brief Çª½Ã »ó¼ö¸¦ ¼¼ÆÃÇÕ´Ï´Ù. ¼­ºêÆĞ½º ÁøÇàÁßÀÌ ¾Æ´Ï¸é ½ÇÆĞÇÕ´Ï´Ù.
+        /// @brief í‘¸ì‹œ ìƒìˆ˜ë¥¼ ì„¸íŒ…í•©ë‹ˆë‹¤. ì„œë¸ŒíŒ¨ìŠ¤ ì§„í–‰ì¤‘ì´ ì•„ë‹ˆë©´ ì‹¤íŒ¨í•©ë‹ˆë‹¤.
         void push(void* input, uint32_t start, uint32_t end);
-        /// @brief ¸Ş½Ã¸¦ ±×¸³´Ï´Ù. Á¤Á¡ »ç¾çÀº ÆÄÀÌÇÁ¶óÀÎ°ú ¸Â¾Æ¾ß ÇÏ¸ç, ÇöÀç ¹ÙÀÎµåµÈ ÆÄÀÌÇÁ¶óÀÎÀÌ ±×·¸Áö ¾ÊÀº °æ¿ì usePipelineÀ¸·Î ´Ù¸¥ ÆÄÀÌÇÁ¶óÀÎÀ» µî·ÏÇØ¾ß ÇÕ´Ï´Ù.
-        /// @param start Á¤Á¡ ½ÃÀÛ À§Ä¡ (ÁÖ¾îÁø ¸Ş½Ã¿¡ ÀÎµ¦½º ¹öÆÛ°¡ ÀÖ´Â °æ¿ì ±×°ÍÀ» ±âÁØÀ¸·Î ÇÕ´Ï´Ù.)
-        /// @param count Á¤Á¡ ¼ö. 0ÀÌ ÁÖ¾îÁø °æ¿ì ÁÖ¾îÁø startºÎÅÍ ³¡±îÁö ±×¸³´Ï´Ù.
+        /// @brief ë©”ì‹œë¥¼ ê·¸ë¦½ë‹ˆë‹¤. ì •ì  ì‚¬ì–‘ì€ íŒŒì´í”„ë¼ì¸ê³¼ ë§ì•„ì•¼ í•˜ë©°, í˜„ì¬ ë°”ì¸ë“œëœ íŒŒì´í”„ë¼ì¸ì´ ê·¸ë ‡ì§€ ì•Šì€ ê²½ìš° usePipelineìœ¼ë¡œ ë‹¤ë¥¸ íŒŒì´í”„ë¼ì¸ì„ ë“±ë¡í•´ì•¼ í•©ë‹ˆë‹¤.
+        /// @param start ì •ì  ì‹œì‘ ìœ„ì¹˜ (ì£¼ì–´ì§„ ë©”ì‹œì— ì¸ë±ìŠ¤ ë²„í¼ê°€ ìˆëŠ” ê²½ìš° ê·¸ê²ƒì„ ê¸°ì¤€ìœ¼ë¡œ í•©ë‹ˆë‹¤.)
+        /// @param count ì •ì  ìˆ˜. 0ì´ ì£¼ì–´ì§„ ê²½ìš° ì£¼ì–´ì§„ startë¶€í„° ëê¹Œì§€ ê·¸ë¦½ë‹ˆë‹¤.
         void invoke(const pMesh&, uint32_t start = 0, uint32_t count = 0);
-        /// @brief ¸Ş½Ã¸¦ ±×¸³´Ï´Ù. Á¤Á¡ »ç¾çÀº ÆÄÀÌÇÁ¶óÀÎ°ú ¸Â¾Æ¾ß ÇÏ¸ç, ÇöÀç ¹ÙÀÎµåµÈ ÆÄÀÌÇÁ¶óÀÎÀÌ ±×·¸Áö ¾ÊÀº °æ¿ì usePipelineÀ¸·Î ´Ù¸¥ ÆÄÀÌÇÁ¶óÀÎÀ» µî·ÏÇØ¾ß ÇÕ´Ï´Ù.
-        /// @param mesh ±âº» Á¤Á¡¹öÆÛ
-        /// @param instanceInfo ÀÎ½ºÅÏ½º ¼Ó¼º ¹öÆÛ
-        /// @param instanceCount ÀÎ½ºÅÏ½º ¼ö
-        /// @param istart ÀÎ½ºÅÏ½º ½ÃÀÛ À§Ä¡
-        /// @param start Á¤Á¡ ½ÃÀÛ À§Ä¡ (ÁÖ¾îÁø ¸Ş½Ã¿¡ ÀÎµ¦½º ¹öÆÛ°¡ ÀÖ´Â °æ¿ì ±×°ÍÀ» ±âÁØÀ¸·Î ÇÕ´Ï´Ù.)
-        /// @param count Á¤Á¡ ¼ö. 0ÀÌ ÁÖ¾îÁø °æ¿ì ÁÖ¾îÁø startºÎÅÍ ³¡±îÁö ±×¸³´Ï´Ù.
+        /// @brief ë©”ì‹œë¥¼ ê·¸ë¦½ë‹ˆë‹¤. ì •ì  ì‚¬ì–‘ì€ íŒŒì´í”„ë¼ì¸ê³¼ ë§ì•„ì•¼ í•˜ë©°, í˜„ì¬ ë°”ì¸ë“œëœ íŒŒì´í”„ë¼ì¸ì´ ê·¸ë ‡ì§€ ì•Šì€ ê²½ìš° usePipelineìœ¼ë¡œ ë‹¤ë¥¸ íŒŒì´í”„ë¼ì¸ì„ ë“±ë¡í•´ì•¼ í•©ë‹ˆë‹¤.
+        /// @param mesh ê¸°ë³¸ ì •ì ë²„í¼
+        /// @param instanceInfo ì¸ìŠ¤í„´ìŠ¤ ì†ì„± ë²„í¼
+        /// @param instanceCount ì¸ìŠ¤í„´ìŠ¤ ìˆ˜
+        /// @param istart ì¸ìŠ¤í„´ìŠ¤ ì‹œì‘ ìœ„ì¹˜
+        /// @param start ì •ì  ì‹œì‘ ìœ„ì¹˜ (ì£¼ì–´ì§„ ë©”ì‹œì— ì¸ë±ìŠ¤ ë²„í¼ê°€ ìˆëŠ” ê²½ìš° ê·¸ê²ƒì„ ê¸°ì¤€ìœ¼ë¡œ í•©ë‹ˆë‹¤.)
+        /// @param count ì •ì  ìˆ˜. 0ì´ ì£¼ì–´ì§„ ê²½ìš° ì£¼ì–´ì§„ startë¶€í„° ëê¹Œì§€ ê·¸ë¦½ë‹ˆë‹¤.
         void invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart = 0, uint32_t start = 0, uint32_t count = 0);
-        /// @brief ¼­ºêÆĞ½º¸¦ ½ÃÀÛÇÕ´Ï´Ù. ÀÌ¹Ì ¼­ºêÆĞ½º°¡ ½ÃÀÛµÈ »óÅÂ¶ó¸é ´ÙÀ½ ¼­ºêÆĞ½º¸¦ ½ÃÀÛÇÏ¸ç, ´ÙÀ½ °ÍÀÌ ¾øÀ¸¸é ¾Æ¹« µ¿ÀÛµµ ÇÏÁö ¾Ê½À´Ï´Ù. ÁÖ¾îÁø ÆÄÀÌÇÁ¶óÀÎÀÌ ¾øÀ¸¸é µ¿ÀÛÀÌ ½ÇÆĞÇÕ´Ï´Ù.
-        /// @param pos ÀÌÀü ¼­ºêÆĞ½ºÀÇ °á°úÀÎ ÀÔ·Â Ã·ºÎ¹°À» ¹ÙÀÎµåÇÒ À§Ä¡ÀÇ ½ÃÀÛÁ¡ÀÔ´Ï´Ù. ¿¹¸¦ µé¾î, pos=0ÀÌ°í ÀÌÀü Å¸°ÙÀÌ »ö Ã·ºÎ¹° 2°³, ±íÀÌ Ã·ºÎ¹° 1°³¿´À¸¸é 0, 1, 2¹ø¿¡ ¹ÙÀÎµåµË´Ï´Ù. ¼ÎÀÌ´õ¸¦ ±×¿¡ ¸Â°Ô ¸¸µé¾î¾ß ÇÕ´Ï´Ù.
+        /// @brief ì„œë¸ŒíŒ¨ìŠ¤ë¥¼ ì‹œì‘í•©ë‹ˆë‹¤. ì´ë¯¸ ì„œë¸ŒíŒ¨ìŠ¤ê°€ ì‹œì‘ëœ ìƒíƒœë¼ë©´ ë‹¤ìŒ ì„œë¸ŒíŒ¨ìŠ¤ë¥¼ ì‹œì‘í•˜ë©°, ë‹¤ìŒ ê²ƒì´ ì—†ìœ¼ë©´ ì•„ë¬´ ë™ì‘ë„ í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤. ì£¼ì–´ì§„ íŒŒì´í”„ë¼ì¸ì´ ì—†ìœ¼ë©´ ë™ì‘ì´ ì‹¤íŒ¨í•©ë‹ˆë‹¤.
+        /// @param pos ì´ì „ ì„œë¸ŒíŒ¨ìŠ¤ì˜ ê²°ê³¼ì¸ ì…ë ¥ ì²¨ë¶€ë¬¼ì„ ë°”ì¸ë“œí•  ìœ„ì¹˜ì˜ ì‹œì‘ì ì…ë‹ˆë‹¤. ì˜ˆë¥¼ ë“¤ì–´, pos=0ì´ê³  ì´ì „ íƒ€ê²Ÿì´ ìƒ‰ ì²¨ë¶€ë¬¼ 2ê°œ, ê¹Šì´ ì²¨ë¶€ë¬¼ 1ê°œì˜€ìœ¼ë©´ 0, 1, 2ë²ˆì— ë°”ì¸ë“œë©ë‹ˆë‹¤. ì…°ì´ë”ë¥¼ ê·¸ì— ë§ê²Œ ë§Œë“¤ì–´ì•¼ í•©ë‹ˆë‹¤.
         void start(uint32_t pos = 0, bool clearTarget = true);
-        /// @brief ±â·ÏµÈ ¸í·ÉÀ» ¸ğµÎ ¼öÇàÇÕ´Ï´Ù. µ¿ÀÛÀÌ ¿Ï·áµÇÁö ¾Ê¾Æµµ Áï½Ã ¸®ÅÏÇÕ´Ï´Ù.
-        /// @param other ÀÌ ÆĞ½º°¡ ½ÃÀÛÇÏ±â Àü¿¡ ±â´Ù¸± ´Ù¸¥ ·»´õÆĞ½ºÀÔ´Ï´Ù. ÀüÈÄ ÀÇÁ¸¼ºÀÌ Á¸ÀçÇÒ °æ¿ì »ç¿ëÇÏ´Â °ÍÀÌ ÁÁ½À´Ï´Ù. (Vk¼¼¸¶Æ÷¾î µ¿±âÈ­¸¦ »ç¿ë) ÇöÀç ¹öÀü¿¡¼­ ±â´Ù¸®´Â ´Ü°è´Â VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT ÇÏ³ª·Î °íÁ¤ÀÔ´Ï´Ù.
+        /// @brief ê¸°ë¡ëœ ëª…ë ¹ì„ ëª¨ë‘ ìˆ˜í–‰í•©ë‹ˆë‹¤. ë™ì‘ì´ ì™„ë£Œë˜ì§€ ì•Šì•„ë„ ì¦‰ì‹œ ë¦¬í„´í•©ë‹ˆë‹¤.
+        /// @param other ì´ íŒ¨ìŠ¤ê°€ ì‹œì‘í•˜ê¸° ì „ì— ê¸°ë‹¤ë¦´ ë‹¤ë¥¸ ë Œë”íŒ¨ìŠ¤ì…ë‹ˆë‹¤. ì „í›„ ì˜ì¡´ì„±ì´ ì¡´ì¬í•  ê²½ìš° ì‚¬ìš©í•˜ëŠ” ê²ƒì´ ì¢‹ìŠµë‹ˆë‹¤. (Vkì„¸ë§ˆí¬ì–´ ë™ê¸°í™”ë¥¼ ì‚¬ìš©) í˜„ì¬ ë²„ì „ì—ì„œ ê¸°ë‹¤ë¦¬ëŠ” ë‹¨ê³„ëŠ” VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT í•˜ë‚˜ë¡œ ê³ ì •ì…ë‹ˆë‹¤.
         void execute(RenderPass* other = nullptr);
-        /// @brief true¸¦ ¸®ÅÏÇÕ´Ï´Ù.
+        /// @brief trueë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤.
         bool wait(uint64_t timeout = UINT64_MAX);
-        /// @brief ¾Æ¹«°Íµµ ÇÏÁö ¾Ê½À´Ï´Ù.
+        /// @brief ì•„ë¬´ê²ƒë„ í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
         inline void reconstructFB(...) {}
     private:
-        RenderPass(RenderTarget** fb, uint16_t stageCount); // ÀÌÈÄ ´Ù¼öÀÇ ¼­ºêÆĞ½º¸¦ ¾µ ¼ö ÀÖµµ·Ï º¯°æ
+        RenderPass(RenderTarget** fb, uint16_t stageCount); // ì´í›„ ë‹¤ìˆ˜ì˜ ì„œë¸ŒíŒ¨ìŠ¤ë¥¼ ì“¸ ìˆ˜ ìˆë„ë¡ ë³€ê²½
         ~RenderPass();
         const uint16_t stageCount;
         std::vector<Pipeline*> pipelines;
@@ -473,12 +468,12 @@ namespace onart {
         const Mesh* bound = nullptr;
     };
 
-    /// @brief D3D11 ¼ÎÀÌ´õ °´Ã¼ÀÇ ÁıÇÕÀÔ´Ï´Ù. ¾î¶² ¸â¹öµµ Á÷Á¢ »ç¿ëÇÒ ¼ö ¾ø½À´Ï´Ù.
+    /// @brief D3D11 ì…°ì´ë” ê°ì²´ì˜ ì§‘í•©ì…ë‹ˆë‹¤. ì–´ë–¤ ë©¤ë²„ë„ ì§ì ‘ ì‚¬ìš©í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤.
     class D3D11Machine::Pipeline {
         friend class D3D11Machine;
         friend class RenderPass;
         private:
-            Pipeline(ID3D11VertexShader*, ID3D11HullShader*, ID3D11DomainShader*, ID3D11GeometryShader*, ID3D11PixelShader*, ID3D11DepthStencilState*, UINT stencilRef);
+            Pipeline(ID3D11VertexShader*, ID3D11HullShader*, ID3D11DomainShader*, ID3D11GeometryShader*, ID3D11PixelShader*, ID3D11DepthStencilState*, UINT stencilRef, vec4 clearColor);
             ~Pipeline();
             ID3D11VertexShader* vs;
             ID3D11HullShader* tcs;
@@ -487,25 +482,26 @@ namespace onart {
             ID3D11PixelShader* fs;
             ID3D11DepthStencilState* dsState;
             UINT stencilRef;
+            vec4 clearColor;
     };
 
     class D3D11Machine::UniformBuffer {
         friend class D3D11Machine;
         friend class RenderPass;
     public:
-        /// @brief ¾Æ¹« µ¿ÀÛµµ ÇÏÁö ¾Ê½À´Ï´Ù.
+        /// @brief ì•„ë¬´ ë™ì‘ë„ í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
         void resize(uint32_t size);
-        /// @brief À¯´ÏÆû ¹öÆÛÀÇ ³»¿ëÀ» °»½ÅÇÕ´Ï´Ù. ³ÑÄ¡°Ô µ¥ÀÌÅÍ¸¦ Áàµµ Ãß°¡ ÇÒ´çÀº ÇÏÁö ¾ÊÀ¸¹Ç·Î ÁÖÀÇÇÏ¼¼¿ä.
-        /// @param input ÀÔ·Â µ¥ÀÌÅÍ
-        /// @param index »ç¿ëµÇÁö ¾Ê½À´Ï´Ù.
-        /// @param offset µ¥ÀÌÅÍ ³»¿¡¼­ ¸î ¹ÙÀÌÆ®Â°ºÎÅÍ ¼öÁ¤ÇÒÁö
-        /// @param size µ¤¾î¾µ ¾ç
+        /// @brief ìœ ë‹ˆí¼ ë²„í¼ì˜ ë‚´ìš©ì„ ê°±ì‹ í•©ë‹ˆë‹¤. ë„˜ì¹˜ê²Œ ë°ì´í„°ë¥¼ ì¤˜ë„ ì¶”ê°€ í• ë‹¹ì€ í•˜ì§€ ì•Šìœ¼ë¯€ë¡œ ì£¼ì˜í•˜ì„¸ìš”.
+        /// @param input ì…ë ¥ ë°ì´í„°
+        /// @param index ì‚¬ìš©ë˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
+        /// @param offset ë°ì´í„° ë‚´ì—ì„œ ëª‡ ë°”ì´íŠ¸ì§¸ë¶€í„° ìˆ˜ì •í• ì§€
+        /// @param size ë®ì–´ì“¸ ì–‘
         void update(const void* input, uint32_t index, uint32_t offset, uint32_t size);
-        /// @brief 0À» ¸®ÅÏÇÕ´Ï´Ù.
+        /// @brief 0ì„ ë¦¬í„´í•©ë‹ˆë‹¤.
         inline static uint16_t getIndex() { return 0; }
-        /// @brief 0À» ¸®ÅÏÇÕ´Ï´Ù.
+        /// @brief 0ì„ ë¦¬í„´í•©ë‹ˆë‹¤.
         inline static int getLayout() { return 0; }
-        /// @brief 128¹ÙÀÌÆ® Å©±âÀÇ °íÁ¤ À¯´ÏÆû¹öÆÛ¸¦ ¾÷µ¥ÀÌÆ®ÇÕ´Ï´Ù. ÀÌ°ÍÀº ¸ğµç ÆÄÀÌÇÁ¶óÀÎÀÌ °øÀ¯ÇÏ¸ç, ¼ÎÀÌ´õÀÇ ¹ÙÀÎµù 11¹øÀ¸·Î Á¢±ÙÇÒ ¼ö ÀÖ½À´Ï´Ù.
+        /// @brief 128ë°”ì´íŠ¸ í¬ê¸°ì˜ ê³ ì • ìœ ë‹ˆí¼ë²„í¼ë¥¼ ì—…ë°ì´íŠ¸í•©ë‹ˆë‹¤. ì´ê²ƒì€ ëª¨ë“  íŒŒì´í”„ë¼ì¸ì´ ê³µìœ í•˜ë©°, ì…°ì´ë”ì˜ ë°”ì¸ë”© 11ë²ˆìœ¼ë¡œ ì ‘ê·¼í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
         static void updatePush(const void* input, uint32_t offset, uint32_t size);
     private:
         UniformBuffer(uint32_t length, ID3D11Buffer* ubo, uint32_t binding);
@@ -518,7 +514,7 @@ namespace onart {
     class D3D11Machine::Mesh {
         friend class D3D11Machine;
         public:
-            template<class... VATTR> void setInputLayout(void* vs, size_t size, unsigned locationPlus = 0, unsigned inputSlot = 0); // todo: µ¿ÀÏ Å¸ÀÔ Á¶ÇÕÀº input layout °øÀ¯, todo 2: ¿©·¯ mesh °´Ã¼·Î input layout »ı¼ºÇÏ´Â static ÇÔ¼ö·Î ´ëÃ¼
+            template<class... VATTR> void setInputLayout(void* vs, size_t size, unsigned locationPlus = 0, unsigned inputSlot = 0); // todo: ë™ì¼ íƒ€ì… ì¡°í•©ì€ input layout ê³µìœ , todo 2: ì—¬ëŸ¬ mesh ê°ì²´ë¡œ input layout ìƒì„±í•˜ëŠ” static í•¨ìˆ˜ë¡œ ëŒ€ì²´
         private:
             Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib, DXGI_FORMAT indexFormat, size_t vcount, size_t icount);
             ~Mesh();
@@ -593,10 +589,10 @@ namespace onart {
             return DXGI_FORMAT_FORCE_UINT; // UNREACHABLE
         }
     public:
-        /// @brief Á¤Á¡ ¼Ó¼º ¹ÙÀÎµùÀ» ¹Ş¾Æ¿É´Ï´Ù.
-        /// @param vattrs Ãâ·Â À§Ä¡
-        /// @param binding ¹ÙÀÎµù ¹øÈ£
-        /// @param locationPlus ¼ÎÀÌ´õ ³»ÀÇ locationÀÌ ½ÃÀÛÇÒ ¹øÈ£. ÀÌ °ªÀÌ 0ÀÌ ¾Æ´Ñ °æ¿ì per instance ¹öÆÛ·Î Ãë±ŞµË´Ï´Ù.
+        /// @brief ì •ì  ì†ì„± ë°”ì¸ë”©ì„ ë°›ì•„ì˜µë‹ˆë‹¤.
+        /// @param vattrs ì¶œë ¥ ìœ„ì¹˜
+        /// @param binding ë°”ì¸ë”© ë²ˆí˜¸
+        /// @param locationPlus ì…°ì´ë” ë‚´ì˜ locationì´ ì‹œì‘í•  ë²ˆí˜¸. ì´ ê°’ì´ 0ì´ ì•„ë‹Œ ê²½ìš° per instance ë²„í¼ë¡œ ì·¨ê¸‰ë©ë‹ˆë‹¤.
         template<unsigned LOCATION = 0>
         inline static constexpr void info(D3D11_INPUT_ELEMENT_DESC* vattrs, uint32_t binding = 0, uint32_t locationPlus = 0) {
             using A_TYPE = std::remove_reference_t<decltype(Vertex().get<LOCATION>())>;
@@ -611,10 +607,10 @@ namespace onart {
         }
         inline Vertex() { static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
         inline Vertex(const FATTR& first, const ATTR&... rest) :member(first, rest...) { static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
-        /// @brief ÁÖ¾îÁø ¹øÈ£ÀÇ ÂüÁ¶¸¦ ¸®ÅÏÇÕ´Ï´Ù. ÀÎµ¦½º ÃÊ°ú ½Ã ÄÄÆÄÀÏµÇÁö ¾Ê½À´Ï´Ù.
+        /// @brief ì£¼ì–´ì§„ ë²ˆí˜¸ì˜ ì°¸ì¡°ë¥¼ ë¦¬í„´í•©ë‹ˆë‹¤. ì¸ë±ìŠ¤ ì´ˆê³¼ ì‹œ ì»´íŒŒì¼ë˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
         template<unsigned POS, std::enable_if_t<POS <= sizeof...(ATTR), bool> = false>
         constexpr inline auto& get() { return member.template get<POS>(); }
-        /* template Å°¿öµå ¼³¸í
+        /* template í‚¤ì›Œë“œ ì„¤ëª…
          * When the name of a member template specialization appears after . or -> in a postfix-expression,
          * or after nested-name-specifier in a qualified-id,
          * and the postfix-expression or qualified-id explicitly depends on a template-parameter (14.6.2),

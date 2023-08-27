@@ -21,7 +21,15 @@
 // 
 #elif defined(YR_USE_D3D11)
 #error "D3D11 not ready"
-//
+#include "yr_d3d11.h"
+namespace onart {
+    using YRGraphics = D3D11Machine;
+    using pipelinelayout_t = unsigned;
+    using pipeline_t = D3D11Machine::Pipeline*;
+    using shader_t = ID3D11DeviceChild*;
+    using descriptorSet_t = int;
+    using descriptorSetLayout_t = int;
+}
 #elif defined(YR_USE_OPENGL)
 #include "yr_opengl.h"
 namespace onart{
