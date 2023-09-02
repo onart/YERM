@@ -48,7 +48,22 @@
                 VERTEX_INT32_TYPES,\
                 VERTEX_UINT32_TYPES
 
+template<class T, class... _VAC>
+constexpr inline int __VATI = -1;
+
+template<class T, class _VAC1, class... _VAC>
+constexpr inline int __VATI<T, _VAC1, _VAC...> = 
+    onart::is_one_of<T, _VAC1, _VAC...> ? 
+        std::is_same_v<T, _VAC1> ? 0 :
+        1 + __VATI<T, _VAC...>
+    :
+    -1
+    ;
+
 namespace onart {
+
+    template<class T>
+    constexpr inline int VERTEX_ATTR_TYPE_INDEX = __VATI<T, VERTEX_ATTR_TYPES>;
 
     class Window;
 
@@ -306,6 +321,22 @@ namespace onart {
         std::map<int32_t, pStreamTexture> streamTextures;
 
         std::map<ID3D11Texture2D*, ID3D11RenderTargetView*> screenTargets;
+
+        struct pAutoIL{
+            ID3D11InputLayout* layout;
+            inline ~pAutoIL() { if (layout)layout->Release(); }
+        };
+
+        struct __mkmap {
+            std::map<int, __mkmap> tree;
+            pAutoIL layout{};
+            inline __mkmap& operator[](int key) {
+                return (tree[key]);
+            }
+        }inputLayouts;
+
+        template<class VA1, class... VAS>
+        constexpr __mkmap* getLayoutFor(__mkmap* _ = nullptr);
 
         ID3D11BlendState* basicBlend;
         ID3D11SamplerState* linearBorderSampler;
@@ -619,16 +650,46 @@ namespace onart {
          * */
     };
 
+    template<class VA1, class... VAS>
+    constexpr D3D11Machine::__mkmap* D3D11Machine::getLayoutFor(__mkmap* root) {
+        static_assert(VERTEX_ATTR_TYPE_INDEX<VA1> != -1, "Invalid vertex attribute type");
+        if constexpr (sizeof...(VAS) == 0) {
+            return &inputLayouts[VERTEX_ATTR_TYPE_INDEX<VA1>];
+        }
+        else {
+            if (root == nullptr) { root = &inputLayouts; }
+            return getLayoutFor<VAS...>(&((*root)[VERTEX_ATTR_TYPE_INDEX<VA1>]));
+        }
+    }
+
     template<class... VATTR>
     void D3D11Machine::Mesh::setInputLayout(void* vs, size_t size, unsigned locationPlus, unsigned inputSlot) {
-        D3D11_INPUT_ELEMENT_DESC attrs[sizeof...(VATTR)]{};
-        D3D11Machine::Vertex<VATTR...>::info(attrs, inputSlot, locationPlus);
-        HRESULT result = D3D11Machine::singleton->device->CreateInputLayout(attrs, sizeof...(VATTR), vs, size, &layout);
-        
-        if (result != S_OK) {
-            LOGWITH("Failed to create input layout:", result);
+        D3D11Machine::__mkmap* stored = singleton->getLayoutFor<VATTR...>(&singleton->inputLayouts);
+        if (stored->layout) {
+            layout = stored->layout;
+        }
+        else {
+            D3D11_INPUT_ELEMENT_DESC attrs[sizeof...(VATTR)]{};
+            D3D11Machine::Vertex<VATTR...>::info(attrs, inputSlot, locationPlus);
+            HRESULT result = D3D11Machine::singleton->device->CreateInputLayout(attrs, sizeof...(VATTR), vs, size, &layout);
+
+            if (result != S_OK) {
+                LOGWITH("Failed to create input layout:", result);
+            }
+            stored->layout = layout;
         }
     }
 }
+
+#undef VERTEX_FLOAT_TYPES
+#undef VERTEX_DOUBLE_TYPES
+#undef VERTEX_INT8_TYPES
+#undef VERTEX_UINT8_TYPES
+#undef VERTEX_INT16_TYPES
+#undef VERTEX_UINT16_TYPES
+#undef VERTEX_INT32_TYPES
+#undef VERTEX_UINT32_TYPES
+
+#undef VERTEX_ATTR_TYPES
 
 #endif // __YR_D3D11_H__

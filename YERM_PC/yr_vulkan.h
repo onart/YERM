@@ -908,5 +908,15 @@ namespace onart {
     };
 }
 
+#undef VERTEX_FLOAT_TYPES
+#undef VERTEX_DOUBLE_TYPES
+#undef VERTEX_INT8_TYPES
+#undef VERTEX_UINT8_TYPES
+#undef VERTEX_INT16_TYPES
+#undef VERTEX_UINT16_TYPES
+#undef VERTEX_INT32_TYPES
+#undef VERTEX_UINT32_TYPES
+
+#undef VERTEX_ATTR_TYPES
 
 #endif // __YR_VULKAN_H__

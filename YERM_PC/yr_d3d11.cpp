@@ -111,6 +111,8 @@ namespace onart {
         samplerInfo.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT;
         device->CreateSamplerState(&samplerInfo, &nearestBorderSampler);
 
+        createUniformBuffer(1, 128, 0, INT32_MIN + 1);
+
         singleton = this;
     }
 
@@ -358,6 +360,10 @@ namespace onart {
         return {};
     }
 
+    void D3D11Machine::UniformBuffer::updatePush(const void* input, uint32_t offset, uint32_t size) {
+        singleton->uniformBuffers[INT32_MIN + 1]->update(input, 0, offset, size);
+    }
+
     D3D11Machine::RenderTarget* D3D11Machine::getRenderTarget(int32_t key) {
         auto it = singleton->renderTargets.find(key);
         if (it != singleton->renderTargets.find(key)) {
@@ -380,6 +386,41 @@ namespace onart {
             return it->second;
         }
         return {};
+    }
+
+    D3D11Machine::pMesh D3D11Machine::createNullMesh(size_t vcount, int32_t key) {
+        pMesh ret = getMesh(key);
+        if (ret) {
+            return ret;
+        }
+        D3D11_BUFFER_DESC bufferInfo{};
+        bufferInfo.ByteWidth = vcount;
+        bufferInfo.Usage = D3D11_USAGE_IMMUTABLE;
+        bufferInfo.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        bufferInfo.CPUAccessFlags = 0;
+
+        ID3D11Buffer* vb{};
+        DXGI_FORMAT iFormat{};
+
+        HRESULT result = singleton->device->CreateBuffer(&bufferInfo, nullptr, &vb);
+        if (result != S_OK) {
+            LOGWITH("Failed to create vertex buffer:", result);
+            reason = result;
+            return {};
+        }
+
+        struct publicmesh :public Mesh { publicmesh(ID3D11Buffer* _1, ID3D11Buffer* _2, DXGI_FORMAT _3, size_t _4, size_t _5) :Mesh(_1, _2, _3, _4, _5) {} };
+        ret = std::make_shared<publicmesh>(vb, nullptr, iFormat, vcount, 0);
+
+        /*
+        D3D11_INPUT_ELEMENT_DESC vbInfo{};
+        vbInfo.SemanticName = VS_SEMANTIC[0];
+        vbInfo.Format = DXGI_FORMAT_R8_UINT;
+        vbInfo.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+
+        singleton->device->CreateInputLayout(&vbInfo, 1, nullptr, 0, &ret->layout);
+        */ // TODO: 모든 input layout을 타입조합별 공유로 옮김
+        return singleton->meshes[key] = ret;
     }
 
     D3D11Machine::pMesh D3D11Machine::createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, int32_t key, bool stage) {
@@ -1296,6 +1337,10 @@ namespace onart {
         }
     }
 
+    void D3D11Machine::RenderPass::push(void* input, uint32_t start, uint32_t end) {
+        singleton->uniformBuffers[INT32_MIN + 1]->update(input, 0, start, end - start);
+    }
+
     void D3D11Machine::RenderPass::bind(uint32_t pos, UniformBuffer* ub, uint32_t ubPos) {
         if (currentPass >= 0) {
             singleton->context->VSSetConstantBuffers(pos, 1, &ub->ubo);
@@ -1440,6 +1485,26 @@ namespace onart {
         texture->Release();
     }
 
+    void D3D11Machine::Texture::collect(bool removeUsing) {
+        if (removeUsing) {
+            singleton->textures.clear();
+        }
+        else {
+            for (auto it = singleton->textures.begin(); it != singleton->textures.end();) {
+                if (it->second.use_count() == 1) {
+                    singleton->textures.erase(it++);
+                }
+                else {
+                    ++it;
+                }
+            }
+        }
+    }
+
+    void D3D11Machine::Texture::drop(int32_t name) {
+        singleton->textures.erase(name);
+    }
+
     D3D11Machine::StreamTexture::StreamTexture(ID3D11Texture2D* txo, ID3D11ShaderResourceView* srv, uint16_t width, uint16_t height, bool linearSampler, void* mmap, uint64_t rowPitch)
         :txo(txo), dset(srv), width(width), height(height), linearSampled(linearSampler), mmap(mmap), rowPitch(rowPitch), copyFull(rowPitch == 4ULL * width) {
 
@@ -1451,6 +1516,26 @@ namespace onart {
         }
         dset->Release();
         txo->Release();
+    }
+
+    void D3D11Machine::StreamTexture::drop(int32_t name) {
+        singleton->streamTextures.erase(name);
+    }
+
+    void D3D11Machine::StreamTexture::collect(bool removeUsing) {
+        if (removeUsing) {
+            singleton->textures.clear();
+        }
+        else {
+            for (auto it = singleton->textures.begin(); it != singleton->textures.end();) {
+                if (it->second.use_count() == 1) {
+                    singleton->textures.erase(it++);
+                }
+                else {
+                    ++it;
+                }
+            }
+        }
     }
 
     void D3D11Machine::StreamTexture::update(void* img) {
