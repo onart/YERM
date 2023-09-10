@@ -98,6 +98,7 @@ namespace onart {
         using pMesh = std::shared_ptr<Mesh>;
         /// @brief 셰이더 자원을 나타냅니다. 동시에 사용되지만 않는다면 여러 렌더패스 간에 공유될 수 있습니다.
         class UniformBuffer;
+        using PipelineInputVertexSpec = D3D11_INPUT_ELEMENT_DESC;
         /// @brief 셰이더 유형입니다.
         enum class ShaderType {
             VERTEX = 0,
@@ -231,6 +232,12 @@ namespace onart {
         /// @brief 아무 동작도 하지 않습니다.
         static unsigned createPipelineLayout(...);
         /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 사용할 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
+        /// @param vinfo 파이프라인이 인식할 정점 배치입니다.
+        /// @param vsize 개별 정점의 크기입니다.
+        /// @param vattr vinfo 배열의 길이입니다.
+        /// @param iinfo 파이프라인이 인식할 인스턴스 속성 배치입니다.
+        /// @param isize 개별 인스턴스 속성의 크기입니다.
+        /// @param iattr iinfo 배열의 길이입니다.
         /// @param vs 정점 셰이더 모듈입니다.
         /// @param fs 픽셀 셰이더 모듈입니다.
         /// @param name 이름입니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
@@ -239,7 +246,7 @@ namespace onart {
         /// @param tc 테셀레이션 컨트롤(HULL) 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
         /// @param te 테셀레이션 계산(DOMAIN) 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
         /// @param gs 지오메트리 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
-        static Pipeline* createPipeline(ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, bool depth, vec4 clearColor = {}, UINT stencilRef = 0, D3D11_DEPTH_STENCILOP_DESC* front = nullptr, D3D11_DEPTH_STENCILOP_DESC* back = nullptr, ID3D11DeviceChild* tc = nullptr, ID3D11DeviceChild* te = nullptr, ID3D11DeviceChild* gs = nullptr);
+        static Pipeline* createPipeline(PipelineInputVertexSpec* vinfo, uint32_t vsize, uint32_t vattr, PipelineInputVertexSpec* iinfo, uint32_t isize, uint32_t iattr, void* vsBytecode, uint32_t codeSize, ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, bool depth, vec4 clearColor = {}, UINT stencilRef = 0, D3D11_DEPTH_STENCILOP_DESC* front = nullptr, D3D11_DEPTH_STENCILOP_DESC* back = nullptr, ID3D11DeviceChild* tc = nullptr, ID3D11DeviceChild* te = nullptr, ID3D11DeviceChild* gs = nullptr);
         /// @brief 정점 버퍼(모델) 객체를 생성합니다.
         /// @param vdata 정점 데이터
         /// @param vsize 정점 하나의 크기(바이트)
@@ -321,19 +328,6 @@ namespace onart {
         std::map<int32_t, pStreamTexture> streamTextures;
 
         std::map<ID3D11Texture2D*, ID3D11RenderTargetView*> screenTargets;
-
-        struct pAutoIL{
-            ID3D11InputLayout* layout;
-            inline ~pAutoIL() { if (layout)layout->Release(); }
-        };
-
-        struct __mkmap {
-            std::map<int, __mkmap> tree;
-            pAutoIL layout{};
-            inline __mkmap& operator[](int key) {
-                return (tree[key]);
-            }
-        }inputLayouts;
 
         template<class VA1, class... VAS>
         constexpr __mkmap* getLayoutFor(__mkmap* _ = nullptr);
@@ -496,7 +490,79 @@ namespace onart {
         int currentPass = -1;
         D3D11_VIEWPORT viewport;
         D3D11_RECT scissor;
-        const Mesh* bound = nullptr;
+        const static Mesh* bound;
+    };
+
+    /// @brief 큐브맵 대상의 렌더패스입니다.
+    /// 현 버전에서는 지오메트리 셰이더를 통한 레이어드 렌더링을 제공하지 않으며 고정적으로 6개의 서브패스를 활용합니다.
+    /// execute 한 번에 6개를 모두 실행합니다.
+    /// 각 그리기 명령 간의 시야 차이를 위하여 유니폼버퍼 바인드 시에만 몇 번째 패스에 주어진 바인드를 적용할지 명시하도록 만들어 두었습니다.
+    /// 현 버전에서는 기본적으로 RenderPass2Cube의 큐브맵 텍스처 바인딩은 1번입니다.
+    class D3D11Machine::RenderPass2Cube {
+        friend class D3D11Machine;
+    public:
+        RenderPass2Cube& operator=(const RenderPass2Cube&) = delete;
+        /// @brief 주어진 유니폼버퍼를 바인드합니다.
+        /// @param pos 바인드할 set 번호 (셰이더 내에서)
+        /// @param ub 바인드할 유니폼 버퍼
+        /// @param pass 이 버퍼를 사용할 면으로, 0~5만 가능합니다. (큐브맵 샘플 기준 방향은 0번부터 +x, -x, +y, -y, +z, -z입니다.) 그 외의 값을 주는 경우 패스 인수와 관계 없는 것으로 인식하고 공통으로 바인드합니다. (주의. 바인드할 수 있는 버퍼는 하나뿐입니다. 여러 번 호출되면 기존 명령을 덮어쓰며 한 번 기록한 것은 렌더패스 실행이 완료되어도 사라지지 않습니다.)
+        /// @param ubPos 동적 유니폼 버퍼인 경우 그 중 몇 번째 셋을 바인드할지 정합니다. 동적 유니폼 버퍼가 아니면 무시됩니다.
+        void bind(uint32_t pos, UniformBuffer* ub, uint32_t pass = 6, uint32_t ubPos = 0);
+        /// @brief 주어진 텍스처를 바인드합니다.
+        /// @param pos 바인드할 set 번호
+        /// @param tx 바인드할 텍스처
+        void bind(uint32_t pos, const pTexture& tx);
+        /// @brief 주어진 렌더 타겟의 결과를 텍스처로 바인드합니다.
+        /// @param pos 바인드할 set 번호
+        /// @param target 바인드할 타겟
+        /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
+        void bind(uint32_t pos, RenderTarget* target, uint32_t index);
+        /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+        /// @param pos 바인드할 set 번호
+        /// @param tx 바인드할 텍스처
+        void bind(uint32_t pos, const pStreamTexture& tx);
+        /// @brief 주어진 파이프라인을 사용합니다. 지오메트리 셰이더를 사용하도록 만들어진 패스인지 아닌지를 잘 보고 바인드해 주세요.
+        void usePipeline(Pipeline* pipeline);
+        /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
+        void push(void* input, uint32_t start, uint32_t end);
+        /// @brief 메시를 그립니다. 정점 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
+        void invoke(const pMesh&, uint32_t start = 0, uint32_t count = 0);
+        /// @brief 메시를 그립니다. 정점/인스턴스 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
+        void invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart = 0, uint32_t start = 0, uint32_t count = 0);
+        /// @brief 서브패스를 시작합니다. 이미 시작된 상태인 경우 아무 동작도 하지 않습니다.
+        void start();
+        /// @brief true를 리턴합니다.
+        bool wait(uint64_t timeout = UINT64_MAX);
+        /// @brief 렌더패스가 실제로 사용 가능한지 확인합니다.
+        inline bool isAvailable() { return srv; }
+        /// @brief 큐브맵 타겟 크기를 바꿉니다. 이 함수를 호출한 경우, bind에서 면마다 따로 바인드했던 유니폼 버퍼는 모두 리셋되므로 필요하면 꼭 다시 기록해야 합니다.
+        /// @return 실패한 경우 false를 리턴하며, 이 때 내부 데이터는 모두 해제되어 있습니다.
+        bool resconstructFB(uint32_t width, uint32_t height);
+        /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
+        /// @param other 이 패스가 시작하기 전에 기다릴 다른 렌더패스입니다. 전후 의존성이 존재할 경우 사용하는 것이 좋습니다. (Vk세마포어 동기화를 사용) 현재 버전에서 기다리는 단계는 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT 하나로 고정입니다.
+        void execute(RenderPass* other = nullptr);
+    private:
+        inline RenderPass2Cube() {}
+        ~RenderPass2Cube();
+
+        ID3D11Texture2D* colorMap{}, * depthMap{};
+        ID3D11RenderTargetView* rtv{};
+        ID3D11DepthStencilView* dsv{};
+        ID3D11ShaderResourceView* srv{};
+
+        Pipeline* pipeline{};
+
+        struct {
+            UniformBuffer* ub;
+            uint32_t ubPos;
+            uint32_t setPos;
+        }facewise[6];
+
+        D3D11_VIEWPORT viewport;
+        D3D11_RECT scissor;
+
+        uint32_t width, height;
+        bool recording = false;
     };
 
     /// @brief D3D11 셰이더 객체의 집합입니다. 어떤 멤버도 직접 사용할 수 없습니다.
@@ -504,8 +570,9 @@ namespace onart {
         friend class D3D11Machine;
         friend class RenderPass;
         private:
-            Pipeline(ID3D11VertexShader*, ID3D11HullShader*, ID3D11DomainShader*, ID3D11GeometryShader*, ID3D11PixelShader*, ID3D11DepthStencilState*, UINT stencilRef, vec4 clearColor);
+            Pipeline(ID3D11InputLayout*, ID3D11VertexShader*, ID3D11HullShader*, ID3D11DomainShader*, ID3D11GeometryShader*, ID3D11PixelShader*, ID3D11DepthStencilState*, UINT stencilRef, vec4 clearColor);
             ~Pipeline();
+            ID3D11InputLayout* layout;
             ID3D11VertexShader* vs;
             ID3D11HullShader* tcs;
             ID3D11DomainShader* tes;
@@ -544,12 +611,9 @@ namespace onart {
 
     class D3D11Machine::Mesh {
         friend class D3D11Machine;
-        public:
-            template<class... VATTR> void setInputLayout(void* vs, size_t size, unsigned locationPlus = 0, unsigned inputSlot = 0); // todo: 동일 타입 조합은 input layout 공유, todo 2: 여러 mesh 객체로 input layout 생성하는 static 함수로 대체
         private:
             Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib, DXGI_FORMAT indexFormat, size_t vcount, size_t icount);
             ~Mesh();
-            ID3D11InputLayout* layout{};
             ID3D11Buffer* vb;
             ID3D11Buffer* ib;
             const DXGI_FORMAT indexFormat;
@@ -649,36 +713,6 @@ namespace onart {
          * Otherwise the name is assumed to name a non-template.
          * */
     };
-
-    template<class VA1, class... VAS>
-    constexpr D3D11Machine::__mkmap* D3D11Machine::getLayoutFor(__mkmap* root) {
-        static_assert(VERTEX_ATTR_TYPE_INDEX<VA1> != -1, "Invalid vertex attribute type");
-        if constexpr (sizeof...(VAS) == 0) {
-            return &inputLayouts[VERTEX_ATTR_TYPE_INDEX<VA1>];
-        }
-        else {
-            if (root == nullptr) { root = &inputLayouts; }
-            return getLayoutFor<VAS...>(&((*root)[VERTEX_ATTR_TYPE_INDEX<VA1>]));
-        }
-    }
-
-    template<class... VATTR>
-    void D3D11Machine::Mesh::setInputLayout(void* vs, size_t size, unsigned locationPlus, unsigned inputSlot) {
-        D3D11Machine::__mkmap* stored = singleton->getLayoutFor<VATTR...>(&singleton->inputLayouts);
-        if (stored->layout) {
-            layout = stored->layout;
-        }
-        else {
-            D3D11_INPUT_ELEMENT_DESC attrs[sizeof...(VATTR)]{};
-            D3D11Machine::Vertex<VATTR...>::info(attrs, inputSlot, locationPlus);
-            HRESULT result = D3D11Machine::singleton->device->CreateInputLayout(attrs, sizeof...(VATTR), vs, size, &layout);
-
-            if (result != S_OK) {
-                LOGWITH("Failed to create input layout:", result);
-            }
-            stored->layout = layout;
-        }
-    }
 }
 
 #undef VERTEX_FLOAT_TYPES

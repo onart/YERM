@@ -15,6 +15,8 @@
 namespace onart {
 	D3D11Machine* D3D11Machine::singleton = nullptr;
     uint64_t D3D11Machine::currentRenderPass = 0;
+    const D3D11Machine::Mesh* D3D11Machine::RenderPass::bound = nullptr;
+
 	thread_local HRESULT D3D11Machine::reason = 0;
 
     constexpr uint64_t BC7_SCORE = 1LL << 53;
@@ -411,15 +413,6 @@ namespace onart {
 
         struct publicmesh :public Mesh { publicmesh(ID3D11Buffer* _1, ID3D11Buffer* _2, DXGI_FORMAT _3, size_t _4, size_t _5) :Mesh(_1, _2, _3, _4, _5) {} };
         ret = std::make_shared<publicmesh>(vb, nullptr, iFormat, vcount, 0);
-
-        /*
-        D3D11_INPUT_ELEMENT_DESC vbInfo{};
-        vbInfo.SemanticName = VS_SEMANTIC[0];
-        vbInfo.Format = DXGI_FORMAT_R8_UINT;
-        vbInfo.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
-
-        singleton->device->CreateInputLayout(&vbInfo, 1, nullptr, 0, &ret->layout);
-        */ // TODO: 모든 input layout을 타입조합별 공유로 옮김
         return singleton->meshes[key] = ret;
     }
 
@@ -909,6 +902,321 @@ namespace onart {
         return singleton->renderPasses[key] = ret;
     }
 
+    D3D11Machine::RenderPass2Cube* D3D11Machine::createRenderPass2Cube(uint32_t width, uint32_t height, int32_t key, bool useColor, bool useDepth) {
+        if (RenderPass2Cube* r = getRenderPass2Cube(key)) return r;
+        if (!useColor && !useDepth) {
+            LOGWITH("Either useColor or useDepth must be true");
+            return {};
+        }
+        D3D11_TEXTURE2D_DESC textureInfo{};
+        textureInfo.Width = width;
+        textureInfo.Height = height;
+        textureInfo.MipLevels = 1;
+        textureInfo.ArraySize = 6;
+        textureInfo.SampleDesc.Count = 1;
+        textureInfo.SampleDesc.Quality = 0;
+        textureInfo.Usage = D3D11_USAGE_DEFAULT;
+        textureInfo.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+
+        ID3D11Texture2D* colorMap{}, *depthMap{};
+        ID3D11RenderTargetView* colorView{};
+        ID3D11DepthStencilView* depthView{};
+        ID3D11ShaderResourceView* srv{};
+        if (useColor) {
+            textureInfo.Format = DXGI_FORMAT_R8G8B8A8_UINT;
+            textureInfo.BindFlags = D3D11_BIND_FLAG::D3D11_BIND_RENDER_TARGET | D3D11_BIND_FLAG::D3D11_BIND_SHADER_RESOURCE;
+            HRESULT result = singleton->device->CreateTexture2D(&textureInfo, nullptr, &colorMap);
+            if (result != S_OK) {
+                LOGWITH("Failed to create color target:", result);
+                return {};
+            }
+            D3D11_RENDER_TARGET_VIEW_DESC targetInfo{};
+            targetInfo.Format = textureInfo.Format;
+            targetInfo.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+            targetInfo.Texture2DArray.ArraySize = 6; // TODO: 그냥 GS 쓰게 만들거나 / RTV랑 DSV 6개로 분리하거나
+            targetInfo.Texture2DArray.FirstArraySlice = 0;
+            targetInfo.Texture2DArray.MipSlice = 0;
+            result = singleton->device->CreateRenderTargetView(colorMap, &targetInfo, &colorView);
+            if (result != S_OK) {
+                LOGWITH("Failed to create color target view:", result);
+                colorMap->Release();
+                return {};
+            }
+        }
+        if (useDepth) {
+            textureInfo.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+            textureInfo.BindFlags = D3D11_BIND_FLAG::D3D11_BIND_DEPTH_STENCIL;
+            if (!useColor) textureInfo.BindFlags |= D3D11_BIND_FLAG::D3D11_BIND_SHADER_RESOURCE;
+            HRESULT result = singleton->device->CreateTexture2D(&textureInfo, nullptr, &depthMap);
+            if (result != S_OK) {
+                LOGWITH("Failed to create depth target:", result);
+                if (colorMap) { 
+                    colorMap->Release();
+                    colorView->Release();
+                }
+                return {};
+            }
+            D3D11_DEPTH_STENCIL_VIEW_DESC targetInfo{};
+            targetInfo.Format = textureInfo.Format;
+            targetInfo.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+            targetInfo.Texture2DArray.ArraySize = 6;
+            targetInfo.Texture2DArray.FirstArraySlice = 0;
+            targetInfo.Texture2DArray.MipSlice = 0;
+            result = singleton->device->CreateDepthStencilView(depthMap, &targetInfo, &depthView);
+            if (result != S_OK) {
+                LOGWITH("Failed to create depth target view:", result);
+                depthMap->Release();
+                if (colorMap) {
+                    colorMap->Release();
+                    colorView->Release();
+                    return {};
+                }
+            }
+        }
+
+        D3D11_SHADER_RESOURCE_VIEW_DESC viewInfo{};
+        viewInfo.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+        viewInfo.TextureCube.MipLevels = 1;
+        viewInfo.TextureCube.MostDetailedMip = 0;
+        HRESULT result = singleton->device->CreateShaderResourceView(colorMap ? colorMap : depthMap, &viewInfo, &srv);
+        if (result != S_OK) {
+            LOGWITH("Failed to create shader resource view:", result);
+            if (colorMap) {
+                colorMap->Release();
+                colorView->Release();
+            }
+            if (depthMap) {
+                depthMap->Release();
+                depthView->Release();
+            }
+            return {};
+        }
+        
+        RenderPass2Cube* newPass = new RenderPass2Cube;
+        newPass->width = width;
+        newPass->height = height;
+
+        newPass->colorMap = colorMap;
+        newPass->depthMap = depthMap;
+        newPass->rtv = colorView;
+        newPass->dsv = depthView;
+        newPass->srv = srv;
+
+        newPass->viewport.TopLeftX = 0;
+        newPass->viewport.TopLeftY = 0;
+        newPass->viewport.Width = width;
+        newPass->viewport.Height = height;
+        newPass->viewport.MinDepth = 0.0f;
+        newPass->viewport.MaxDepth = 1.0f;
+
+        newPass->scissor.left = 0;
+        newPass->scissor.top = 0;
+        newPass->scissor.right = width;
+        newPass->scissor.bottom = height;
+    }
+
+    D3D11Machine::RenderPass2Cube::~RenderPass2Cube() {
+        if (colorMap) {
+            colorMap->Release();
+            rtv->Release();
+        }
+        if (depthMap) {
+            depthMap->Release();
+            dsv->Release();
+        }
+        srv->Release();
+    }
+
+    void D3D11Machine::RenderPass2Cube::bind(uint32_t pos, UniformBuffer* ub, uint32_t pass, uint32_t ubPos) {
+        if (!recording) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        if (pass >= 6) {
+            singleton->context->VSSetConstantBuffers(pos, 1, &ub->ubo);
+            singleton->context->PSSetConstantBuffers(pos, 1, &ub->ubo);
+        }
+        else {
+            facewise[pass].ub = ub;
+            facewise[pass].ubPos = ubPos;
+            facewise[pass].setPos = pos;
+        }
+    }
+
+    void D3D11Machine::RenderPass2Cube::bind(uint32_t pos, const pTexture& tx) {
+        if (!recording) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        singleton->context->VSSetShaderResources(pos, 1, &tx->dset);
+        singleton->context->PSSetShaderResources(pos, 1, &tx->dset); // 임시
+        singleton->context->PSSetSamplers(pos, 1, tx->linearSampled ? &singleton->linearBorderSampler : &singleton->nearestBorderSampler);
+    }
+
+    void D3D11Machine::RenderPass2Cube::bind(uint32_t pos, RenderTarget* target, uint32_t index) {
+        if (!recording) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        ID3D11ShaderResourceView* srv{};
+        switch (index)
+        {
+        case 0:
+            srv = target->color1->srv;
+            break;
+        case 1:
+            srv = target->color2->srv;
+            break;
+        case 2:
+            srv = target->color3->srv;
+            break;
+        case 3:
+            srv = target->ds->srv;
+            break;
+        default:
+            break;
+        }
+        if (!srv) {
+            LOGWITH("Warning: requested texture is empty");
+        }
+        singleton->context->VSSetShaderResources(pos, 1, &srv);
+        singleton->context->PSSetShaderResources(pos, 1, &srv); // 임시
+        singleton->context->PSSetSamplers(pos, 1, target->linearSampled ? &singleton->linearBorderSampler : &singleton->nearestBorderSampler);
+    }
+
+    void D3D11Machine::RenderPass2Cube::bind(uint32_t pos, const pStreamTexture& tx) {
+        if (!recording) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        singleton->context->VSSetShaderResources(pos, 1, &tx->dset);
+        singleton->context->PSSetShaderResources(pos, 1, &tx->dset); // 임시
+        singleton->context->PSSetSamplers(pos, 1, tx->linearSampled ? &singleton->linearBorderSampler : &singleton->nearestBorderSampler);
+    }
+
+    void D3D11Machine::RenderPass2Cube::usePipeline(Pipeline* pipeline) {
+        this->pipeline = pipeline;
+        if (recording) {
+            singleton->context->IASetInputLayout(pipeline->layout);
+            singleton->context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            singleton->context->VSSetShader(pipeline->vs, nullptr, 0);
+            singleton->context->HSSetShader(pipeline->tcs, nullptr, 0);
+            singleton->context->DSSetShader(pipeline->tes, nullptr, 0);
+            singleton->context->GSSetShader(pipeline->gs, nullptr, 0);
+            singleton->context->PSSetShader(pipeline->fs, nullptr, 0);
+            singleton->context->OMSetDepthStencilState(pipeline->dsState, 0);
+            singleton->context->OMSetBlendState(singleton->basicBlend, nullptr, 0xffffffff);
+        }
+    }
+
+    void D3D11Machine::RenderPass2Cube::push(void* input, uint32_t start, uint32_t end) {
+        singleton->uniformBuffers[INT32_MIN + 1]->update(input, 0, start, end - start);
+    }
+
+    void D3D11Machine::RenderPass2Cube::invoke(const pMesh& mesh, uint32_t start, uint32_t count) {
+        if (!recording) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        singleton->context->IASetVertexBuffers(0, 1, &mesh->vb, nullptr, nullptr);
+        if (mesh->icount) {
+            singleton->context->IASetIndexBuffer(mesh->ib, mesh->indexFormat, 0);
+            if ((uint64_t)start + count > mesh->icount) {
+                LOGWITH("Invalid call: this mesh has", mesh->icount, "indices but", start, "~", (uint64_t)start + count, "requested to be drawn");
+                return;
+            }
+            if (count == 0) {
+                count = mesh->icount - start;
+            }
+            for (int i = 0; i < 6; i++) {
+                auto& fwi = facewise[i];
+                if (fwi.ub) {
+                    singleton->context->VSSetConstantBuffers(fwi.setPos, 1, &fwi.ub->ubo);
+                    singleton->context->PSSetConstantBuffers(fwi.setPos, 1, &fwi.ub->ubo);
+                }
+                singleton->context->DrawIndexed(count, start, 0);
+            }
+        }
+        else {
+            if ((uint64_t)start + count > mesh->vcount) {
+                LOGWITH("Invalid call: this mesh has", mesh->vcount, "vertices but", start, "~", (uint64_t)start + count, "requested to be drawn");
+                return;
+            }
+            if (count == 0) {
+                count = mesh->vcount - start;
+            }
+            for (int i = 0; i < 6; i++) {
+                auto& fwi = facewise[i];
+                if (fwi.ub) {
+                    singleton->context->VSSetConstantBuffers(fwi.setPos, 1, &fwi.ub->ubo);
+                    singleton->context->PSSetConstantBuffers(fwi.setPos, 1, &fwi.ub->ubo);
+                }
+                singleton->context->Draw(count, start);
+            }
+        }
+    }
+
+    void D3D11Machine::RenderPass2Cube::invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart, uint32_t start, uint32_t count) {
+        if (!recording) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        ID3D11Buffer* vb[2] = { mesh->vb, instanceInfo->vb };
+        singleton->context->IASetVertexBuffers(0, 2, vb, nullptr, nullptr);
+        if (mesh->icount) {
+            singleton->context->IASetIndexBuffer(mesh->ib, mesh->indexFormat, 0);
+            if ((uint64_t)start + count > mesh->icount) {
+                LOGWITH("Invalid call: this mesh has", mesh->icount, "indices but", start, "~", (uint64_t)start + count, "requested to be drawn");
+                return;
+            }
+            if (count == 0) {
+                count = mesh->icount - start;
+            }
+            for (int i = 0; i < 6; i++) {
+                auto& fwi = facewise[i];
+                if (fwi.ub) {
+                    singleton->context->VSSetConstantBuffers(fwi.setPos, 1, &fwi.ub->ubo);
+                    singleton->context->PSSetConstantBuffers(fwi.setPos, 1, &fwi.ub->ubo);
+                }
+                singleton->context->DrawIndexedInstanced(count, instanceCount, start, 0, istart);
+            }
+        }
+        else {
+            if ((uint64_t)start + count > mesh->vcount) {
+                LOGWITH("Invalid call: this mesh has", mesh->vcount, "vertices but", start, "~", (uint64_t)start + count, "requested to be drawn");
+                return;
+            }
+            if (count == 0) {
+                count = mesh->vcount - start;
+            }
+            for (int i = 0; i < 6; i++) {
+                auto& fwi = facewise[i];
+                if (fwi.ub) {
+                    singleton->context->VSSetConstantBuffers(fwi.setPos, 1, &fwi.ub->ubo);
+                    singleton->context->PSSetConstantBuffers(fwi.setPos, 1, &fwi.ub->ubo);
+                }
+                singleton->context->DrawInstanced(count, instanceCount, start, istart);
+            }
+        }
+    }
+
+    void D3D11Machine::RenderPass2Cube::start() {
+        if (recording) {
+            LOGWITH("Invalid call: renderpass already started");
+            return;
+        }
+        if (!pipeline) {
+            LOGWITH("Pipeline not set:", this);
+            return;
+        }
+        wait();
+        recording = true;
+        usePipeline(pipeline);
+        singleton->context->RSSetViewports(1, &viewport);
+        singleton->context->RSSetScissorRects(1, &scissor);
+        // TODO: VS 기반 렌더링을 위한 타겟 세팅
+    }
+
     D3D11Machine::RenderTarget* D3D11Machine::createRenderTarget2D(int width, int height, int32_t key, RenderTargetType type, RenderTargetInputOption sampled, bool useDepthInput, bool useStencil, bool mmap) {
         auto it = singleton->renderTargets.find(key);
         if (it != singleton->renderTargets.end()) {
@@ -1098,15 +1406,23 @@ namespace onart {
         return nullptr;
     }
 
-    D3D11Machine::Pipeline* D3D11Machine::createPipeline(ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, bool depth, vec4 clearColor, UINT stencilRef, D3D11_DEPTH_STENCILOP_DESC* front, D3D11_DEPTH_STENCILOP_DESC* back, ID3D11DeviceChild* tc, ID3D11DeviceChild* te, ID3D11DeviceChild* gs) {
+    D3D11Machine::Pipeline* D3D11Machine::createPipeline(PipelineInputVertexSpec* vinfo, uint32_t vsize, uint32_t vattr, PipelineInputVertexSpec* iinfo, uint32_t isize, uint32_t iattr, void* vsBytecode, uint32_t codeSize, ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, bool depth, vec4 clearColor = {}, UINT stencilRef = 0, D3D11_DEPTH_STENCILOP_DESC* front = nullptr, D3D11_DEPTH_STENCILOP_DESC* back = nullptr, ID3D11DeviceChild* tc = nullptr, ID3D11DeviceChild* te = nullptr, ID3D11DeviceChild* gs = nullptr) {
         if (auto ret = getPipeline(name)) { return ret; }
+        std::vector<PipelineInputVertexSpec> inputLayoutInfo(vattr + iattr);
+        std::memcpy(inputLayoutInfo.data(), vinfo, vattr * sizeof(PipelineInputVertexSpec));
+        ID3D11InputLayout* layout{};
+        HRESULT result = singleton->device->CreateInputLayout(inputLayoutInfo.data(), vattr + iattr, vsBytecode, codeSize, &layout);
+        if (result != S_OK) { 
+            LOGWITH("Failed to create vertex input layout:", result);
+            return {};
+        }
         ID3D11VertexShader* vert = downcastShader<ID3D11VertexShader>(vs);
         ID3D11PixelShader* frag = downcastShader<ID3D11PixelShader>(fs);
         if (!vert || !frag) {
             LOGWITH("Vertex shader and Pixel shader must be provided");
             return {};
         }
-        
+
         ID3D11HullShader* tctrl = downcastShader<ID3D11HullShader>(tc);
         if (tc && !tctrl) {
             LOGWITH("Given hull shader is invalid");
@@ -1140,18 +1456,19 @@ namespace onart {
             return {};
         }
 
-        return singleton->pipelines[name] = new Pipeline(vert, tctrl, teval, geom, frag, dsState, stencilRef, clearColor);
+        return singleton->pipelines[name] = new Pipeline(layout, vert, tctrl, teval, geom, frag, dsState, stencilRef, clearColor);
     }
 
     unsigned D3D11Machine::createPipelineLayout(...) { return 0; }
     unsigned D3D11Machine::getPipelineLayout(int32_t) { return 0; }
 
-    D3D11Machine::Pipeline::Pipeline(ID3D11VertexShader* v, ID3D11HullShader* h, ID3D11DomainShader* d, ID3D11GeometryShader* g, ID3D11PixelShader* p, ID3D11DepthStencilState* dss, UINT stencilRef, vec4 clearColor)
-        :vs(v), tcs(h), tes(d), gs(g), fs(p), dsState(dss), stencilRef(stencilRef), clearColor(clearColor) {
+    D3D11Machine::Pipeline::Pipeline(ID3D11InputLayout* layout, ID3D11VertexShader* v, ID3D11HullShader* h, ID3D11DomainShader* d, ID3D11GeometryShader* g, ID3D11PixelShader* p, ID3D11DepthStencilState* dss, UINT stencilRef, vec4 clearColor)
+        :vs(v), tcs(h), tes(d), gs(g), fs(p), dsState(dss), stencilRef(stencilRef), clearColor(clearColor), layout(layout) {
     }
     
     D3D11Machine::Pipeline::~Pipeline() {
         dsState->Release();
+        layout->Release();
     }
 
 
@@ -1326,6 +1643,8 @@ namespace onart {
         }
         pipelines[subpass] = pipeline;
         if (currentPass == subpass) { 
+            singleton->context->IASetInputLayout(pipeline->layout);
+            singleton->context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             singleton->context->VSSetShader(pipeline->vs, nullptr, 0);
             singleton->context->HSSetShader(pipeline->tcs, nullptr, 0);
             singleton->context->DSSetShader(pipeline->tes, nullptr, 0);
@@ -1404,20 +1723,15 @@ namespace onart {
     }
 
     void D3D11Machine::RenderPass::invoke(const pMesh& mesh, uint32_t start, uint32_t count) {
-        if (!mesh->layout) {
-            LOGWITH("Given mesh has no layout. Call setInputLayout() with desired types");
-            return;
-        }
         if (bound != mesh.get()) {
             singleton->context->IASetVertexBuffers(0, 1, &mesh->vb, nullptr, nullptr);
-            singleton->context->IASetInputLayout(mesh->layout);
-            singleton->context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             bound = mesh.get();
         }
         
         if (mesh->ib) {
             if (count == 0)count = mesh->icount - start;
-            singleton->context->DrawIndexed(count, 0, 0);
+            singleton->context->IASetIndexBuffer(mesh->ib, mesh->indexFormat, 0);
+            singleton->context->DrawIndexed(count, start, 0);
         }
         else {
             if (count == 0)count = mesh->vcount - start;
@@ -1426,13 +1740,18 @@ namespace onart {
     }
 
     void D3D11Machine::RenderPass::invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart, uint32_t start, uint32_t count) {
-        if (!mesh->layout || !instanceInfo->layout) {
-            LOGWITH("Given mesh has no layout. Call setInputLayout() with desired types");
-            return;
-        }
         ID3D11Buffer* buf[2] = { mesh->vb,instanceInfo->vb };
         singleton->context->IASetVertexBuffers(0, 2, buf, nullptr, nullptr);
-        // TODO: 인스턴싱
+        bound = nullptr;
+        if (mesh->ib) {
+            if (count == 0)count = mesh->icount - start;
+            singleton->context->IASetIndexBuffer(mesh->ib, mesh->indexFormat, 0);
+            singleton->context->DrawIndexedInstanced(count, instanceCount, start, 0, istart);
+        }
+        else {
+            if (count == 0)count = mesh->vcount - start;
+            singleton->context->DrawInstanced(count, instanceCount, start, istart);
+        }
     }
 
     void D3D11Machine::RenderPass::execute(RenderPass* other) {
@@ -1561,12 +1880,11 @@ namespace onart {
     }
 
     D3D11Machine::Mesh::Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib, DXGI_FORMAT indexFormat, size_t vcount, size_t icount)
-        :vb(vb), ib(ib), indexFormat(indexFormat), vcount(vcount), icount(icount), layout{} {}
+        :vb(vb), ib(ib), indexFormat(indexFormat), vcount(vcount), icount(icount) {}
 
     D3D11Machine::Mesh::~Mesh() {
         if(vb) vb->Release();
         if (ib) ib->Release();
-        if (layout) layout->Release();
     }
 
     bool isThisFormatAvailable(ID3D11Device* device, DXGI_FORMAT format, UINT flags) {

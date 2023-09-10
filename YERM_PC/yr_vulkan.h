@@ -87,6 +87,7 @@ namespace onart {
             using pMesh = std::shared_ptr<Mesh>;
             /// @brief 푸시 상수를 제외한 셰이더 자원을 나타냅니다. 동시에 사용되지만 않는다면 여러 렌더패스 간에 공유될 수 있습니다.
             class UniformBuffer;
+            using PipelineInputVertexSpec = VkVertexInputAttributeDescription;
             /// @brief 렌더 타겟의 유형입니다.
             enum class RenderTargetType { 
                 /// @brief 색 버퍼 1개를 보유합니다.
