@@ -67,13 +67,10 @@ namespace onart {
             &lv,
             &context
         );
-
+        
         if (score & BC7_SCORE) {
             canUseBC7 = true;
         }
-
-        selectedAdapter->Release();
-
         if (result != S_OK) {
             LOGWITH("Failed to create d3d11 device:", result);
             reason = result;
@@ -82,7 +79,6 @@ namespace onart {
 
         int x, y;
         window->getFramebufferSize(&x, &y);
-
         createSwapchain(x, y, window);
         if (!swapchain.handle) {
             LOGWITH("Failed to create swapchain");
@@ -103,6 +99,7 @@ namespace onart {
         D3D11_SAMPLER_DESC samplerInfo{};
         samplerInfo.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
         samplerInfo.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
+        samplerInfo.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
         samplerInfo.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
         samplerInfo.MaxAnisotropy = 1;
         samplerInfo.MaxLOD = D3D11_FLOAT32_MAX;
@@ -112,10 +109,10 @@ namespace onart {
 
         samplerInfo.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT;
         device->CreateSamplerState(&samplerInfo, &nearestBorderSampler);
-
-        createUniformBuffer(1, 128, 0, INT32_MIN + 1);
-
         singleton = this;
+        if (createUniformBuffer(1, 128, 0, INT32_MIN + 1) == nullptr) {
+            singleton = nullptr;
+        }
     }
 
     void D3D11Machine::createSwapchain(uint32_t width, uint32_t height, Window* window) {
@@ -944,7 +941,7 @@ namespace onart {
             }
         }
         if (useDepth) {
-            textureInfo.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+            textureInfo.Format = DXGI_FORMAT_R24G8_TYPELESS;
             textureInfo.BindFlags = D3D11_BIND_FLAG::D3D11_BIND_DEPTH_STENCIL;
             if (!useColor) textureInfo.BindFlags |= D3D11_BIND_FLAG::D3D11_BIND_SHADER_RESOURCE;
             HRESULT result = singleton->device->CreateTexture2D(&textureInfo, nullptr, &depthMap);
@@ -957,7 +954,7 @@ namespace onart {
                 return {};
             }
             D3D11_DEPTH_STENCIL_VIEW_DESC targetInfo{};
-            targetInfo.Format = textureInfo.Format;
+            targetInfo.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
             targetInfo.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
             targetInfo.Texture2DArray.ArraySize = 6;
             targetInfo.Texture2DArray.FirstArraySlice = 0;
@@ -976,6 +973,7 @@ namespace onart {
 
         D3D11_SHADER_RESOURCE_VIEW_DESC viewInfo{};
         viewInfo.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+        viewInfo.Format = useColor ? DXGI_FORMAT_R8G8B8A8_UINT : DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
         viewInfo.TextureCube.MipLevels = 1;
         viewInfo.TextureCube.MostDetailedMip = 0;
         HRESULT result = singleton->device->CreateShaderResourceView(colorMap ? colorMap : depthMap, &viewInfo, &srv);
@@ -1200,6 +1198,10 @@ namespace onart {
         }
     }
 
+    bool D3D11Machine::RenderPass2Cube::wait(uint64_t) {
+        return true;
+    }
+
     void D3D11Machine::RenderPass2Cube::start() {
         if (recording) {
             LOGWITH("Invalid call: renderpass already started");
@@ -1230,8 +1232,8 @@ namespace onart {
         textureInfo.ArraySize = 1;
         textureInfo.SampleDesc.Count = 1;
         textureInfo.SampleDesc.Quality = 0;
-        textureInfo.Usage = mmap ? D3D11_USAGE_STAGING : D3D11_USAGE_DEFAULT;
-        textureInfo.CPUAccessFlags = mmap ? D3D11_CPU_ACCESS_FLAG::D3D11_CPU_ACCESS_READ : 0;
+        textureInfo.Usage = D3D11_USAGE_DEFAULT;
+        textureInfo.CPUAccessFlags = 0;
 
         textureInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // TODO: SRGB?
         textureInfo.BindFlags = D3D11_BIND_FLAG::D3D11_BIND_RENDER_TARGET | D3D11_BIND_FLAG::D3D11_BIND_SHADER_RESOURCE;
@@ -1406,7 +1408,7 @@ namespace onart {
         return nullptr;
     }
 
-    D3D11Machine::Pipeline* D3D11Machine::createPipeline(PipelineInputVertexSpec* vinfo, uint32_t vsize, uint32_t vattr, PipelineInputVertexSpec* iinfo, uint32_t isize, uint32_t iattr, void* vsBytecode, uint32_t codeSize, ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, bool depth, vec4 clearColor = {}, UINT stencilRef = 0, D3D11_DEPTH_STENCILOP_DESC* front = nullptr, D3D11_DEPTH_STENCILOP_DESC* back = nullptr, ID3D11DeviceChild* tc = nullptr, ID3D11DeviceChild* te = nullptr, ID3D11DeviceChild* gs = nullptr) {
+    D3D11Machine::Pipeline* D3D11Machine::createPipeline(PipelineInputVertexSpec* vinfo, uint32_t vsize, uint32_t vattr, PipelineInputVertexSpec* iinfo, uint32_t isize, uint32_t iattr, void* vsBytecode, uint32_t codeSize, ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, bool depth, vec4 clearColor, UINT stencilRef, D3D11_DEPTH_STENCILOP_DESC* front, D3D11_DEPTH_STENCILOP_DESC* back, ID3D11DeviceChild* tc, ID3D11DeviceChild* te, ID3D11DeviceChild* gs) {
         if (auto ret = getPipeline(name)) { return ret; }
         std::vector<PipelineInputVertexSpec> inputLayoutInfo(vattr + iattr);
         std::memcpy(inputLayoutInfo.data(), vinfo, vattr * sizeof(PipelineInputVertexSpec));
@@ -1450,7 +1452,7 @@ namespace onart {
         dsStateInfo.StencilReadMask = 0xff;
         if (back) dsStateInfo.BackFace = *back;
         if (front)dsStateInfo.FrontFace = *front;
-        HRESULT result = singleton->device->CreateDepthStencilState(&dsStateInfo, &dsState);
+        result = singleton->device->CreateDepthStencilState(&dsStateInfo, &dsState);
         if (result != S_OK) {
             LOGWITH("Failed to create depth stencil state:", result);
             return {};
@@ -1522,7 +1524,6 @@ namespace onart {
         bufferInfo.Usage = D3D11_USAGE_DYNAMIC;
         bufferInfo.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         bufferInfo.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-        
         HRESULT result = singleton->device->CreateBuffer(&bufferInfo, nullptr, &buffer);
         if (result != S_OK) {
             LOGWITH("Failed to create d3d11 buffer:", result);

@@ -329,9 +329,6 @@ namespace onart {
 
         std::map<ID3D11Texture2D*, ID3D11RenderTargetView*> screenTargets;
 
-        template<class VA1, class... VAS>
-        constexpr __mkmap* getLayoutFor(__mkmap* _ = nullptr);
-
         ID3D11BlendState* basicBlend;
         ID3D11SamplerState* linearBorderSampler;
         ID3D11SamplerState* nearestBorderSampler;

@@ -20,7 +20,6 @@
 #error "D3D12 not ready"
 // 
 #elif defined(YR_USE_D3D11)
-#error "D3D11 not ready"
 #include "yr_d3d11.h"
 namespace onart {
     using YRGraphics = D3D11Machine;
