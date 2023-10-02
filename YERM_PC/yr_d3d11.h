@@ -202,7 +202,7 @@ namespace onart {
         /// @param code 컴파일된 HLSL 바이너리
         /// @param size code의 길이
         /// @param key 이후 별도로 접근할 수 있는 이름을 지정합니다. 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다.
-        static ID3D11DeviceChild* createShader(const char* code, size_t size, int32_t key, ShaderType type = ShaderType::VERTEX);
+        static ID3D11DeviceChild* createShader(void* code, size_t size, int32_t key, ShaderType type = ShaderType::VERTEX);
         /// @brief 셰이더에서 사용할 수 있는 uniform 버퍼를 생성하여 리턴합니다. 이것을 해제하는 방법은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
         /// @param length D3D11은 동시에 여러 개 렌더링 명령이 수행될 수 없으므로 사용되지 않습니다.
         /// @param size 버퍼의 크기입니다.
@@ -609,15 +609,16 @@ namespace onart {
     class D3D11Machine::Mesh {
         friend class D3D11Machine;
         private:
-            Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib, DXGI_FORMAT indexFormat, size_t vcount, size_t icount);
+            Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib, DXGI_FORMAT indexFormat, size_t vcount, size_t icount, UINT vStride);
             ~Mesh();
             ID3D11Buffer* vb;
             ID3D11Buffer* ib;
             const DXGI_FORMAT indexFormat;
             const size_t vcount, icount;
+            const UINT vStride;
     };
-
-    constexpr LPCSTR VS_SEMANTIC[] = { u8"_0",u8"_1",u8"_2",u8"_3",u8"_4",u8"_5",u8"_6",u8"_7",u8"_8",u8"_9",u8"_10",u8"_11",u8"_12",u8"_13",u8"_14",u8"_15" };
+    
+    constexpr LPCSTR VS_SEMANTIC[] = { u8"_0_",u8"_1_",u8"_2_",u8"_3_",u8"_4_",u8"_5_",u8"_6_",u8"_7_",u8"_8_",u8"_9_",u8"_10_",u8"_11_",u8"_12_",u8"_13_",u8"_14_",u8"_15_" };
 
     template<class FATTR, class... ATTR>
     struct D3D11Machine::Vertex {
@@ -632,15 +633,15 @@ namespace onart {
         inline static constexpr DXGI_FORMAT getFormat() {
             if constexpr (is_one_of<F, VERTEX_FLOAT_TYPES>) {
                 if constexpr (sizeof(F) / sizeof(float) == 1) return DXGI_FORMAT_R32_SFLOAT;
-                if constexpr (std::is_same_v<F, vec2> || sizeof(F) / sizeof(float) == 2) return DXGI_FORMAT_R32G32_SFLOAT;
-                if constexpr (std::is_same_v<F, vec3> || sizeof(F) / sizeof(float) == 3) return DXGI_FORMAT_R32G32B32_SFLOAT;
-                return DXGI_FORMAT_R32G32B32A32_SFLOAT;
+                if constexpr (std::is_same_v<F, vec2> || sizeof(F) / sizeof(float) == 2) return DXGI_FORMAT_R32G32_FLOAT;
+                if constexpr (std::is_same_v<F, vec3> || sizeof(F) / sizeof(float) == 3) return DXGI_FORMAT_R32G32B32_FLOAT;
+                return DXGI_FORMAT_R32G32B32A32_FLOAT;
             }
             else if constexpr (is_one_of<F, VERTEX_DOUBLE_TYPES>) {
                 if constexpr (sizeof(F) / sizeof(double) == 1) return DXGI_FORMAT_R64_SFLOAT;
-                if constexpr (std::is_same_v<F, dvec2> || sizeof(F) / sizeof(double) == 2) return DXGI_FORMAT_R64G64_SFLOAT;
-                if constexpr (std::is_same_v<F, dvec3> || sizeof(F) / sizeof(double) == 3) return DXGI_FORMAT_R64G64B64_SFLOAT;
-                return DXGI_FORMAT_R64G64B64A64_SFLOAT;
+                if constexpr (std::is_same_v<F, dvec2> || sizeof(F) / sizeof(double) == 2) return DXGI_FORMAT_R64G64_FLOAT;
+                if constexpr (std::is_same_v<F, dvec3> || sizeof(F) / sizeof(double) == 3) return DXGI_FORMAT_R64G64B64_FLOAT;
+                return DXGI_FORMAT_R64G64B64A64_FLOAT;
             }
             else if constexpr (is_one_of<F, VERTEX_INT8_TYPES>) {
                 if constexpr (sizeof(F) == 1) return DXGI_FORMAT_R8_SINT;
@@ -710,6 +711,9 @@ namespace onart {
          * Otherwise the name is assumed to name a non-template.
          * */
     };
+
+    // 테스트를 위한 함수
+    ID3DBlob* compileShader(const char* code, size_t size, D3D11Machine::ShaderType type);
 }
 
 #undef VERTEX_FLOAT_TYPES

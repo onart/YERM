@@ -7,6 +7,8 @@
 #include "../externals/ktx/include/ktx.h"
 #include "../externals/single_header/stb_image.h"
 
+#include <d3dcompiler.h>
+#pragma comment(lib, "d3dcompiler.lib")
 #include <comdef.h>
 
 #pragma comment(lib, "d3d11.lib")
@@ -353,7 +355,7 @@ namespace onart {
 
     D3D11Machine::UniformBuffer* D3D11Machine::getUniformBuffer(int32_t key) {
         auto it = singleton->uniformBuffers.find(key);
-        if (it != singleton->uniformBuffers.find(key)) {
+        if (it != singleton->uniformBuffers.end()) {
             return it->second;
         }
         return {};
@@ -365,7 +367,7 @@ namespace onart {
 
     D3D11Machine::RenderTarget* D3D11Machine::getRenderTarget(int32_t key) {
         auto it = singleton->renderTargets.find(key);
-        if (it != singleton->renderTargets.find(key)) {
+        if (it != singleton->renderTargets.end()) {
             return it->second;
         }
         return {};
@@ -373,7 +375,7 @@ namespace onart {
 
     D3D11Machine::RenderPass* D3D11Machine::getRenderPass(int32_t key) {
         auto it = singleton->renderPasses.find(key);
-        if (it != singleton->renderPasses.find(key)) {
+        if (it != singleton->renderPasses.end()) {
             return it->second;
         }
         return {};
@@ -381,7 +383,7 @@ namespace onart {
 
     D3D11Machine::RenderPass2Cube* D3D11Machine::getRenderPass2Cube(int32_t key) {
         auto it = singleton->cubePasses.find(key);
-        if (it != singleton->cubePasses.find(key)) {
+        if (it != singleton->cubePasses.end()) {
             return it->second;
         }
         return {};
@@ -394,7 +396,7 @@ namespace onart {
         }
         D3D11_BUFFER_DESC bufferInfo{};
         bufferInfo.ByteWidth = vcount;
-        bufferInfo.Usage = D3D11_USAGE_IMMUTABLE;
+        bufferInfo.Usage = D3D11_USAGE_DEFAULT;
         bufferInfo.BindFlags = D3D11_BIND_VERTEX_BUFFER;
         bufferInfo.CPUAccessFlags = 0;
 
@@ -408,8 +410,8 @@ namespace onart {
             return {};
         }
 
-        struct publicmesh :public Mesh { publicmesh(ID3D11Buffer* _1, ID3D11Buffer* _2, DXGI_FORMAT _3, size_t _4, size_t _5) :Mesh(_1, _2, _3, _4, _5) {} };
-        ret = std::make_shared<publicmesh>(vb, nullptr, iFormat, vcount, 0);
+        struct publicmesh :public Mesh { publicmesh(ID3D11Buffer* _1, ID3D11Buffer* _2, DXGI_FORMAT _3, size_t _4, size_t _5, UINT _6) :Mesh(_1, _2, _3, _4, _5, _6) {} };
+        ret = std::make_shared<publicmesh>(vb, nullptr, iFormat, vcount, 0, 1);
         return singleton->meshes[key] = ret;
     }
 
@@ -458,8 +460,8 @@ namespace onart {
             }
         }
 
-        struct publicmesh :public Mesh { publicmesh(ID3D11Buffer* _1, ID3D11Buffer* _2, DXGI_FORMAT _3, size_t _4, size_t _5) :Mesh(_1,_2,_3,_4,_5) {} };
-        ret = std::make_shared<publicmesh>(vb, ib, iFormat, vcount, icount);
+        struct publicmesh :public Mesh { publicmesh(ID3D11Buffer* _1, ID3D11Buffer* _2, DXGI_FORMAT _3, size_t _4, size_t _5, UINT _6) :Mesh(_1,_2,_3,_4,_5,_6) {} };
+        ret = std::make_shared<publicmesh>(vb, ib, iFormat, vcount, icount, vsize);
         return singleton->meshes[key] = ret;
     }
 
@@ -484,7 +486,7 @@ namespace onart {
         return {};
     }
 
-    ID3D11DeviceChild* D3D11Machine::createShader(const char* code, size_t size, int32_t key, ShaderType type) {
+    ID3D11DeviceChild* D3D11Machine::createShader(void* code, size_t size, int32_t key, ShaderType type) {
         if (auto sh = getShader(key)) return sh;
         HRESULT result{};
         ID3D11DeviceChild* ret{};
@@ -1116,7 +1118,8 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        singleton->context->IASetVertexBuffers(0, 1, &mesh->vb, nullptr, nullptr);
+        UINT offset = 0;
+        singleton->context->IASetVertexBuffers(0, 1, &mesh->vb, &mesh->vStride, &offset);
         if (mesh->icount) {
             singleton->context->IASetIndexBuffer(mesh->ib, mesh->indexFormat, 0);
             if ((uint64_t)start + count > mesh->icount) {
@@ -1160,7 +1163,9 @@ namespace onart {
             return;
         }
         ID3D11Buffer* vb[2] = { mesh->vb, instanceInfo->vb };
-        singleton->context->IASetVertexBuffers(0, 2, vb, nullptr, nullptr);
+        UINT strides[2] = { mesh->vStride,instanceInfo->vStride };
+        UINT offsets[2]{};
+        singleton->context->IASetVertexBuffers(0, 2, vb, strides, offsets);
         if (mesh->icount) {
             singleton->context->IASetIndexBuffer(mesh->ib, mesh->indexFormat, 0);
             if ((uint64_t)start + count > mesh->icount) {
@@ -1344,8 +1349,11 @@ namespace onart {
         }
         if ((int)type & 0b1000) {
             ds = new ImageSet{};
-            textureInfo.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-            if (!useDepthInput) {
+            if (useDepthInput) {
+                textureInfo.Format = DXGI_FORMAT_R24G8_TYPELESS;
+            }
+            else {
+                textureInfo.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
                 textureInfo.BindFlags = D3D11_BIND_FLAG::D3D11_BIND_RENDER_TARGET;
             }
             HRESULT result = singleton->device->CreateTexture2D(&textureInfo, nullptr, (ID3D11Texture2D**)&ds->tex);
@@ -1360,22 +1368,25 @@ namespace onart {
                 if (rtv3) rtv3->Release();
                 return {};
             }
-            result = singleton->device->CreateShaderResourceView(ds->tex, &descInfo, &ds->srv);
-            if (result != S_OK) {
-                LOGWITH("Failed to create depth-stencil shader resoruce view:", result);
-                reason = result;
-                delete color1;
-                delete color2;
-                delete color3;
-                delete ds;
-                if (rtv1) rtv1->Release();
-                if (rtv2) rtv2->Release();
-                if (rtv3) rtv3->Release();
-                return {};
+            if (useDepthInput) {
+                descInfo.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+                result = singleton->device->CreateShaderResourceView(ds->tex, &descInfo, &ds->srv);
+                if (result != S_OK) {
+                    LOGWITH("Failed to create depth-stencil shader resoruce view:", result);
+                    reason = result;
+                    delete color1;
+                    delete color2;
+                    delete color3;
+                    delete ds;
+                    if (rtv1) rtv1->Release();
+                    if (rtv2) rtv2->Release();
+                    if (rtv3) rtv3->Release();
+                    return {};
+                }
             }
             
             D3D11_DEPTH_STENCIL_VIEW_DESC dsInfo{};
-            dsInfo.Format = textureInfo.Format;
+            dsInfo.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
             dsInfo.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
             dsInfo.Texture2D.MipSlice = 0;
 
@@ -1421,6 +1432,7 @@ namespace onart {
         ID3D11VertexShader* vert = downcastShader<ID3D11VertexShader>(vs);
         ID3D11PixelShader* frag = downcastShader<ID3D11PixelShader>(fs);
         if (!vert || !frag) {
+            LOGWITH(vert, frag);
             LOGWITH("Vertex shader and Pixel shader must be provided");
             return {};
         }
@@ -1552,7 +1564,7 @@ namespace onart {
     }
 
     D3D11Machine::RenderPass::RenderPass(RenderTarget** fb, uint16_t stageCount)
-        :stageCount(stageCount), targets(stageCount) {
+        :stageCount(stageCount), targets(stageCount), pipelines(stageCount) {
 
     }
 
@@ -1584,7 +1596,6 @@ namespace onart {
             currentPass--;
             return;
         }
-
         if (targets[currentPass]) {
             ID3D11RenderTargetView* rtvs[4] = {};
             UINT idx = 0;
@@ -1607,7 +1618,6 @@ namespace onart {
             ID3D11RenderTargetView* rtv = singleton->getSwapchainTarget();
             singleton->context->OMSetRenderTargets(1, &rtv, singleton->screenDSView);
         }
-
         if (currentPass > 0) {
             RenderTarget* prev = targets[currentPass - 1];
             if (prev->color1) bind(pos, prev, 0);
@@ -1619,6 +1629,10 @@ namespace onart {
         singleton->context->RSSetScissorRects(1, &scissor);
         usePipeline(pipelines[currentPass], currentPass);
         if (clearTarget) {
+            if (targets[currentPass] == nullptr) {
+                singleton->context->ClearRenderTargetView(singleton->getSwapchainTarget(), pipelines[currentPass]->clearColor.entry);
+                return;
+            }
             if(targets[currentPass]->dsetDS) singleton->context->ClearDepthStencilView(targets[currentPass]->dsetDS, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
             if (pipelines[currentPass]->clearColor.x >= 0 ||
                 pipelines[currentPass]->clearColor.y >= 0 ||
@@ -1725,7 +1739,8 @@ namespace onart {
 
     void D3D11Machine::RenderPass::invoke(const pMesh& mesh, uint32_t start, uint32_t count) {
         if (bound != mesh.get()) {
-            singleton->context->IASetVertexBuffers(0, 1, &mesh->vb, nullptr, nullptr);
+            UINT offset = 0;
+            singleton->context->IASetVertexBuffers(0, 1, &mesh->vb, &mesh->vStride, &offset);
             bound = mesh.get();
         }
         
@@ -1742,7 +1757,9 @@ namespace onart {
 
     void D3D11Machine::RenderPass::invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart, uint32_t start, uint32_t count) {
         ID3D11Buffer* buf[2] = { mesh->vb,instanceInfo->vb };
-        singleton->context->IASetVertexBuffers(0, 2, buf, nullptr, nullptr);
+        UINT strides[2] = { mesh->vStride,instanceInfo->vStride };
+        UINT offsets[2]{};
+        singleton->context->IASetVertexBuffers(0, 2, buf, strides, offsets);
         bound = nullptr;
         if (mesh->ib) {
             if (count == 0)count = mesh->icount - start;
@@ -1880,8 +1897,8 @@ namespace onart {
         }
     }
 
-    D3D11Machine::Mesh::Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib, DXGI_FORMAT indexFormat, size_t vcount, size_t icount)
-        :vb(vb), ib(ib), indexFormat(indexFormat), vcount(vcount), icount(icount) {}
+    D3D11Machine::Mesh::Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib, DXGI_FORMAT indexFormat, size_t vcount, size_t icount, UINT vStride)
+        :vb(vb), ib(ib), indexFormat(indexFormat), vcount(vcount), icount(icount), vStride(vStride) {}
 
     D3D11Machine::Mesh::~Mesh() {
         if(vb) vb->Release();
@@ -1954,5 +1971,37 @@ namespace onart {
             return DXGI_FORMAT_UNKNOWN;
         }
 #undef CHECK_N_RETURN
+    }
+
+    ID3DBlob* compileShader(const char* code, size_t size, D3D11Machine::ShaderType type) {
+        ID3DBlob* ret{};
+        ID3DBlob* result{};
+        char targ[] = { 'v','s','_','5','_','0',0 };
+        switch (type)
+        {
+        case onart::D3D11Machine::ShaderType::VERTEX:
+            targ[0] = 'v';
+            break;
+        case onart::D3D11Machine::ShaderType::FRAGMENT:
+            targ[0] = 'p';
+            break;
+        case onart::D3D11Machine::ShaderType::GEOMETRY:
+            targ[0] = 'g';
+            break;
+        case onart::D3D11Machine::ShaderType::TESS_CTRL:
+            targ[0] = 'h';
+            break;
+        case onart::D3D11Machine::ShaderType::TESS_EVAL:
+            targ[0] = 'd';
+            break;
+        default:
+            break;
+        }
+        HRESULT res = D3DCompile(code, size, toString((void*)code).c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", targ, 0, 0, &ret, &result);
+        if (res != S_OK) {
+            LOGWITH((char*)result->GetBufferPointer());
+            result->Release();
+        }
+        return ret;
     }
 }

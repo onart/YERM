@@ -154,7 +154,7 @@ namespace onart{
                 std::chrono::duration<uint64_t, std::nano> longDt = std::chrono::steady_clock::now() - longTp;
                 // [0, 2^52 - 1] 범위 정수를 균등 간격의 [1.0, 2.0) 범위 double로 대응시키는 함수에 십억을 적용한 후 1을 뺀 결과에 곱하여 1로 만들 수 있는 수
                 constexpr double ONE_SECOND = 1.0 / 0.0000002220446049250313080847263336181640625;
-
+                
                 uint64_t ndt = longDt.count() - _tp;
                 double ddt = (fixedPointConversion64i(ndt) - 1.0) * ONE_SECOND; // 함수를 사용할 수 없는 ndt의 상한선: 4,503,599,627,370,496 > 52일
                 double iddt = 1.0 / ddt;
@@ -363,6 +363,64 @@ void main() {
             YRGraphics::createNullMesh(3, 1);
             YRGraphics::createMesh(verts, sizeof(testv_t), 4, inds, 2, 6, 0)->setVAO<vec3, vec2>();
         }
+#elif defined(YR_USE_D3D11)
+        const char TEST_D11_VERT1[] = R"(
+struct VS_INPUT{
+    float3 inPosition: _0_;
+    float2 inTc: _1_;
+};
+
+struct PS_INPUT{
+    float4 pos: SV_POSITION;
+    float2 tc: TEXCOORD0;
+};
+
+cbuffer _0: register(b0){
+    float4x4 aspect;
+    float t;
+}
+
+PS_INPUT main(VS_INPUT input) {
+    PS_INPUT ret = (PS_INPUT)0;
+    ret.pos = mul(float4(input.inPosition, 1.0), aspect);
+    ret.tc = input.inTc;
+    return ret;
+}
+)";
+
+        const char TEST_D11_FRAG1[] = R"(
+
+struct PS_INPUT{
+    float4 pos: SV_POSITION;
+    float2 tc: TEXCOORD0;
+};
+
+Texture2D tex: register(t0);
+SamplerState spr: register(s0);
+
+cbuffer _0: register(b0){
+    float4x4 aspect;
+    float t;
+}
+
+float4 main(PS_INPUT input): SV_TARGET {
+    return tex.Sample(spr, input.tc);
+}
+)";
+        ID3DBlob* vsb = compileShader(TEST_D11_VERT1, sizeof(TEST_D11_VERT1), YRGraphics::ShaderType::VERTEX);
+        ID3DBlob* psb = compileShader(TEST_D11_FRAG1, sizeof(TEST_D11_FRAG1), YRGraphics::ShaderType::FRAGMENT);
+        auto vs = YRGraphics::createShader(vsb->GetBufferPointer(), vsb->GetBufferSize(), 0, YRGraphics::ShaderType::VERTEX);
+        auto ps = YRGraphics::createShader(psb->GetBufferPointer(), psb->GetBufferSize(), 1, YRGraphics::ShaderType::FRAGMENT);
+        YRGraphics::PipelineInputVertexSpec desc[2];
+        testv_t::info(desc, 0);
+        auto pp = YRGraphics::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, vsb->GetBufferPointer(), vsb->GetBufferSize(), vs, ps, 0, false);
+        offrp->usePipeline(pp, 0);
+        offrp->usePipeline(pp, 1);
+        rp2s->usePipeline(pp, 0);
+        //YRGraphics::asyncCreateTexture(TEX0, sizeof(TEX0), 4, [](variant8) { loaded = true; }, 0, YRGraphics::isSurfaceSRGB(), true, false);
+        YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB()); loaded = true;
+        YRGraphics::createNullMesh(3, 1);
+        YRGraphics::createMesh(verts, sizeof(testv_t), 4, inds, 2, 6, 0);
 #endif
         return true;
     }
