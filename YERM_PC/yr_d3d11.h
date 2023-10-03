@@ -332,6 +332,7 @@ namespace onart {
         ID3D11BlendState* basicBlend;
         ID3D11SamplerState* linearBorderSampler;
         ID3D11SamplerState* nearestBorderSampler;
+        ID3D11RasterizerState* basicRasterizer;
 
         struct ImageSet {
             ID3D11Resource* tex{};
@@ -341,7 +342,6 @@ namespace onart {
         };
 
         std::mutex textureGuard;
-        uint32_t surfaceWidth, surfaceHeight;
 
         std::vector<std::shared_ptr<RenderPass>> passes;
         enum vkm_strand {
@@ -596,8 +596,6 @@ namespace onart {
         inline static uint16_t getIndex() { return 0; }
         /// @brief 0을 리턴합니다.
         inline static int getLayout() { return 0; }
-        /// @brief 128바이트 크기의 고정 유니폼버퍼를 업데이트합니다. 이것은 모든 파이프라인이 공유하며, 셰이더의 바인딩 11번으로 접근할 수 있습니다.
-        static void updatePush(const void* input, uint32_t offset, uint32_t size);
     private:
         UniformBuffer(uint32_t length, ID3D11Buffer* ubo, uint32_t binding);
         ~UniformBuffer();

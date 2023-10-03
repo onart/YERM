@@ -375,7 +375,7 @@ struct PS_INPUT{
     float2 tc: TEXCOORD0;
 };
 
-cbuffer _0: register(b0){
+cbuffer _0: register(b13){
     float4x4 aspect;
     float t;
 }
@@ -398,7 +398,7 @@ struct PS_INPUT{
 Texture2D tex: register(t0);
 SamplerState spr: register(s0);
 
-cbuffer _0: register(b0){
+cbuffer _0: register(b13){
     float4x4 aspect;
     float t;
 }

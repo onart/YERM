@@ -88,6 +88,15 @@ namespace onart {
             return;
         }
 
+        D3D11_RASTERIZER_DESC rasterizerInfo{};
+        rasterizerInfo.CullMode = D3D11_CULL_NONE;
+        rasterizerInfo.FillMode = D3D11_FILL_SOLID;
+        rasterizerInfo.FrontCounterClockwise = true;
+        rasterizerInfo.ScissorEnable = true;
+        rasterizerInfo.MultisampleEnable = false;
+        device->CreateRasterizerState(&rasterizerInfo, &basicRasterizer);
+        context->RSSetState(basicRasterizer);
+
         D3D11_BLEND_DESC blendInfo{};
         blendInfo.RenderTarget[0].BlendEnable = true;
         blendInfo.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
@@ -96,23 +105,30 @@ namespace onart {
         blendInfo.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
         blendInfo.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
         blendInfo.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+        blendInfo.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
         device->CreateBlendState(&blendInfo, &basicBlend);
 
         D3D11_SAMPLER_DESC samplerInfo{};
         samplerInfo.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
         samplerInfo.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
         samplerInfo.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
-        samplerInfo.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
+        samplerInfo.ComparisonFunc = D3D11_COMPARISON_NEVER;
         samplerInfo.MaxAnisotropy = 1;
         samplerInfo.MaxLOD = D3D11_FLOAT32_MAX;
-
-        samplerInfo.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_LINEAR;
+        samplerInfo.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
         device->CreateSamplerState(&samplerInfo, &linearBorderSampler);
 
-        samplerInfo.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT;
+        samplerInfo.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
         device->CreateSamplerState(&samplerInfo, &nearestBorderSampler);
         singleton = this;
-        if (createUniformBuffer(1, 128, 0, INT32_MIN + 1) == nullptr) {
+        if (auto push = createUniformBuffer(1, 128, 0, INT32_MIN + 1)) {
+            context->VSSetConstantBuffers(13, 1, &push->ubo);
+            context->PSSetConstantBuffers(13, 1, &push->ubo);
+            context->GSSetConstantBuffers(13, 1, &push->ubo);
+            context->HSSetConstantBuffers(13, 1, &push->ubo);
+            context->DSSetConstantBuffers(13, 1, &push->ubo);
+        }
+        else {
             singleton = nullptr;
         }
     }
@@ -138,6 +154,10 @@ namespace onart {
                 swapchain.handle = nullptr;
                 reason = result;
                 return;
+            }
+            for (auto& renderPass : finalPasses) {
+                renderPass.second->setViewport((float)width, (float)height, 0, 0, true); // 이후 수정 필요: 기존과 동등한 비중
+                renderPass.second->setScissor(width, height, 0, 0, true); // 이후 수정 필요: 기존과 동등한 비중
             }
             return;
         }
@@ -242,6 +262,7 @@ namespace onart {
     }
 
     void D3D11Machine::free() {
+        basicRasterizer->Release();
         basicBlend->Release();
         linearBorderSampler->Release();
         nearestBorderSampler->Release();
@@ -359,11 +380,7 @@ namespace onart {
             return it->second;
         }
         return {};
-    }
-
-    void D3D11Machine::UniformBuffer::updatePush(const void* input, uint32_t offset, uint32_t size) {
-        singleton->uniformBuffers[INT32_MIN + 1]->update(input, 0, offset, size);
-    }
+    }    
 
     D3D11Machine::RenderTarget* D3D11Machine::getRenderTarget(int32_t key) {
         auto it = singleton->renderTargets.find(key);
@@ -451,7 +468,9 @@ namespace onart {
             else {
                 LOGWITH("Warning: index buffer size is not 2 nor 4");
             }
-            HRESULT result = singleton->device->CreateBuffer(&bufferInfo, &vertexData, &ib);
+            D3D11_SUBRESOURCE_DATA indexData{};
+            indexData.pSysMem = idata;
+            HRESULT result = singleton->device->CreateBuffer(&bufferInfo, &indexData, &ib);
             if (result != S_OK) {
                 LOGWITH("Failed to create index buffer:", result);
                 vb->Release();
@@ -868,7 +887,7 @@ namespace onart {
         if (subpassCount == 0) return nullptr;
         std::vector<RenderTarget*> targs(subpassCount);
         for (uint32_t i = 0; i < subpassCount - 1; i++) {
-            targs[i] = createRenderTarget2D(singleton->surfaceWidth, singleton->surfaceHeight, INT32_MIN, targets[i], RenderTargetInputOption::SAMPLED_LINEAR, useDepthAsInput ? useDepthAsInput[i] : false);
+            targs[i] = createRenderTarget2D(singleton->swapchain.width, singleton->swapchain.height, INT32_MIN, targets[i], RenderTargetInputOption::SAMPLED_LINEAR, useDepthAsInput ? useDepthAsInput[i] : false);
             if (!targs[i]) {
                 LOGHERE;
                 for (RenderTarget* t : targs) delete t;
@@ -878,8 +897,8 @@ namespace onart {
 
         RenderPass* ret = new RenderPass(targs.data(), subpassCount);
         ret->targets = std::move(targs);
-        ret->setViewport((float)singleton->surfaceWidth, (float)singleton->surfaceHeight, 0.0f, 0.0f);
-        ret->setScissor(singleton->surfaceWidth, singleton->surfaceHeight, 0, 0);
+        ret->setViewport((float)singleton->swapchain.width, (float)singleton->swapchain.height, 0.0f, 0.0f);
+        ret->setScissor(singleton->swapchain.width, singleton->swapchain.height, 0, 0);
         if (key == INT32_MIN) return ret;
         return singleton->finalPasses[key] = ret;
     }
@@ -1013,6 +1032,7 @@ namespace onart {
         newPass->scissor.top = 0;
         newPass->scissor.right = width;
         newPass->scissor.bottom = height;
+        return singleton->cubePasses[key] = newPass;
     }
 
     D3D11Machine::RenderPass2Cube::~RenderPass2Cube() {
@@ -1030,6 +1050,10 @@ namespace onart {
     void D3D11Machine::RenderPass2Cube::bind(uint32_t pos, UniformBuffer* ub, uint32_t pass, uint32_t ubPos) {
         if (!recording) {
             LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        if (ubPos == 13) {
+            LOGWITH("Invalid call: bind pos 13 is reserved for push()");
             return;
         }
         if (pass >= 6) {
@@ -1516,7 +1540,7 @@ namespace onart {
         }
         else { // 일반적인 사용 패턴대로, 맵은 유지하지 않도록 함
             D3D11_MAPPED_SUBRESOURCE mappedResource;
-            if (singleton->context->Map(ubo, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource) == S_OK)
+            if (singleton->context->Map(ubo, 0, D3D11_MAP_WRITE_NO_OVERWRITE, 0, &mappedResource) == S_OK)
             {
                 std::memcpy((uint8_t*)mappedResource.pData + offset, input, size);
                 singleton->context->Unmap(ubo, 0);
@@ -1676,6 +1700,10 @@ namespace onart {
     }
 
     void D3D11Machine::RenderPass::bind(uint32_t pos, UniformBuffer* ub, uint32_t ubPos) {
+        if (ubPos == 13) {
+            LOGWITH("Invalid call: bind pos 13 is reserved for push()");
+            return;
+        }
         if (currentPass >= 0) {
             singleton->context->VSSetConstantBuffers(pos, 1, &ub->ubo);
             singleton->context->PSSetConstantBuffers(pos, 1, &ub->ubo); // 임시
