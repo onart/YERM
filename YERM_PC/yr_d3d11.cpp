@@ -30,7 +30,7 @@ namespace onart {
 
     D3D11Machine::D3D11Machine(Window* window) {
         if (singleton) {
-            LOGWITH("Tried to create multiple GLMachine objects");
+            LOGWITH("Tried to create multiple D3D11Machine objects");
             return;
         }
         
@@ -266,23 +266,36 @@ namespace onart {
         basicBlend->Release();
         linearBorderSampler->Release();
         nearestBorderSampler->Release();
-        for (auto& shader : shaders) {
-            shader.second->Release();
-        }
+        for (auto& shader : shaders) { shader.second->Release(); }
         shaders.clear();
         meshes.clear();
         textures.clear();
+        streamTextures.clear();
 
         for (auto& buf : screenTargets) {
             buf.first->Release();
             buf.second->Release();
         }
         screenTargets.clear();
+        for (auto& rt : renderTargets) { delete rt.second; }
+        renderTargets.clear();
+        for (auto& rp : renderPasses) { delete rp.second; }
+        renderPasses.clear();
+        for (auto& rp : finalPasses) { delete rp.second; }
+        finalPasses.clear();
+        for (auto& rp : cubePasses) { delete rp.second; }
+        cubePasses.clear();
+        for (auto& ub : uniformBuffers) { delete ub.second; }
+        uniformBuffers.clear();
+        for (auto& pp : pipelines) { delete pp.second; }
+        pipelines.clear();
 
         if (screenDSView) screenDSView->Release();
         if (swapchain.handle) swapchain.handle->Release();
-        device->Release();
+        context->ClearState();
+        context->Flush();
         context->Release();
+        device->Release();
     }
 
     ID3D11RenderTargetView* D3D11Machine::getSwapchainTarget() {
@@ -1438,6 +1451,7 @@ namespace onart {
         if (!child) return nullptr;
         T* obj;
         if (SUCCEEDED(child->QueryInterface(__uuidof(T), (void**)&obj))) {
+            obj->Release();
             return obj;
         }
         return nullptr;

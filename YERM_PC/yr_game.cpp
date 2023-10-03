@@ -421,6 +421,8 @@ float4 main(PS_INPUT input): SV_TARGET {
         YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB()); loaded = true;
         YRGraphics::createNullMesh(3, 1);
         YRGraphics::createMesh(verts, sizeof(testv_t), 4, inds, 2, 6, 0);
+        vsb->Release();
+        psb->Release();
 #endif
         return true;
     }
