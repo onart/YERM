@@ -42,6 +42,7 @@ namespace onart {
         if (id == 131202) { format--; } // TODO: 같은 카드인데 vk에서 되는게 여기서 안되는 이유 (드라이버 때문일 수 있음)
     }
 
+    static void enableAttribute(int stride, const GLMachine::PipelineInputVertexSpec& type);
     /// @brief 주어진 기반 형식과 아귀가 맞는, 현재 장치에서 사용 가능한 압축 형식을 리턴합니다.
     static int textureFormatFallback(uint32_t nChannels, bool srgb, bool hq);
     /// @brief OpenGL 에러 코드를 스트링으로 표현합니다. 리턴되는 문자열은 텍스트(코드) 영역에 존재합니다.
@@ -144,10 +145,10 @@ namespace onart {
         glBindBufferRange(GL_UNIFORM_BUFFER, 11, push->ubo, 0, 128);
     }
 
-    unsigned GLMachine::getPipeline(int32_t name){
+    GLMachine::Pipeline* GLMachine::getPipeline(int32_t name){
         auto it = singleton->pipelines.find(name);
         if(it != singleton->pipelines.end()) return it->second;
-        else return 0;
+        else return {};
     }
 
     unsigned GLMachine::getPipelineLayout(int32_t name){ return 0; }
@@ -231,7 +232,7 @@ namespace onart {
         for(auto& rp: renderPasses) { delete rp.second; }
         for(auto& rt : renderTargets) { delete rt.second; }
         for(auto& sh: shaders) { glDeleteShader(sh.second); }
-        for(auto& pp: pipelines) { glDeleteProgram(pp.second); }
+        for(auto& pp: pipelines) { delete pp.second; }
 
         streamTextures.clear();
         textures.clear();
@@ -257,9 +258,6 @@ namespace onart {
         if(m) { return m; }
         struct publicmesh:public Mesh{publicmesh(unsigned _1, unsigned _2, size_t _3, size_t _4, bool _5):Mesh(_1,_2,_3,_4,_5){}};
         pMesh ret = std::make_shared<publicmesh>(0, 0, vcount, 0, false);
-        unsigned vao = 0;
-        glGenVertexArrays(1, &vao);
-        ret->vao = vao;
         if(name == INT32_MIN) return ret;
         return singleton->meshes[name] = ret;
     }
@@ -1132,8 +1130,8 @@ namespace onart {
         return singleton->renderPasses[name] = ret;
     }
 
-    unsigned GLMachine::createPipeline(unsigned vs, unsigned fs, int32_t name, unsigned tc, unsigned te, unsigned gs){
-        unsigned ret = getPipeline(name);
+    GLMachine::Pipeline* GLMachine::createPipeline(PipelineInputVertexSpec* vinfo, uint32_t vsize, uint32_t vattr, PipelineInputVertexSpec* iinfo, uint32_t isize, uint32_t iattr, unsigned vs, unsigned fs, int32_t name, unsigned tc, unsigned te, unsigned gs){
+        Pipeline* ret = getPipeline(name);
         if(ret) {
             return ret;
         }
@@ -1186,27 +1184,28 @@ namespace onart {
             return 0;
         }
 
-        if (name == INT32_MIN) return prog;
-        return singleton->pipelines[name] = prog;
+        ret = singleton->pipelines[name] = new Pipeline(prog, {}, vsize, isize);
+        ret->vspec.resize(vattr);
+        ret->ispec.resize(iattr);
+        std::memcpy(ret->vspec.data(), vinfo, sizeof(vinfo[0]) * vattr);
+        std::memcpy(ret->ispec.data(), iinfo, sizeof(iinfo[0]) * iattr);
+        return ret;
     }
 
     unsigned GLMachine::createPipelineLayout(...){
         return 0;
     }
 
-    static void dummyBinder(size_t, uint32_t, uint32_t) {}
-
-    GLMachine::Mesh::Mesh(unsigned vb, unsigned ib, size_t vcount, size_t icount, bool use32) :vb(vb), ib(ib), vcount(vcount), icount(icount), idxType(use32 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT), vao(0), vaoBinder(dummyBinder) {}
-    GLMachine::Mesh::~Mesh(){ 
-        glDeleteVertexArrays(1, &vao);
-        glDeleteBuffers(1, &vb);
-        glDeleteBuffers(1, &ib);
+    GLMachine::Pipeline::Pipeline(unsigned program, vec4 clearColor, unsigned vstr, unsigned istr) :program(program), clearColor(clearColor), vertexSize(vstr), instanceAttrStride(istr) {}
+    GLMachine::Pipeline::~Pipeline() {
+        glDeleteProgram(program);
     }
 
-    void GLMachine::Mesh::unbindVAO() {
-        glBindVertexArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    GLMachine::Mesh::Mesh(unsigned vb, unsigned ib, size_t vcount, size_t icount, bool use32) :vb(vb), ib(ib), vcount(vcount), icount(icount), idxType(use32 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT) {}
+    GLMachine::Mesh::~Mesh(){ 
+        glDeleteBuffers(1, &vb);
+        glDeleteBuffers(1, &ib);
+        if (vao) { glDeleteVertexArrays(1, &vao); }
     }
 
     void GLMachine::Mesh::update(const void* input, uint32_t offset, uint32_t size){
@@ -1251,13 +1250,13 @@ namespace onart {
         }
     }
 
-    void GLMachine::RenderPass::usePipeline(unsigned pipeline, unsigned subpass){
+    void GLMachine::RenderPass::usePipeline(Pipeline* pipeline, unsigned subpass){
         if(subpass > stageCount){
             LOGWITH("Invalid subpass. This renderpass has", stageCount, "subpasses but", subpass, "given");
             return;
         }
         pipelines[subpass] = pipeline;
-        if(currentPass == subpass) { glUseProgram(pipeline); }
+        if(currentPass == subpass) { glUseProgram(pipeline->program); }
     }
 
     void GLMachine::RenderPass::setViewport(float width, float height, float x, float y, bool applyNow){
@@ -1344,7 +1343,28 @@ namespace onart {
             return;
         }
         
-        if((bound != mesh.get()) && (mesh->vao != 0)) {
+        if((bound != mesh.get())) {
+            if (!mesh->vao) {
+                glCreateVertexArrays(1, &mesh->vao);
+                if (mesh->vao == 0) {
+                    LOGWITH("Failed to create vertex array object");
+                    return;
+                }
+                glBindVertexArray(mesh->vao);
+                glBindBuffer(GL_ARRAY_BUFFER, mesh->vb);
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ib);
+                Pipeline* p = pipelines[currentPass];
+                pipelines[currentPass]->vspec;
+                pipelines[currentPass]->ispec;
+
+                uint32_t location = 0;
+                for (; location < p->vspec.size(); location++) {
+                    enableAttribute(p->vertexSize, p->vspec[location]);
+                }
+                glBindVertexArray(0);
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+            }
             glBindVertexArray(mesh->vao);
         }
         if(mesh->icount) {
@@ -1377,12 +1397,34 @@ namespace onart {
              LOGWITH("Invalid call: render pass not begun");
              return;
          }
-         if ((bound != mesh.get()) && (mesh->vb != 0)) {
+         if (!mesh->vao) {
+             glCreateVertexArrays(1, &mesh->vao);
+             if (mesh->vao == 0) {
+                 LOGWITH("Failed to create vertex array object");
+                 return;
+             }
              glBindVertexArray(mesh->vao);
+             glBindBuffer(GL_ARRAY_BUFFER, mesh->vb);
+             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ib);
+             Pipeline* p = pipelines[currentPass];
+             pipelines[currentPass]->vspec;
+             pipelines[currentPass]->ispec;
+
+             uint32_t location = 0;
+             for (; location < p->vspec.size(); location++) {
+                 enableAttribute(p->vertexSize, p->vspec[location]);
+             }
+             glBindBuffer(GL_ARRAY_BUFFER, instanceInfo->vb);
+             uint32_t iloc = 0;
+             for (; iloc < p->ispec.size(); iloc++, location++) {
+                 enableAttribute(p->instanceAttrStride, p->ispec[iloc]);
+                 glVertexAttribDivisor(location, 1);
+             }
+             glBindBuffer(GL_ARRAY_BUFFER, 0);
+             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
          }
-         instanceInfo->vaoBinder(0, 0, mesh->attrCount);
-         for (unsigned i = mesh->attrCount; i < mesh->attrCount + instanceInfo->attrCount; i++) {
-             glVertexAttribDivisor(i, 1);
+         else {
+             glBindVertexArray(mesh->vao);
          }
          if(mesh->icount) {
              if((uint64_t)start + count > mesh->icount){
@@ -1405,9 +1447,6 @@ namespace onart {
                  count = mesh->vcount - start;
              }
              glDrawArraysInstanced(GL_TRIANGLES, start, count, instanceCount);
-         }
-         for (int i = mesh->attrCount; i < mesh->attrCount + instanceInfo->attrCount; i++) {
-             glDisableVertexArrayAttrib(mesh->vao, i);
          }
          bound = nullptr;
     }
@@ -1455,7 +1494,7 @@ namespace onart {
             if (prev->depthStencil) bind(3, prev, 3);
         }
 
-        glUseProgram(pipelines[currentPass]);
+        glUseProgram(pipelines[currentPass]->program);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
         glViewport(viewport.x, viewport.y, viewport.width, viewport.height);
         glDepthRange(viewport.minDepth, viewport.maxDepth);
@@ -1542,10 +1581,13 @@ namespace onart {
             return;
         }
          glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-         if ((bound != mesh.get()) && (mesh->vao != 0)) {
-             glBindVertexArray(mesh->vao);
+         if ((bound != mesh.get()) && (mesh->vb != 0)) {
+             glBindBuffer(GL_ARRAY_BUFFER, mesh->vb);
          }
          if (mesh->icount) {
+             if (bound != mesh.get() && (mesh->ib != 0)) {
+                 glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ib);
+             }
              if ((uint64_t)start + count > mesh->icount) {
                  LOGWITH("Invalid call: this mesh has", mesh->icount, "indices but", start, "~", (uint64_t)start + count, "requested to be drawn");
                  bound = nullptr;
@@ -1591,12 +1633,8 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
          }
-         if ((bound != mesh.get()) && (mesh->vao != 0)) {
-             glBindVertexArray(mesh->vao);
-         }
-         instanceInfo->vaoBinder(0, 0, mesh->attrCount);
-         for (int i = mesh->attrCount; i < mesh->attrCount + instanceInfo->attrCount; i++) {
-             glVertexAttribDivisor(i, 1);
+         if ((bound != mesh.get()) && (mesh->vb != 0)) {
+             glBindVertexArray(mesh->vb);
          }
          if (mesh->icount) {
              if ((uint64_t)start + count > mesh->icount) {
@@ -1635,9 +1673,6 @@ namespace onart {
                  }
                  glDrawArraysInstanced(GL_TRIANGLES, start, count, instanceCount);
              }
-         }
-         for (int i = mesh->attrCount; i < mesh->attrCount + instanceInfo->attrCount; i++) {
-             glDisableVertexArrayAttrib(mesh->vao, i);
          }
         bound = nullptr;
     }
@@ -1788,41 +1823,33 @@ namespace onart {
         GLMachine::reason = id;
     }
 
-    unsigned createVA(unsigned vb, unsigned ib) {
-        unsigned vao;
-        glGenVertexArrays(1, &vao);
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER, vb);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib);
-        return vao;
-    }
-
-    void enableAttribute(int index, int stride, int offset, _vattr type){
-        glEnableVertexAttribArray(index);
+    void enableAttribute(int stride, const GLMachine::PipelineInputVertexSpec& type) {
+        glEnableVertexAttribArray(type.index);
+        using __elem_t = decltype(type.type);
         switch(type.type){
-            case _vattr::t::F32:
-                glVertexAttribPointer(index, type.dim, GL_FLOAT, GL_FALSE, stride, (void*)offset);
+            case __elem_t::F32:
+                glVertexAttribPointer(type.index, type.dim, GL_FLOAT, GL_FALSE, stride, (void*)type.offset);
                 break;
-            case _vattr::t::F64:
-                glVertexAttribPointer(index, type.dim, GL_DOUBLE, GL_FALSE, stride, (void*)offset);
+            case __elem_t::F64:
+                glVertexAttribPointer(type.index, type.dim, GL_DOUBLE, GL_FALSE, stride, (void*)type.offset);
                 break;
-            case _vattr::t::I8:
-                glVertexAttribIPointer(index, type.dim, GL_BYTE, stride, (void*)offset);
+            case __elem_t::I8:
+                glVertexAttribIPointer(type.index, type.dim, GL_BYTE, stride, (void*)type.offset);
                 break;
-            case _vattr::t::I16:
-                glVertexAttribIPointer(index, type.dim, GL_SHORT, stride, (void*)offset);
+            case __elem_t::I16:
+                glVertexAttribIPointer(type.index, type.dim, GL_SHORT, stride, (void*)type.offset);
                 break;
-            case _vattr::t::I32:
-                glVertexAttribIPointer(index, type.dim, GL_INT, stride, (void*)offset);
+            case __elem_t::I32:
+                glVertexAttribIPointer(type.index, type.dim, GL_INT, stride, (void*)type.offset);
                 break;
-            case _vattr::t::U8:
-                glVertexAttribIPointer(index, type.dim, GL_UNSIGNED_BYTE, stride, (void*)offset);
+            case __elem_t::U8:
+                glVertexAttribIPointer(type.index, type.dim, GL_UNSIGNED_BYTE, stride, (void*)type.offset);
                 break;
-            case _vattr::t::U16:
-                glVertexAttribIPointer(index, type.dim, GL_UNSIGNED_SHORT, stride, (void*)offset);
+            case __elem_t::U16:
+                glVertexAttribIPointer(type.index, type.dim, GL_UNSIGNED_SHORT, stride, (void*)type.offset);
                 break;
-            case _vattr::t::U32:
-                glVertexAttribIPointer(index, type.dim, GL_UNSIGNED_INT, stride, (void*)offset);
+            case __elem_t::U32:
+                glVertexAttribIPointer(type.index, type.dim, GL_UNSIGNED_INT, stride, (void*)type.offset);
                 break;
         }
     }

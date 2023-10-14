@@ -40,7 +40,6 @@
 #define VERTEX_UINT32_TYPES uint32_t, uvec2, uvec3, uvec4, uint32_t[1], uint32_t[2], uint32_t[3], uint32_t[4]
 
 #define VERTEX_ATTR_TYPES VERTEX_FLOAT_TYPES, \
-                VERTEX_DOUBLE_TYPES, \
                 VERTEX_INT8_TYPES, \
                 VERTEX_UINT8_TYPES,\
                 VERTEX_INT16_TYPES,\
@@ -634,12 +633,6 @@ namespace onart {
                 if constexpr (std::is_same_v<F, vec2> || sizeof(F) / sizeof(float) == 2) return DXGI_FORMAT_R32G32_FLOAT;
                 if constexpr (std::is_same_v<F, vec3> || sizeof(F) / sizeof(float) == 3) return DXGI_FORMAT_R32G32B32_FLOAT;
                 return DXGI_FORMAT_R32G32B32A32_FLOAT;
-            }
-            else if constexpr (is_one_of<F, VERTEX_DOUBLE_TYPES>) {
-                if constexpr (sizeof(F) / sizeof(double) == 1) return DXGI_FORMAT_R64_SFLOAT;
-                if constexpr (std::is_same_v<F, dvec2> || sizeof(F) / sizeof(double) == 2) return DXGI_FORMAT_R64G64_FLOAT;
-                if constexpr (std::is_same_v<F, dvec3> || sizeof(F) / sizeof(double) == 3) return DXGI_FORMAT_R64G64B64_FLOAT;
-                return DXGI_FORMAT_R64G64B64A64_FLOAT;
             }
             else if constexpr (is_one_of<F, VERTEX_INT8_TYPES>) {
                 if constexpr (sizeof(F) == 1) return DXGI_FORMAT_R8_SINT;

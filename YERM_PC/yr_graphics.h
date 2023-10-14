@@ -34,7 +34,7 @@ namespace onart {
 namespace onart{
     using YRGraphics = GLMachine;
     using pipelinelayout_t = unsigned;
-    using pipeline_t = unsigned;
+    using pipeline_t = GLMachine::Pipeline*;
     using shader_t = unsigned;
     using descriptorSet_t = int;
     using descriptorSetLayout_t = int;

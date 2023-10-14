@@ -354,14 +354,16 @@ void main() {
         if constexpr (YRGraphics::OPENGL_GRAPHICS) {
             auto vs = YRGraphics::createShader(TEST_GL_VERT1, sizeof(TEST_GL_VERT1), 0, YRGraphics::ShaderType::VERTEX);
             auto fs = YRGraphics::createShader(TEST_GL_FRAG1, sizeof(TEST_GL_FRAG1), 1, YRGraphics::ShaderType::FRAGMENT);
-            auto pp = YRGraphics::createPipeline(vs, fs, 0);
+            YRGraphics::PipelineInputVertexSpec sp[2];
+            testv_t::info(sp);
+            auto pp = YRGraphics::createPipeline(sp,sizeof(testv_t),2,nullptr, 0, 0, vs, fs, 0);
             offrp->usePipeline(pp, 0);
             offrp->usePipeline(pp, 1);
             rp2s->usePipeline(pp, 0);
             //YRGraphics::asyncCreateTexture(TEX0, sizeof(TEX0), 4, [](variant8) { loaded = true; }, 0, YRGraphics::isSurfaceSRGB(), true, false);
             YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB()); loaded = true;
             YRGraphics::createNullMesh(3, 1);
-            YRGraphics::createMesh(verts, sizeof(testv_t), 4, inds, 2, 6, 0)->setVAO<vec3, vec2>();
+            YRGraphics::createMesh(verts, sizeof(testv_t), 4, inds, 2, 6, 0);
         }
 #elif defined(YR_USE_D3D11)
         const char TEST_D11_VERT1[] = R"(

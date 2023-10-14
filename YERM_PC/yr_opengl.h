@@ -69,6 +69,8 @@ namespace onart {
             using RenderPass2Screen = RenderPass;
             /// @brief 큐브맵에 그리기 위한 렌더 패스입니다.
             class RenderPass2Cube;
+            class Pipeline;
+            struct PipelineInputVertexSpec;
             /// @brief 직접 불러오는 텍스처입니다.
             class Texture;
             using pTexture = std::shared_ptr<Texture>;
@@ -222,7 +224,7 @@ namespace onart {
             /// @param tc 테셀레이션 컨트롤 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
             /// @param te 테셀레이션 계산 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
             /// @param gs 지오메트리 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
-            static unsigned createPipeline(unsigned vs, unsigned fs, int32_t name, unsigned tc = 0, unsigned te = 0, unsigned gs = 0);
+            static Pipeline* createPipeline(PipelineInputVertexSpec* vinfo, uint32_t vsize, uint32_t vattr, PipelineInputVertexSpec* iinfo, uint32_t isize, uint32_t iattr, unsigned vs, unsigned fs, int32_t name, unsigned tc = 0, unsigned te = 0, unsigned gs = 0);
             /// @brief 정점 버퍼(모델) 객체를 생성합니다.
             /// @param vdata 정점 데이터
             /// @param vsize 정점 하나의 크기(바이트)
@@ -244,7 +246,7 @@ namespace onart {
             /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.
             static RenderPass2Cube* getRenderPass2Cube(int32_t key);
             /// @brief 만들어 둔 파이프라인을 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static unsigned getPipeline(int32_t key);
+            static Pipeline* getPipeline(int32_t key);
             /// @brief 아무 동작도 하지 않습니다.
             static unsigned getPipelineLayout(int32_t key);
             /// @brief 만들어 둔 렌더 타겟을 리턴합니다. 없으면 nullptr를 리턴합니다.
@@ -288,7 +290,7 @@ namespace onart {
             std::map<int32_t, RenderTarget*> renderTargets;
             std::map<int32_t, unsigned> shaders;
             std::map<int32_t, UniformBuffer*> uniformBuffers;
-            std::map<int32_t, unsigned> pipelines;
+            std::map<int32_t, Pipeline*> pipelines;
             std::map<int32_t, pMesh> meshes;
             std::map<int32_t, pTexture> textures;
             std::map<int32_t, pStreamTexture> streamTextures;
@@ -363,7 +365,7 @@ namespace onart {
             /// @brief 주어진 파이프라인을 사용하게 합니다.
             /// @param pipeline 파이프라인
             /// @param subpass 서브패스 번호
-            void usePipeline(unsigned pipeline, unsigned subpass);
+            void usePipeline(Pipeline* pipeline, unsigned subpass);
             /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
             void push(void* input, uint32_t start, uint32_t end);
             /// @brief 메시를 그립니다. 정점 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
@@ -392,7 +394,7 @@ namespace onart {
             RenderPass(RenderTarget** fb, uint16_t stageCount); // 이후 다수의 서브패스를 쓸 수 있도록 변경
             ~RenderPass();
             const uint16_t stageCount;
-            std::vector<unsigned> pipelines;
+            std::vector<Pipeline*> pipelines;
             std::vector<RenderTarget*> targets;
             int currentPass = -1;
             struct {
@@ -524,6 +526,25 @@ namespace onart {
             uint32_t binding;
     };
 
+    struct GLMachine::PipelineInputVertexSpec {
+        int index;
+        int offset;
+        int dim;
+        enum class t { F32 = 0, F64 = 1, I8 = 2, I16 = 3, I32 = 4, U8 = 5, U16 = 6, U32 = 7 } type;
+    };
+
+    class GLMachine::Pipeline {
+        friend class GLMachine;
+        private:
+            Pipeline(unsigned program, vec4 clearColor, unsigned vstr, unsigned istr);
+            ~Pipeline();
+            unsigned program;
+            std::vector<PipelineInputVertexSpec> vspec;
+            std::vector<PipelineInputVertexSpec> ispec;
+            const unsigned vertexSize, instanceAttrStride;
+            vec4 clearColor;
+    };
+
     class GLMachine::Mesh{
         friend class GLMachine;
         public:
@@ -542,19 +563,12 @@ namespace onart {
             /// @param offset 기존 데이터에서 수정할 시작점(바이트)입니다. (입력 데이터에서의 오프셋이 아닙니다. 0이 인덱스 버퍼의 시작점입니다.)
             /// @param size 기존 데이터에서 수정할 길이입니다.
             void updateIndex(const void* input, uint32_t offset, uint32_t size);
-            /// @brief 주어진 타입으로 OpenGL VAO를 생성합니다. 단 한 번만 호출할 수 있으며 VkMachine에는 없는 함수이므로 주의가 필요합니다. 타입은 템플릿 매개변수로 주거나 일반 매개변수로 줄 수 있습니다.
-            /// @tparam ...T 
-            template<class... T>
-            void setVAO(unsigned locationPlus = 0, const Vertex<T...>& _={});
-            void(*vaoBinder)(size_t, uint32_t, uint32_t);
-            unsigned vb, ib, vao;
         private:
             Mesh(unsigned vb, unsigned ib, size_t vcount, size_t icount, bool use32);
             ~Mesh();
-            void unbindVAO();
+            unsigned vb, ib, vao{};
             size_t vcount, icount;
             unsigned idxType;
-            unsigned attrCount;
     };
 
     class GLMachine::UniformBuffer{
@@ -584,14 +598,6 @@ namespace onart {
             uint32_t length;
     };
 
-    struct _vattr{
-        int dim;
-        enum class t {F32 = 0, F64 = 1, I8 = 2,I16 = 3,I32 = 4,U8 = 5,U16 = 6,U32 = 7} type;
-    };
-
-    unsigned createVA(unsigned vb, unsigned ib);
-    void enableAttribute(int index, int stride, int offset, _vattr type);
-
     template<class FATTR, class... ATTR>
     struct GLMachine::Vertex{
         friend class GLMachine;
@@ -600,6 +606,11 @@ namespace onart {
             else return is_one_of<FATTR, VERTEX_ATTR_TYPES> || Vertex<ATTR...>::CHECK_TYPE();
         }
     private:
+        struct _vattr {
+            int dim;
+            enum class t { F32 = 0, F64 = 1, I8 = 2, I16 = 3, I32 = 4, U8 = 5, U16 = 6, U32 = 7 } type;
+        };
+
         ftuple<FATTR, ATTR...> member;
         template<class F>
         inline static constexpr _vattr getFormat(){
@@ -659,12 +670,15 @@ namespace onart {
         /// @param binding 바인딩 번호
         /// @param locationPlus 셰이더 내의 location이 시작할 번호
         template<unsigned LOCATION = 0>
-        inline static constexpr void info(size_t _unused, uint32_t binding = 0, uint32_t locationPlus = 0){
+        inline static constexpr void info(PipelineInputVertexSpec* vattrs, uint32_t binding = 0, uint32_t locationPlus = 0){
             using A_TYPE = std::remove_reference_t<decltype(Vertex().get<LOCATION>())>;
             size_t offset = ftuple<FATTR, ATTR...>::template offset<LOCATION>();
             _vattr att = getFormat<A_TYPE>();
-            enableAttribute(LOCATION + locationPlus, sizeof(Vertex), offset, att);
-            if constexpr(LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(0, 0, locationPlus);
+            vattrs->dim = att.dim;
+            vattrs->index = LOCATION + locationPlus;
+            vattrs->offset = offset;
+            vattrs->type = (PipelineInputVertexSpec::t)att.type;
+            if constexpr (LOCATION < sizeof...(ATTR)) info<LOCATION + 1>(vattrs + 1, 0, locationPlus);
         }
         inline Vertex() {static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
         inline Vertex(const FATTR& first, const ATTR&... rest):member(first, rest...) { static_assert(CHECK_TYPE(), "One or more of attribute types are inavailable"); }
@@ -673,14 +687,6 @@ namespace onart {
         template<unsigned POS, std::enable_if_t<POS <= sizeof...(ATTR), bool> = false>
         constexpr inline auto& get() { return member.template get<POS>(); }
     };
-
-    template<class... T>
-    void GLMachine::Mesh::setVAO(unsigned locationPlus, const GLMachine::Vertex<T...>&){
-        vao = createVA(vb, ib);
-        GLMachine::Vertex<T...>::info(0, 0, locationPlus);
-        unbindVAO();
-        attrCount = sizeof...(T);
-    }
 }
 
 #undef VERTEX_FLOAT_TYPES
