@@ -16,6 +16,7 @@
 
 #include "logger.hpp"
 #include "yr_simd.hpp"
+#include "yr_align.hpp"
 #include "yr_compiler_specific.hpp"
 
 #include <cstring>
@@ -23,12 +24,6 @@
 #include <cmath>
 #include <limits>
 #include <iostream>
-
-#define OVERLOAD_NEW_DEL \
-    void* operator new(std::size_t s){ return aligned_malloc(16,s); } \
-    void* operator new[](std::size_t s) { return aligned_malloc(16,s); } \
-    void operator delete(void* p) { aligned_free(p); } \
-    void operator delete[](void* p){ aligned_free(p); }
 
 namespace onart{
 
@@ -44,7 +39,7 @@ namespace onart{
     /// @tparam T 성분의 타입입니다. 사칙연산 및 부호 반전이 가능해야 합니다.
     /// @tparam D 벡터의 차원수입니다. 2~4차원만 사용할 수 있습니다.
     template<class T, unsigned D>
-    struct alignas(16) nvec{
+    struct alignas(16) nvec: public align16{
         using RG_T = typename v128<T>::RG_T;
         union{
             RG_T rg;
@@ -53,7 +48,6 @@ namespace onart{
             struct { T s, t, p, q; };
             struct { T r, g, b, a; };
         };
-        OVERLOAD_NEW_DEL;
         /// @brief 영벡터를 초기화합니다.
         inline nvec() :rg(load(T{})) {}
         /// @brief SSE2 또는 그렇게 보이는 NEON 벡터를 이용해 초기화합니다.
@@ -589,12 +583,11 @@ namespace onart{
     //}
 
     /// @brief 행 우선 순서로 구성된 2x2 행렬입니다.
-    struct alignas(16) mat2 {
+    struct alignas(16) mat2: public align16 {
         union{
             float a[4];
             struct{ float _11,_12,_21,_22; };
         };
-        OVERLOAD_NEW_DEL;
         /// @brief 행 우선 순서로 매개변수를 주어 행렬을 생성합니다.
         inline mat2(float _11,float _12,float _21, float _22): a{_11,_12,_21,_22}{ }
         /// @brief 복사생성자입니다.
@@ -667,12 +660,11 @@ namespace onart{
     };
 
     /// @brief 행 우선 순서의 3x3 행렬입니다. mat3은 9개의 float 변수를 갖지만 16 배수 정렬에 의해 실제로는 48바이트를 차지하니 주의하세요.
-    struct alignas(16) mat3{
+    struct alignas(16) mat3: public align16{
         union{
             float a[9];
             struct { float _11,_12,_13,_21,_22,_23,_31,_32,_33; };
         };
-        OVERLOAD_NEW_DEL;
         /// @brief 단위행렬을 생성합니다.
         inline mat3() : a{} { _11 = _22 = _33 = 1.0f; }
         /// @brief 행 우선 순서로 매개변수를 주어 행렬을 생성합니다.
@@ -782,12 +774,11 @@ namespace onart{
     };
 
     /// @brief 열 우선 순서의 3x3 행렬입니다. mat3은 9개의 float 변수를 갖지만 16 배수 정렬에 의해 실제로는 48바이트를 차지하니 주의하세요.
-    struct alignas(16) cmat3{
+    struct alignas(16) cmat3: public align16{
         union{
             float a[9];
             struct { float _11,_21,_31,_12,_22,_32,_13,_23,_33; };
         };
-        OVERLOAD_NEW_DEL;
         /// @brief 단위행렬을 생성합니다.
         inline cmat3() : a{} { _11 = _22 = _33 = 1.0f; }
         /// @brief 행 우선 순서로 매개변수를 주어 행렬을 생성합니다.
@@ -897,12 +888,11 @@ namespace onart{
     };
 
     /// @brief 열 우선 순서의 4x4 행렬입니다.
-    struct alignas(16) mat4{
+    struct alignas(16) mat4: public align16{
         union{
             float a[16];
             struct{ float _11,_12,_13,_14,_21,_22,_23,_24,_31,_32,_33,_34, _41,_42,_43,_44; };
         };
-        OVERLOAD_NEW_DEL;
         /// @brief 단위행렬을 생성합니다.
         inline mat4() { memset(a, 0, sizeof(a)); _11 = _22 = _33 = _44 = 1.0f; }
         /// @brief 행 우선 순서로 매개변수를 주어 행렬을 생성합니다.
@@ -1170,12 +1160,11 @@ namespace onart{
     };
 
     /// @brief 열 우선 순서의 4x4 행렬입니다.
-    struct alignas(16) cmat4{
+    struct alignas(16) cmat4: public align16{
         union{
             float a[16];
             struct{ float _11,_21,_31,_41,_12,_22,_32,_42,_13,_23,_33,_43, _14,_24,_34,_44; };
         };
-        OVERLOAD_NEW_DEL;
         /// @brief 단위행렬을 생성합니다.
         inline cmat4() { memset(a, 0, sizeof(a)); _11 = _22 = _33 = _44 = 1.0f; }
         /// @brief 열 우선 순서로 매개변수를 주어 행렬을 생성합니다.
@@ -1443,12 +1432,11 @@ namespace onart{
     }; 
 
     /// @brief 3차원 회전 등을 표현하는 사원수입니다. 1, i, j, k 부분에 해당하는 c1, ci, cj, ck 멤버를 가집니다. 각각 순서대로 일반적인 사원수 모듈의 w, x, y, z에 대응합니다.
-    struct alignas(16) Quaternion{
+    struct alignas(16) Quaternion: public align16{
         union {
             float128 rg;
             struct { float c1, ci, cj, ck; };
         };
-        OVERLOAD_NEW_DEL;
         /// @brief 사원수를 생성합니다.
         inline Quaternion(float o = 1, float i = 0, float j = 0, float k = 0) : rg(load(o, i, j, k)) {  }
         explicit inline Quaternion(float128 rg):rg(rg){}

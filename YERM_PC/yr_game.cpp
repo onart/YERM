@@ -182,7 +182,6 @@ namespace onart{
                 float aspect = 1.0f;// (float)x / y;
                 float pushed = PI<float> / 2;// std::abs(std::sin((double)_tp * 0.000000001));
                 mat4 rot = YRGraphics::preTransform() * mat4(1, 0, 0, 0, 0, aspect, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) * mat4::rotate(0, 0, (double)_tp * 0.000000001);
-                
                 if (vk->swapchain.handle) {
                     off->start();
                     if (loaded) {
