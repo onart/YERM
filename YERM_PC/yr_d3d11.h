@@ -605,6 +605,9 @@ namespace onart {
 
     class D3D11Machine::Mesh {
         friend class D3D11Machine;
+        public:
+            void update(const void* input, uint32_t offset, uint32_t size);
+            void updateIndex(const void* input, uint32_t offset, uint32_t size);
         private:
             Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib, DXGI_FORMAT indexFormat, size_t vcount, size_t icount, UINT vStride);
             ~Mesh();

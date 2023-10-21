@@ -461,8 +461,7 @@ namespace onart {
 
         ID3D11Buffer* vb{}, *ib{};
         DXGI_FORMAT iFormat{};
-
-        HRESULT result = singleton->device->CreateBuffer(&bufferInfo, &vertexData, &vb);
+        HRESULT result = singleton->device->CreateBuffer(&bufferInfo, stage ? &vertexData : nullptr, &vb);
         if (result != S_OK) {
             LOGWITH("Failed to create vertex buffer:", result);
             reason = result;
@@ -1940,6 +1939,31 @@ namespace onart {
     D3D11Machine::Mesh::~Mesh() {
         if(vb) vb->Release();
         if (ib) ib->Release();
+    }
+
+    void D3D11Machine::Mesh::update(const void* input, uint32_t offset, uint32_t size) {
+        // offset 조만간 없애기 (d3d11 dynamic에서는 사실상 offset을 인정안하기 때문)
+        D3D11_MAPPED_SUBRESOURCE subresource;
+        HRESULT hr = singleton->context->Map(vb, 0, D3D11_MAP_WRITE_DISCARD, 0, &subresource);
+        if (!SUCCEEDED(hr)) {
+            LOGWITH("Failed to map memory");
+            return;
+        }
+        std::memcpy((uint8_t*)subresource.pData + offset, input, size);
+        singleton->context->Unmap(vb, 0);
+    }
+
+    void D3D11Machine::Mesh::updateIndex(const void* input, uint32_t offset, uint32_t size) {
+        // 전 플랫폼 offset 조만간 없애기, vulkan의 dynamic ub 제외 (d3d11 dynamic에서는 사실상 offset을 인정안하기 때문)
+        if (!ib) { return; }
+        D3D11_MAPPED_SUBRESOURCE subresource;
+        HRESULT hr = singleton->context->Map(ib, 0, D3D11_MAP_WRITE_DISCARD, 0, &subresource);
+        if (!SUCCEEDED(hr)) {
+            LOGWITH("Failed to map memory");
+            return;
+        }
+        std::memcpy((uint8_t*)subresource.pData + offset, input, size);
+        singleton->context->Unmap(ib, 0);
     }
 
     bool isThisFormatAvailable(ID3D11Device* device, DXGI_FORMAT format, UINT flags) {
