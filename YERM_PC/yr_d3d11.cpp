@@ -425,7 +425,7 @@ namespace onart {
             return ret;
         }
         D3D11_BUFFER_DESC bufferInfo{};
-        bufferInfo.ByteWidth = vcount;
+        bufferInfo.ByteWidth = vcount*4;
         bufferInfo.Usage = D3D11_USAGE_DEFAULT;
         bufferInfo.BindFlags = D3D11_BIND_VERTEX_BUFFER;
         bufferInfo.CPUAccessFlags = 0;
@@ -1549,20 +1549,15 @@ namespace onart {
             LOGWITH("Requested buffer update range is invalid");
             return;
         }
-        if (size == length) {
-            singleton->context->UpdateSubresource(ubo, 0, nullptr, input, 0, 0);
+        D3D11_MAPPED_SUBRESOURCE mappedResource;
+        if (singleton->context->Map(ubo, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource) == S_OK)
+        {
+            std::memcpy((uint8_t*)mappedResource.pData + offset, input, size);
+            singleton->context->Unmap(ubo, 0);
         }
-        else { // 일반적인 사용 패턴대로, 맵은 유지하지 않도록 함
-            D3D11_MAPPED_SUBRESOURCE mappedResource;
-            if (singleton->context->Map(ubo, 0, D3D11_MAP_WRITE_NO_OVERWRITE, 0, &mappedResource) == S_OK)
-            {
-                std::memcpy((uint8_t*)mappedResource.pData + offset, input, size);
-                singleton->context->Unmap(ubo, 0);
-            }
-            else {
-                LOGWITH("Failed to map memory");
-                return;
-            }
+        else {
+            LOGWITH("Failed to map memory");
+            return;
         }
     }
 
@@ -2039,7 +2034,7 @@ namespace onart {
         default:
             break;
         }
-        HRESULT res = D3DCompile(code, size, toString((void*)code).c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", targ, 0, 0, &ret, &result);
+        HRESULT res = D3DCompile(code, size, toString((void*)code).c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", targ, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &ret, &result);
         if (res != S_OK) {
             LOGWITH((char*)result->GetBufferPointer());
             result->Release();
