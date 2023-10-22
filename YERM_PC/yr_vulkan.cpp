@@ -1640,7 +1640,7 @@ namespace onart {
         VkDescriptorBufferInfo dsNBuffer{};
         dsNBuffer.buffer = buffer;
         dsNBuffer.offset = 0;
-        dsNBuffer.range = individual * length;
+        dsNBuffer.range = individual;
         VkWriteDescriptorSet wr{};
         wr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         wr.descriptorType = uboBinding.descriptorType;
