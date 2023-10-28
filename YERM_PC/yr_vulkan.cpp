@@ -2406,11 +2406,15 @@ namespace onart {
     void VkMachine::Mesh::update(const void* input, uint32_t offset, uint32_t size){
         if(!vmap) return;
         std::memcpy((uint8_t*)vmap + offset, input, size);
+        vmaInvalidateAllocation(singleton->allocator, vba, offset, size);
+        vmaFlushAllocation(singleton->allocator, vba, offset, size);
     }
 
     void VkMachine::Mesh::updateIndex(const void* input, uint32_t offset, uint32_t size){
         if(!vmap || icount == 0) return;
         std::memcpy((uint8_t*)vmap + ioff + offset, input, size);
+        vmaInvalidateAllocation(singleton->allocator, vba, ioff + offset, size);
+        vmaFlushAllocation(singleton->allocator, vba, ioff + offset, size);
     }
 
     void VkMachine::Mesh::collect(bool removeUsing) {
