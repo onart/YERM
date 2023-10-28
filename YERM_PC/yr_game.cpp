@@ -308,8 +308,15 @@ namespace onart{
             fs = YRGraphics::createShader((uint32_t*)SCALEPX, sizeof(SCALEPX), 5);
             YRGraphics::createPipeline(nullptr, 0, 0, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, 2);
             YRGraphics::createNullMesh(3, 1);
-            YRGraphics::createMesh(verts, sizeof(testv_t), 4, inds, 2, 6, 0);
-            YRGraphics::asyncCreateTexture(TEX0, sizeof(TEX0), 0, [](variant8) { loaded = true; });
+            YRGraphics::MeshCreationOptions opts{};
+            opts.vertexCount = sizeof(verts) / sizeof(verts[0]);
+            opts.singleVertexSize = sizeof(testv_t);
+            opts.singleIndexSize = sizeof(inds[0]);
+            opts.indexCount = sizeof(inds) / sizeof(inds[0]);
+            opts.indices = inds;
+            opts.vertices = verts;
+            YRGraphics::createMesh(0, opts);
+            YRGraphics::asyncCreateTexture(0, TEX0, sizeof(TEX0), [](variant8) { loaded = true; });
             //YRGraphics::createTextureFromImage("g256.png", 0,YRGraphics::isSurfaceSRGB(),YRGraphics::IT_USE_ORIGINAL,false); loaded = true;
             //loaded = true; YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB());
         }

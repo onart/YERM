@@ -509,18 +509,25 @@ namespace onart {
         return singleton->meshes[name] = std::make_shared<publicmesh>(VK_NULL_HANDLE,VK_NULL_HANDLE,vcount,0,0,nullptr,false);
     }
 
-    VkMachine::pMesh VkMachine::createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, int32_t name, bool stage) {
-        if(icount != 0 && isize != 2 && isize != 4){
+    VkMachine::pMesh VkMachine::createMesh(int32_t key, const MeshCreationOptions& opts) {
+        if (opts.indexCount != 0 && opts.singleIndexSize != 2 && opts.singleIndexSize != 4) {
             LOGWITH("Invalid isize");
             return pMesh();
         }
-        pMesh m = getMesh(name);
-        if(m) { return m; }
+        if ((opts.indexCount != 0) != (opts.indices != nullptr)) {
+            LOGWITH("Index count and opts.indices should be both non-null or both null. Perhaps this can be a mistake");
+            return pMesh();
+        }
+        if (!opts.fixed && (opts.vertices == nullptr || opts.singleVertexSize * opts.vertexCount == 0)) {
+            LOGWITH("Vertex data should be given when making fixed Mesh");
+            return pMesh();
+        }
 
+        if (pMesh m = getMesh(key)) { return m; }
         VkBuffer vib, sb;
         VmaAllocation viba, sba;
 
-        const size_t VBSIZE = vsize*vcount, IBSIZE = isize * icount;
+        const size_t VBSIZE = opts.singleVertexSize * opts.vertexCount, IBSIZE = opts.singleIndexSize * opts.indexCount;
 
         VkBufferCreateInfo vbInfo{};
         vbInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -533,13 +540,13 @@ namespace onart {
             vbInfo.queueFamilyIndexCount = 2;
         }
         vbInfo.size = VBSIZE + IBSIZE;
-        
+
         VmaAllocationCreateInfo vbaInfo{};
         vbaInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
-        struct publicmesh:public Mesh{publicmesh(VkBuffer _1, VmaAllocation _2, size_t _3, size_t _4,size_t _5,void* _6,bool _7):Mesh(_1,_2,_3,_4,_5,_6,_7){}};
+        struct publicmesh :public Mesh { publicmesh(VkBuffer _1, VmaAllocation _2, size_t _3, size_t _4, size_t _5, void* _6, bool _7) :Mesh(_1, _2, _3, _4, _5, _6, _7) {} };
 
-        if(stage) {
+        if (opts.fixed) {
             vbInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT; // vma 목적지 버퍼 생성 시 HOST_VISIBLE이 있으면 스테이징을 할 필요가 없음, 그러면 재생성 필요 없이 그대로 리턴하도록
             vbaInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
         }
@@ -548,92 +555,92 @@ namespace onart {
         }
         VmaAllocationInfo mapInfoV;
         reason = vmaCreateBuffer(singleton->allocator, &vbInfo, &vbaInfo, &sb, &sba, &mapInfoV);
-        if(reason != VK_SUCCESS){
-            LOGWITH("Failed to create stage buffer for vertex:",reason,resultAsString(reason));
+        if (reason != VK_SUCCESS) {
+            LOGWITH("Failed to create stage buffer for vertex:", reason, resultAsString(reason));
             return pMesh();
         }
-        if(vdata) std::memcpy(mapInfoV.pMappedData, vdata, VBSIZE);
-        if(idata) std::memcpy((uint8_t*)mapInfoV.pMappedData + VBSIZE, idata, IBSIZE);
+        if (opts.vertices) std::memcpy(mapInfoV.pMappedData, opts.vertices, VBSIZE);
+        if (opts.indices) std::memcpy((uint8_t*)mapInfoV.pMappedData + VBSIZE, opts.indices, IBSIZE);
         vmaInvalidateAllocation(singleton->allocator, sba, 0, VK_WHOLE_SIZE);
         vmaFlushAllocation(singleton->allocator, sba, 0, VK_WHOLE_SIZE);
-        
-        if(!stage){
-            if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
-            return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
+
+        if (!opts.fixed) {
+            if (key == INT32_MIN) return std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            return singleton->meshes[key] = std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
         }
 
         vbInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         vbInfo.size = VBSIZE + IBSIZE;
         vbaInfo.flags = 0;
         reason = vmaCreateBuffer(singleton->allocator, &vbInfo, &vbaInfo, &vib, &viba, nullptr);
-        if(reason != VK_SUCCESS){
-            LOGWITH("Failed to create vertex buffer:",reason,resultAsString(reason));
+        if (reason != VK_SUCCESS) {
+            LOGWITH("Failed to create vertex buffer:", reason, resultAsString(reason));
             vmaDestroyBuffer(singleton->allocator, sb, sba);
             return pMesh();
         }
         VkMemoryPropertyFlags props;
         vmaGetAllocationMemoryProperties(singleton->allocator, viba, &props);
-        if(props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+        if (props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
             vmaDestroyBuffer(singleton->allocator, vib, viba);
-            if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
-            return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
+            if (key == INT32_MIN) return std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            return singleton->meshes[key] = std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
         }
 
         VkCommandBuffer copycb;
         singleton->allocateCommandBuffers(1, true, false, &copycb);
-        if(!copycb) {
+        if (!copycb) {
             LOGHERE;
             vmaDestroyBuffer(singleton->allocator, vib, viba);
-            if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
-            return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
+            if (key == INT32_MIN) return std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            return singleton->meshes[key] = std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
         }
         VkCommandBufferBeginInfo cbInfo{};
         cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         cbInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         VkBufferCopy copyRegion{};
-        copyRegion.srcOffset=0;
-        copyRegion.dstOffset=0;
+        copyRegion.srcOffset = 0;
+        copyRegion.dstOffset = 0;
         copyRegion.size = VBSIZE + IBSIZE;
-        if((reason = vkBeginCommandBuffer(copycb, &cbInfo)) != VK_SUCCESS){
-            LOGWITH("Failed to begin command buffer:",reason,resultAsString(reason));
+        if ((reason = vkBeginCommandBuffer(copycb, &cbInfo)) != VK_SUCCESS) {
+            LOGWITH("Failed to begin command buffer:", reason, resultAsString(reason));
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-            if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
-            return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
+            if (key == INT32_MIN) return std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            return singleton->meshes[key] = std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
         }
         vkCmdCopyBuffer(copycb, sb, vib, 1, &copyRegion);
-        if((reason = vkEndCommandBuffer(copycb)) != VK_SUCCESS){
-            LOGWITH("Failed to end command buffer:",reason,resultAsString(reason));
+        if ((reason = vkEndCommandBuffer(copycb)) != VK_SUCCESS) {
+            LOGWITH("Failed to end command buffer:", reason, resultAsString(reason));
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-            if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
-            return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
+            if (key == INT32_MIN) return std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            return singleton->meshes[key] = std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
         }
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &copycb;
         VkFence fence = singleton->createFence(); // TODO: 생성 시 쓰는 이런 자잘한 펜스를 매번 만들었다 없애지 말고 하나 생성해 두고 쓰는 걸로 통일
-        if(!fence) {
+        if (!fence) {
             LOGHERE;
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-            if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
-            return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
+            if (key == INT32_MIN) return std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            return singleton->meshes[key] = std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
         }
-        if((reason = singleton->qSubmit(false, 1, &submitInfo, fence)) != VK_SUCCESS){
+        if ((reason = singleton->qSubmit(false, 1, &submitInfo, fence)) != VK_SUCCESS) {
             LOGWITH("Failed to submit copy command");
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-            if(name == INT32_MIN) return std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,mapInfoV.pMappedData,isize==4);
-            return singleton->meshes[name] = std::make_shared<publicmesh>(sb,sba,vcount,icount,VBSIZE,nullptr,isize==4);
+            if (key == INT32_MIN) return std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            return singleton->meshes[key] = std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
         }
         vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, UINT64_MAX);
         vkDestroyFence(singleton->device, fence, nullptr);
         vmaDestroyBuffer(singleton->allocator, sb, sba);
         vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-        if(name == INT32_MIN) return std::make_shared<publicmesh>(vib,viba,vcount,icount,VBSIZE,nullptr,isize==4);
-        return singleton->meshes[name] = std::make_shared<publicmesh>(vib,viba,vcount,icount,VBSIZE,nullptr,isize==4);
+        if (key == INT32_MIN) return std::make_shared<publicmesh>(vib, viba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
+        return singleton->meshes[key] = std::make_shared<publicmesh>(vib, viba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
     }
 
     VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, int32_t name, RenderTargetType type, RenderTargetInputOption sampled, bool useDepthInput, bool useStencil, bool mmap){
@@ -1062,7 +1069,7 @@ namespace onart {
         }
 
         VkDescriptorSet newSet;
-        uint64_t binding = opts.extra.u64;
+        uint64_t binding = opts.binding;
         singleton->allocateDescriptorSets(&textureLayout[binding], 1, &newSet);
         if(!newSet){
             LOGHERE;
@@ -1097,7 +1104,7 @@ namespace onart {
         return textures[key] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
     }
 
-    VkMachine::pStreamTexture VkMachine::createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler) {
+    VkMachine::pStreamTexture VkMachine::createStreamTexture(int32_t key, uint32_t width, uint32_t height, bool linearSampler) {
         if (pStreamTexture ret = getStreamTexture(key)) return ret;
         if ((width | height) == 0) return {};
         VkImageCreateInfo imgInfo{};
@@ -1356,7 +1363,7 @@ namespace onart {
         return texture;
     }
 
-    VkMachine::pTexture VkMachine::createTextureFromImage(const char* fileName, int32_t key, const TextureCreationOptions& opts) {
+    VkMachine::pTexture VkMachine::createTextureFromImage(int32_t key, const char* fileName, const TextureCreationOptions& opts) {
         if (auto tex = getTexture(key)) { return tex; }
         int x, y, nChannels;
         uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 0);
@@ -1373,7 +1380,7 @@ namespace onart {
         return singleton->createTexture(texture, key, opts);
     }
 
-    VkMachine::pTexture VkMachine::createTextureFromImage(const void* mem, size_t size, int32_t key, const TextureCreationOptions& opts) {
+    VkMachine::pTexture VkMachine::createTextureFromImage(int32_t key, const void* mem, size_t size, const TextureCreationOptions& opts) {
         if (auto tex = getTexture(key)) { return tex; }
         int x, y, nChannels;
         uint8_t* pix = stbi_load_from_memory((uint8_t*)mem, (int)size, &x, &y, &nChannels, 0);
@@ -1390,7 +1397,7 @@ namespace onart {
         return singleton->createTexture(texture, key, opts);
     }
 
-    VkMachine::pTexture VkMachine::createTexture(const char* fileName, int32_t key, const TextureCreationOptions& opts) {
+    VkMachine::pTexture VkMachine::createTexture(int32_t key, const char* fileName, const TextureCreationOptions& opts) {
         pTexture ret(std::move(getTexture(key)));
         if(ret) return ret;
 
@@ -1404,7 +1411,7 @@ namespace onart {
         return singleton->createTexture(texture, key, opts);
     }
 
-    VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, int32_t key, const TextureCreationOptions& opts){
+    VkMachine::pTexture VkMachine::createTexture(int32_t key, const uint8_t* mem, size_t size, const TextureCreationOptions& opts){
         if (auto ret = getTexture(key)) { return ret; }
         ktxTexture2* texture;
         ktx_error_code_e k2result;
@@ -1416,7 +1423,7 @@ namespace onart {
         return singleton->createTexture(texture, key, opts);
     }
 
-    void VkMachine::asyncCreateTexture(const char* fileName, int32_t key, std::function<void(variant8)> handler, const TextureCreationOptions& opts){
+    void VkMachine::asyncCreateTexture(int32_t key, const char* fileName, std::function<void(variant8)> handler, const TextureCreationOptions& opts){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
@@ -1429,7 +1436,7 @@ namespace onart {
         }
         TextureCreationOptions options = opts;
         singleton->loadThread.post([fileName, key, options](){
-            pTexture ret = singleton->createTexture(fileName, INT32_MIN, options);
+            pTexture ret = singleton->createTexture(INT32_MIN, fileName, options);
             if (!ret) {
                 variant8 _k;
                 _k.bytedata4[0] = key;
@@ -1445,7 +1452,7 @@ namespace onart {
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(variant8)> handler, const TextureCreationOptions& opts){
+    void VkMachine::asyncCreateTextureFromImage(int32_t key, const char* fileName, std::function<void(variant8)> handler, const TextureCreationOptions& opts){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
@@ -1458,7 +1465,7 @@ namespace onart {
         }
         TextureCreationOptions options = opts;
         singleton->loadThread.post([ fileName, key, options](){
-            pTexture ret = singleton->createTextureFromImage(fileName, INT32_MIN, options);
+            pTexture ret = singleton->createTextureFromImage(INT32_MIN, fileName, options);
             if (!ret) {
                 variant8 _k;
                 _k.bytedata4[0] = key;
@@ -1474,7 +1481,7 @@ namespace onart {
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTextureFromImage(const void* mem, size_t size, int32_t key, std::function<void(variant8)> handler, const TextureCreationOptions& opts){
+    void VkMachine::asyncCreateTextureFromImage(int32_t key, const void* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
@@ -1487,7 +1494,7 @@ namespace onart {
         }
         TextureCreationOptions options = opts;
         singleton->loadThread.post([mem, size, key, options](){
-            pTexture ret = singleton->createTextureFromImage(mem, size, INT32_MIN, options);
+            pTexture ret = singleton->createTextureFromImage(INT32_MIN, mem, size, options);
             if (!ret) {
                 variant8 _k;
                 _k.bytedata4[0] = key;
@@ -1503,7 +1510,7 @@ namespace onart {
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTexture(const uint8_t* mem, size_t size, int32_t key, std::function<void(variant8)> handler, const TextureCreationOptions& opts) {
+    void VkMachine::asyncCreateTexture(int32_t key, const uint8_t* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts) {
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
@@ -1516,7 +1523,7 @@ namespace onart {
         }
         TextureCreationOptions options = opts;
         singleton->loadThread.post([mem, size, key, options](){
-            pTexture ret = singleton->createTexture(mem, size, INT32_MIN, options);
+            pTexture ret = singleton->createTexture(INT32_MIN, mem, size, options);
             if (!ret) {
                 variant8 _k;
                 _k.bytedata4[0] = key;
@@ -1601,15 +1608,15 @@ namespace onart {
         return nim;
     }
 
-    VkMachine::UniformBuffer* VkMachine::createUniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, int32_t name, uint32_t binding){
+    VkMachine::UniformBuffer* VkMachine::createUniformBuffer(int32_t name, const UniformBufferCreationOptions& opts){
         UniformBuffer* ret = getUniformBuffer(name);
         if(ret) return ret;
 
         VkDescriptorSetLayoutBinding uboBinding{};
-        uboBinding.binding = binding;
-        uboBinding.descriptorType = (length == 1) ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        uboBinding.binding = opts.binding;
+        uboBinding.descriptorType = (opts.count == 1) ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         uboBinding.descriptorCount = 1; // 이 카운트가 늘면 ubo 자체가 배열이 됨, 언젠가는 이를 선택으로 제공할 수도
-        uboBinding.stageFlags = stages;
+        uboBinding.stageFlags = opts.accessibleStages;
 
         uint32_t individual;
         VkDescriptorSetLayout layout;
@@ -1618,12 +1625,12 @@ namespace onart {
         VmaAllocation alloc;
         void* mmap;
 
-        if(length > 1){
-            individual = (size + (uint32_t)singleton->physicalDevice.minUBOffsetAlignment - 1);
+        if(opts.count > 1){
+            individual = (opts.size + (uint32_t)singleton->physicalDevice.minUBOffsetAlignment - 1);
             individual -= individual % singleton->physicalDevice.minUBOffsetAlignment;
         }
         else{
-            individual = size;
+            individual = opts.size;
         }
 
         // ex: layout(set = 1, binding = 1) uniform sampler2D tex[2]; 여기서 descriptor set은 1번 하나, binding은 그냥 정해 두는 번호, descriptor는 2개
@@ -1648,14 +1655,14 @@ namespace onart {
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        bufferInfo.size = individual * length;
+        bufferInfo.size = individual * opts.count;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
         VmaAllocationCreateInfo bainfo{};
         bainfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO;
         bainfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 
-        if(length > 1){
+        if(opts.count > 1){
             reason = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
         }
         else{
@@ -1684,8 +1691,7 @@ namespace onart {
         wr.pBufferInfo = &dsNBuffer;
         wr.dstSet = dset;
         vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
-        if(name == INT32_MIN) return new UniformBuffer(length, individual, buffer, layout, dset, alloc, mmap, binding);
-        return singleton->uniformBuffers[name] = new UniformBuffer(length, individual, buffer, layout, dset, alloc, mmap, binding);
+        return singleton->uniformBuffers[name] = new UniformBuffer(opts.count, individual, buffer, layout, dset, alloc, mmap, opts.binding);
     }
 
     uint32_t VkMachine::RenderTarget::attachmentRefs(VkAttachmentDescription* arr, bool forSample){

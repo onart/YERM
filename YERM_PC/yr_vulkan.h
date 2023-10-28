@@ -132,10 +132,44 @@ namespace onart {
                 bool linearSampled = true;
                 /// @brief 원본 텍스처가 srgb 공간에 있는지 여부입니다. 기본값 false
                 bool srgb = false;
-                /// @brief 이미지의 채널 수를 지정합니다. 이 값은 BasisU 텍스처에 대하여 사용되며 그 외에는 이 값을 무시하고 원본 이미지의 채널 수를 사용합니다.
+                /// @brief 이미지의 채널 수를 지정합니다. 이 값은 BasisU 텍스처에 대하여 사용되며 그 외에는 이 값을 무시하고 원본 이미지의 채널 수를 사용합니다. 기본값 4
                 int nChannels = 4;
-                /// @brief 바인딩 번호입니다. variant는 64비트 정수로 해석됩니다. 기본값 0
-                variant8 extra = 0ULL;
+                /// @brief 바인딩 번호입니다. 기본값 0
+                uint32_t binding = 0;
+            };
+            enum ShaderStage: VkFlags {
+                VERTEX = VK_SHADER_STAGE_VERTEX_BIT,
+                FRAGMENT = VK_SHADER_STAGE_FRAGMENT_BIT,
+                GEOMETRY = VK_SHADER_STAGE_GEOMETRY_BIT,
+                TESS_CTRL = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+                TESS_EVAL = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
+                GRAPHICS_ALL = VK_SHADER_STAGE_ALL_GRAPHICS
+            };
+            struct UniformBufferCreationOptions {
+                /// @brief 유니폼 버퍼의 크기입니다. 기본값 없음
+                size_t size;
+                /// @brief 유니폼 버퍼에 접근할 수 있는 셰이더 단계입니다. @ref ShaderStage 기본값 GRAPHICS_ALL
+                uint32_t accessibleStages = ShaderStage::GRAPHICS_ALL;
+                /// @brief 바인딩 번호입니다. 기본값 0
+                uint32_t binding = 0;
+                /// @brief 동적 유니폼 버퍼의 항목 수입니다. 1을 주면 동적 유니폼 버퍼로 만들어지지 않습니다. 기본값 1
+                uint32_t count = 1;
+            };
+            struct MeshCreationOptions {
+                /// @brief 정점 데이터입니다. 기본값 없음
+                void* vertices;
+                /// @brief 정점 수입니다. 기본값 없음
+                size_t vertexCount;
+                /// @brief 개별 정점의 크기입니다. 기본값 없음
+                size_t singleVertexSize;
+                /// @brief 인덱스 데이터입니다. 기본값 nullptr
+                void* indices = nullptr;
+                /// @brief 인덱스 수입니다. 기본값 0
+                size_t indexCount = 0;
+                /// @brief 개별 인덱스의 크기입니다. 2 또는 4여야 합니다.
+                size_t singleIndexSize = 0;
+                /// @brief false인 경우 데이터를 수정할 수 있고 그러기 유리한 위치에 저장합니다. 기본값 true
+                bool fixed = true;
             };
             /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
             static void handle();
@@ -146,27 +180,27 @@ namespace onart {
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param opts @ref TextureCreationOptions
             /// @return 만들어진 텍스처 혹은 이미 있던 해당 key의 텍스처
-            static pTexture createTextureFromImage(const char* fileName, int32_t key, const TextureCreationOptions& opts = {});
+            static pTexture createTextureFromImage(int32_t key, const char* fileName, const TextureCreationOptions& opts = {});
             /// @brief 메모리 내의 이미지 파일을 통해 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
             /// @param mem 데이터 위치
             /// @param size 데이터 길이
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param opts @ref TextureCreationOptions
             /// @return 만들어진 텍스처 혹은 이미 있던 해당 key의 텍스처
-            static pTexture createTextureFromImage(const void* mem, size_t size, int32_t key, const TextureCreationOptions& opts = {});
+            static pTexture createTextureFromImage(int32_t key, const void* mem, size_t size, const TextureCreationOptions& opts = {});
             /// @brief @ref createTextureFromImage를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아닌 그냥 key). 매개변수 설명은 createTextureFromImage를 참고하세요.
-            static void asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
+            static void asyncCreateTextureFromImage(int32_t key, const char* fileName, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
             /// @brief @ref createTextureFromImage를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아닌 그냥 key). 매개변수 설명은 createTextureFromImage를 참고하세요.
-            static void asyncCreateTextureFromImage(const void* mem, size_t size, int32_t key, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
+            static void asyncCreateTextureFromImage(int32_t key, const void* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
             /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param fileName 파일 이름
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param nChannels 채널 수(색상)
             /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
             /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
-            static pTexture createTexture(const char* fileName, int32_t key, const TextureCreationOptions& opts = {});
+            static pTexture createTexture(int32_t key, const char* fileName, const TextureCreationOptions& opts = {});
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
-            static void asyncCreateTexture(const char* fileName, int32_t key, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
+            static void asyncCreateTexture(int32_t key, const char* fileName, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
             /// @brief 메모리 상의 ktx2 파일을 통해 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
             /// @param mem 이미지 시작 주소
             /// @param size mem 배열의 길이(바이트)
@@ -174,11 +208,11 @@ namespace onart {
             /// @param key 프로그램 내부에서 사용할 이름입니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
             /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
-            static pTexture createTexture(const uint8_t* mem, size_t size, int32_t key, const TextureCreationOptions& opts);
+            static pTexture createTexture(int32_t key, const uint8_t* mem, size_t size, const TextureCreationOptions& opts);
             /// @brief 빈 텍스처를 만듭니다. 메모리 맵으로 데이터를 올릴 수 있습니다. 올리는 데이터의 기본 형태는 BGRA 순서이며, 필요한 경우 셰이더에서 직접 스위즐링하여 사용합니다.
-            static pStreamTexture createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler = true);
+            static pStreamTexture createStreamTexture(int32_t key, uint32_t width, uint32_t height, bool linearSampler = true);
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
-            static void asyncCreateTexture(const uint8_t* mem, size_t size, int32_t key, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
+            static void asyncCreateTexture(int32_t key, const uint8_t* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
             /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다. 이것을 해제하는 수단은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
             /// @param width 가로 길이(px).
             /// @param height 세로 길이(px).
@@ -201,7 +235,7 @@ namespace onart {
             /// @param stages 이 자원에 접근할 수 있는 셰이더 단계들입니다. (비트 플래그의 조합)
             /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
             /// @param binding 바인딩 번호입니다.
-            static UniformBuffer* createUniformBuffer(uint32_t length, uint32_t size, VkShaderStageFlags stages, int32_t key, uint32_t binding = 0);
+            static UniformBuffer* createUniformBuffer(int32_t key, const UniformBufferCreationOptions& opts);
             /// @brief 주어진 렌더 타겟들을 대상으로 하는 렌더패스를 구성합니다.
             /// @param targets 렌더 타겟 포인터의 배열입니다. 마지막 것을 제외한 모든 타겟은 input attachment로 생성되었어야 하며 그렇지 않은 경우 실패합니다.
             /// @param subpassCount targets 배열의 크기입니다.
@@ -265,19 +299,13 @@ namespace onart {
             /// @param te 테셀레이션 계산 셰이더 모듈입니다. 사용하지 않으려면 VK_NULL_HANDLE을 주면 됩니다.
             /// @param gs 지오메트리 셰이더 모듈입니다. 사용하지 않으려면 VK_NULL_HANDLE을 주면 됩니다.
             static VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr, VkShaderModule tc = VK_NULL_HANDLE, VkShaderModule te = VK_NULL_HANDLE, VkShaderModule gs = VK_NULL_HANDLE);
-            /// @brief 정점 버퍼(모델) 객체를 생성합니다.
-            /// @param vdata 정점 데이터
-            /// @param vsize 정점 하나의 크기(바이트)
-            /// @param vcount 정점의 수
-            /// @param idata 인덱스 데이터입니다. 이 값은 vcount가 65536 이상일 경우 32비트 정수로, 그 외에는 16비트 정수로 취급됩니다.
-            /// @param isize 인덱스 하나의 크기입니다. 이 값은 반드시 2 또는 4여야 합니다.
-            /// @param icount 인덱스의 수입니다. 이 값이 0이면 인덱스 버퍼를 사용하지 않습니다.
-            /// @param key 프로그램 내에서 사용할 이름입니다.
-            /// @param stage 메모리 맵을 통해 지속적으로 데이터를 바꾸어 보낼지 선택합니다. stage가 false라서 메모리 맵을 사용하게 되는 경우 vdata, idata를 nullptr로 주어도 됩니다.
-            static pMesh createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, int32_t key, bool stage = true);
+            /// @brief 정점 버퍼를 생성합니다.
+            /// @param key 사용할 이름입니다. 중복된 이름을 입력하는 경우 기존의 Mesh를 리턴합니다.
+            /// @param opts @ref MeshCreationOptions
+            static pMesh createMesh(int32_t key, const MeshCreationOptions& opts);
             /// @brief 정점의 수 정보만 저장하는 메시 객체를 생성합니다. 이것은 파이프라인 자체에서 정점 데이터가 정의되어 있는 경우를 위한 것입니다.
             /// @param vcount 정점의 수
-            /// @param name 프로그램 내에서 사용할 이름입니다.
+            /// @param key 프로그램 내에서 사용할 이름입니다. INT32_MIN은 저장되지 않습니다.
             static pMesh createNullMesh(size_t vcount, int32_t key);
             /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.
             static RenderPass2Screen* getRenderPass2Screen(int32_t key);
