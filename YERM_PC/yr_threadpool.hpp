@@ -44,6 +44,7 @@ namespace onart{
         TYPE_N_CAST(void*, vp)
 #undef TYPE_N_CAST
         inline variant8(const variant8& other):u64(other.u64) {}
+        inline variant8():u64(0) {}
     };
 
     template<class T>

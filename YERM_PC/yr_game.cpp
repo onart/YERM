@@ -309,7 +309,7 @@ namespace onart{
             YRGraphics::createPipeline(nullptr, 0, 0, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, 2);
             YRGraphics::createNullMesh(3, 1);
             YRGraphics::createMesh(verts, sizeof(testv_t), 4, inds, 2, 6, 0);
-            YRGraphics::asyncCreateTexture(TEX0, sizeof(TEX0), 4, [](variant8) { loaded = true; }, 0, YRGraphics::isSurfaceSRGB(), true, false);
+            YRGraphics::asyncCreateTexture(TEX0, sizeof(TEX0), 0, [](variant8) { loaded = true; });
             //YRGraphics::createTextureFromImage("g256.png", 0,YRGraphics::isSurfaceSRGB(),YRGraphics::IT_USE_ORIGINAL,false); loaded = true;
             //loaded = true; YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB());
         }

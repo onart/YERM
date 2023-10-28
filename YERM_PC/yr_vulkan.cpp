@@ -48,7 +48,7 @@ namespace onart {
     /// @brief 주어진 만큼의 기술자 집합을 할당할 수 있는 기술자 풀을 생성합니다.
     static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t samplerLimit = 256, uint32_t dynUniLimit = 8, uint32_t uniLimit = 16, uint32_t intputAttachmentLimit = 16);
     /// @brief 주어진 기반 형식과 아귀가 맞는, 현재 장치에서 사용 가능한 압축 형식을 리턴합니다.
-    static VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, uint32_t nChannels, bool srgb, bool hq, VkImageCreateFlagBits flags);
+    static VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, uint32_t nChannels, bool srgb, VkMachine::TextureFormatOptions hq, VkImageCreateFlagBits flags);
     /// @brief 파이프라인을 주어진 옵션에 따라 생성합니다.
     static VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, VkRenderPass pass, uint32_t subpass, uint32_t flags, const uint32_t OPT_COLOR_COUNT, const bool OPT_USE_DEPTHSTENCIL, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkShaderModule tc, VkShaderModule te, VkShaderModule gs, VkStencilOpState* front, VkStencilOpState* back);
     /// @brief VkResult를 스트링으로 표현합니다. 리턴되는 문자열은 텍스트(코드) 영역에 존재합니다.
@@ -218,18 +218,11 @@ namespace onart {
         else return VK_NULL_HANDLE;
     }
 
-    VkMachine::pTexture VkMachine::getTexture(int32_t name, bool lock){
-        if(lock){
-            std::unique_lock<std::mutex> _(singleton->textureGuard);
-            auto it = singleton->textures.find(name);
-            if(it != singleton->textures.end()) return it->second;
-            else return pTexture();
-        }
-        else{
-            auto it = singleton->textures.find(name);
-            if(it != singleton->textures.end()) return it->second;
-            else return pTexture();
-        }
+    VkMachine::pTexture VkMachine::getTexture(int32_t name){
+        std::unique_lock<std::mutex> _(singleton->textureGuard);
+        auto it = singleton->textures.find(name);
+        if (it != singleton->textures.end()) return it->second;
+        else return pTexture();
     }
 
     VkMachine::pStreamTexture VkMachine::getStreamTexture(int32_t name) {
@@ -846,14 +839,14 @@ namespace onart {
         return singleton->shaders[name] = ret;
     }
 
-    VkMachine::pTexture VkMachine::createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler, uint32_t binding){
+    VkMachine::pTexture VkMachine::createTexture(void* ktxObj, int32_t key, const TextureCreationOptions& opts){
         ktxTexture2* texture = reinterpret_cast<ktxTexture2*>(ktxObj);
         if (texture->numLevels == 0) return pTexture();
         VkFormat availableFormat;
         ktx_error_code_e k2result;
         if(ktxTexture2_NeedsTranscoding(texture)){
             ktx_transcode_fmt_e tf;
-            switch (availableFormat = textureFormatFallback(physicalDevice.card, texture->baseWidth, texture->baseHeight, nChannels, srgb, hq, texture->isCubemap ? VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : (VkImageCreateFlagBits)0))
+            switch (availableFormat = textureFormatFallback(physicalDevice.card, texture->baseWidth, texture->baseHeight, opts.nChannels, opts.srgb, opts.opts, texture->isCubemap ? VkImageCreateFlagBits::VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : (VkImageCreateFlagBits)0))
             {
             case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
             case VK_FORMAT_ASTC_4x4_UNORM_BLOCK:
@@ -870,6 +863,26 @@ namespace onart {
             case VK_FORMAT_BC3_SRGB_BLOCK:
             case VK_FORMAT_BC3_UNORM_BLOCK:
                 tf = KTX_TTF_BC3_RGBA;
+                break;
+            case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
+            case VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
+                tf = KTX_TTF_ETC;
+                break;
+            case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
+            case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
+                tf = KTX_TTF_BC1_RGB;
+                break;
+            case VK_FORMAT_EAC_R11G11_UNORM_BLOCK:
+                tf = KTX_TTF_ETC2_EAC_RG11;
+                break;
+            case VK_FORMAT_BC5_UNORM_BLOCK:
+                tf = KTX_TTF_BC5_RG;
+                break;
+            case VK_FORMAT_BC4_UNORM_BLOCK:
+                tf = KTX_TTF_BC4_R;
+                break;
+            case VK_FORMAT_EAC_R11_UNORM_BLOCK:
+                tf = KTX_TTF_ETC2_EAC_R11;
                 break;
             default:
                 tf = KTX_TTF_RGBA32;
@@ -1049,6 +1062,7 @@ namespace onart {
         }
 
         VkDescriptorSet newSet;
+        uint64_t binding = opts.extra.u64;
         singleton->allocateDescriptorSets(&textureLayout[binding], 1, &newSet);
         if(!newSet){
             LOGHERE;
@@ -1060,7 +1074,7 @@ namespace onart {
         VkDescriptorImageInfo dsImageInfo{};
         dsImageInfo.imageView = newView;
         dsImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        if (linearSampler) {
+        if (opts.linearSampled) {
             dsImageInfo.sampler = textureSampler[imgInfo.mipLevels - 1];
         }
         else {
@@ -1079,10 +1093,7 @@ namespace onart {
         
         struct txtr:public Texture{ inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint32_t _5, uint16_t _6, uint16_t _7):Texture(_1,_2,_3,_4,_5,_6,_7){} };
         if (key == INT32_MIN) return std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
-        if(loadThread.waiting()){
-            std::unique_lock<std::mutex> _(textureGuard);
-            return textures[key] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
-        }
+        std::unique_lock<std::mutex> _(textureGuard);
         return textures[key] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
     }
 
@@ -1222,10 +1233,7 @@ namespace onart {
 
         struct txtr :public StreamTexture { inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint32_t _5, uint16_t _6, uint16_t _7) :StreamTexture(_1, _2, _3, _4, _5, _6, _7) {} };
         if (key == INT32_MIN) return std::make_shared<txtr>(img, newView, alloc, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
-        if (singleton->loadThread.waiting()) {
-            std::unique_lock<std::mutex> _(singleton->textureGuard);
-            return singleton->streamTextures[key] = std::make_shared<txtr>(img, newView, alloc, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
-        }
+        std::unique_lock<std::mutex> _(singleton->textureGuard);
         return singleton->streamTextures[key] = std::make_shared<txtr>(img, newView, alloc, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
     }
 
@@ -1293,7 +1301,7 @@ namespace onart {
         return singleton->textureLayout[binding];
     }
 
-    static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, VkMachine::ImageTextureFormatOptions& option){
+    static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, VkMachine::TextureFormatOptions option){
         ktxTexture2* texture;
         ktx_error_code_e k2result;
         ktxTextureCreateInfo texInfo{};
@@ -1331,7 +1339,7 @@ namespace onart {
             ktxTexture_Destroy(ktxTexture(texture));
             return nullptr;
         }
-        if(option == VkMachine::ImageTextureFormatOptions::IT_USE_HQCOMPRESS || option == VkMachine::ImageTextureFormatOptions::IT_USE_COMPRESS){
+        if(option == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS){
             ktxBasisParams params{};
             params.compressionLevel = KTX_ETC1S_DEFAULT_COMPRESSION_LEVEL;
             params.uastc = KTX_TRUE;
@@ -1341,49 +1349,48 @@ namespace onart {
             k2result = ktxTexture2_CompressBasisEx(texture, &params);
             if(k2result != KTX_SUCCESS){
                 LOGWITH("Compress failed:",k2result);
-                option = VkMachine::ImageTextureFormatOptions::IT_USE_ORIGINAL;
+                ktxTexture_Destroy(ktxTexture(texture));
+                return nullptr;
             }
         }
         return texture;
     }
 
-    VkMachine::pTexture VkMachine::createTextureFromImage(const char* fileName, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler, uint32_t binding) {
+    VkMachine::pTexture VkMachine::createTextureFromImage(const char* fileName, int32_t key, const TextureCreationOptions& opts) {
+        if (auto tex = getTexture(key)) { return tex; }
         int x, y, nChannels;
-        uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 4);
-        if(!pix) {
-            LOGWITH("Failed to load image:",stbi_failure_reason());
+        uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 0);
+        if (!pix) {
+            LOGWITH("Failed to load image:", stbi_failure_reason());
+            return {};
+        }
+        ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, opts.srgb, opts.opts);
+        stbi_image_free(pix);
+        if (!texture) {
+            LOGHERE;
+            return {};
+        }
+        return singleton->createTexture(texture, key, opts);
+    }
+
+    VkMachine::pTexture VkMachine::createTextureFromImage(const void* mem, size_t size, int32_t key, const TextureCreationOptions& opts) {
+        if (auto tex = getTexture(key)) { return tex; }
+        int x, y, nChannels;
+        uint8_t* pix = stbi_load_from_memory((uint8_t*)mem, (int)size, &x, &y, &nChannels, 0);
+        if (!pix) {
+            LOGWITH("Failed to load image:", stbi_failure_reason());
             return pTexture();
         }
-        ktxTexture2* texture = createKTX2FromImage(pix, x, y, 4, srgb, option);
+        ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, opts.srgb, opts.opts);
         stbi_image_free(pix);
-        if(!texture) {
+        if (!texture) {
             LOGHERE;
             return pTexture();
         }
-        return singleton->createTexture(texture, key, 4, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS, linearSampler, binding);
+        return singleton->createTexture(texture, key, opts);
     }
 
-    VkMachine::pTexture VkMachine::createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler, uint32_t binding){
-        int x, y, nChannels;
-        uint8_t* pix = stbi_load_from_memory(mem, (int)size, &x, &y, &nChannels, 0);
-        if(!pix) {
-            LOGWITH("Failed to load image:",stbi_failure_reason());
-            return pTexture();
-        }
-        ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, srgb, option);
-        stbi_image_free(pix);
-        if(!texture) {
-            LOGHERE;
-            return pTexture();
-        }
-        return singleton->createTexture(texture, key, nChannels, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS, linearSampler, binding);
-    }
-
-    VkMachine::pTexture VkMachine::createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler, uint32_t binding){
-        if(nChannels > 4 || nChannels == 0) {
-            LOGWITH("Invalid channel count. nChannels must be 1~4");
-            return pTexture();
-        }
+    VkMachine::pTexture VkMachine::createTexture(const char* fileName, int32_t key, const TextureCreationOptions& opts) {
         pTexture ret(std::move(getTexture(key)));
         if(ret) return ret;
 
@@ -1394,16 +1401,11 @@ namespace onart {
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }
-        return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler);
+        return singleton->createTexture(texture, key, opts);
     }
 
-    VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb, bool hq, bool linearSampler, uint32_t binding){
-        if(nChannels > 4 || nChannels == 0) {
-            LOGWITH("Invalid channel count. nChannels must be 1~4");
-            return pTexture();
-        }
-        pTexture ret(std::move(getTexture(key)));
-        if(ret) return ret;
+    VkMachine::pTexture VkMachine::createTexture(const uint8_t* mem, size_t size, int32_t key, const TextureCreationOptions& opts){
+        if (auto ret = getTexture(key)) { return ret; }
         ktxTexture2* texture;
         ktx_error_code_e k2result;
 
@@ -1411,90 +1413,122 @@ namespace onart {
             LOGWITH("Failed to load ktx texture:",k2result);
             return pTexture();
         }
-        return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler, binding);
+        return singleton->createTexture(texture, key, opts);
     }
 
-    void VkMachine::asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(variant8)> handler, bool srgb, bool hq, bool linearSampler, uint32_t binding){
+    void VkMachine::asyncCreateTexture(const char* fileName, int32_t key, std::function<void(variant8)> handler, const TextureCreationOptions& opts){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
-        bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([fileName, key, nChannels, handler, srgb, hq, already, linearSampler, binding](){
-            if(!already){
-                pTexture ret = singleton->createTexture(fileName, INT32_MIN, nChannels, srgb, hq, linearSampler, binding);
-                if (!ret) {
-                    variant8 _k = (uint32_t)key | ((uint64_t)VkMachine::reason << 32);
-                    return _k;
-                }
-                singleton->textureGuard.lock();
-                singleton->textures[key] = std::move(ret);
-                singleton->textureGuard.unlock();
+        if (getTexture(key)) {
+            variant8 _k;
+            _k.bytedata4[0] = key;
+            handler(_k);
+            return;
+        }
+        TextureCreationOptions options = opts;
+        singleton->loadThread.post([fileName, key, options](){
+            pTexture ret = singleton->createTexture(fileName, INT32_MIN, options);
+            if (!ret) {
+                variant8 _k;
+                _k.bytedata4[0] = key;
+                _k.bytedata4[1] = reason;
+                return _k;
             }
-            return variant8((uint64_t)(uint32_t)key);
+            singleton->textureGuard.lock();
+            singleton->textures[key] = std::move(ret);
+            singleton->textureGuard.unlock();
+            variant8 _k;
+            _k.bytedata4[0] = key;
+            return _k;
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(variant8)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler, uint32_t binding){
+    void VkMachine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(variant8)> handler, const TextureCreationOptions& opts){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
-        bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([already, fileName, key, handler, srgb, option, linearSampler, binding](){
-            if(!already){
-                pTexture ret = singleton->createTextureFromImage(fileName, INT32_MIN, srgb, option, linearSampler, binding);
-				if (!ret) {
-					variant8 _k = (uint32_t)key | ((uint64_t)VkMachine::reason << 32);
-					return _k;
-				}
-                singleton->textureGuard.lock();
-                singleton->textures[key] = std::move(ret);
-                singleton->textureGuard.unlock();
+        if (getTexture(key)) {
+            variant8 _k;
+            _k.bytedata4[0] = key;
+            handler(_k);
+            return;
+        }
+        TextureCreationOptions options = opts;
+        singleton->loadThread.post([ fileName, key, options](){
+            pTexture ret = singleton->createTextureFromImage(fileName, INT32_MIN, options);
+            if (!ret) {
+                variant8 _k;
+                _k.bytedata4[0] = key;
+                _k.bytedata4[1] = reason;
+                return _k;
             }
-            return variant8((uint64_t)(uint32_t)key);
+            singleton->textureGuard.lock();
+            singleton->textures[key] = std::move(ret);
+            singleton->textureGuard.unlock();
+            variant8 _k;
+            _k.bytedata4[0] = key;
+            return _k;
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(variant8)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler, uint32_t binding){
+    void VkMachine::asyncCreateTextureFromImage(const void* mem, size_t size, int32_t key, std::function<void(variant8)> handler, const TextureCreationOptions& opts){
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
-        bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([already, mem, size, key, handler, srgb, option, linearSampler, binding](){
-            if(!already){
-                pTexture ret = singleton->createTextureFromImage(mem, size, INT32_MIN, srgb, option, linearSampler, binding);
-				if (!ret) {
-					variant8 _k = (uint32_t)key | ((uint64_t)VkMachine::reason << 32);
-					return _k;
-				}
-                singleton->textureGuard.lock();
-                singleton->textures[key] = std::move(ret);
-                singleton->textureGuard.unlock();
+        if (getTexture(key)) {
+            variant8 _k;
+            _k.bytedata4[0] = key;
+            handler(_k);
+            return;
+        }
+        TextureCreationOptions options = opts;
+        singleton->loadThread.post([mem, size, key, options](){
+            pTexture ret = singleton->createTextureFromImage(mem, size, INT32_MIN, options);
+            if (!ret) {
+                variant8 _k;
+                _k.bytedata4[0] = key;
+                _k.bytedata4[1] = reason;
+                return _k;
             }
-            return variant8((uint64_t)(uint32_t)key);
+            singleton->textureGuard.lock();
+            singleton->textures[key] = std::move(ret);
+            singleton->textureGuard.unlock();
+            variant8 _k;
+            _k.bytedata4[0] = key;
+            return _k;
         }, handler, vkm_strand::GENERAL);
     }
 
-    void VkMachine::asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(variant8)> handler, int32_t key, bool srgb, bool hq, bool linearSampler, uint32_t binding) {
+    void VkMachine::asyncCreateTexture(const uint8_t* mem, size_t size, int32_t key, std::function<void(variant8)> handler, const TextureCreationOptions& opts) {
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
-        bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([mem, size, key, nChannels, handler, srgb, hq, already, linearSampler, binding](){
-            if(!already){
-                pTexture ret = singleton->createTexture(mem, size, nChannels, INT32_MIN, srgb, hq, linearSampler, binding);
-				if (!ret) {
-					variant8 _k = (uint32_t)key | ((uint64_t)VkMachine::reason << 32);
-					return _k;
-				}
-                singleton->textureGuard.lock();
-                singleton->textures[key] = std::move(ret);
-                singleton->textureGuard.unlock();
+        if (getTexture(key)) {
+            variant8 _k;
+            _k.bytedata4[0] = key;
+            handler(_k);
+            return;
+        }
+        TextureCreationOptions options = opts;
+        singleton->loadThread.post([mem, size, key, options](){
+            pTexture ret = singleton->createTexture(mem, size, INT32_MIN, options);
+            if (!ret) {
+                variant8 _k;
+                _k.bytedata4[0] = key;
+                _k.bytedata4[1] = reason;
+                return _k;
             }
-            return variant8((uint64_t)(uint32_t)key);
+            singleton->textureGuard.lock();
+            singleton->textures[key] = std::move(ret);
+            singleton->textureGuard.unlock();
+            variant8 _k;
+            _k.bytedata4[0] = key;
+            return _k;
         }, handler, vkm_strand::GENERAL);
     }
 
@@ -3911,71 +3945,107 @@ namespace onart {
             (props.maxExtent.height >= y);
     }
 
-    VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, uint32_t nChannels, bool srgb, bool hq, VkImageCreateFlagBits flags) {
+    VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, uint32_t nChannels, bool srgb, VkMachine::TextureFormatOptions hq, VkImageCreateFlagBits flags) {
     #define CHECK_N_RETURN(f) if(isThisFormatAvailable(physicalDevice,f,x,y,flags)) return f
         switch (nChannels)
         {
         case 4:
         if(srgb){
-            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
-            if(hq) return VK_FORMAT_R8G8B8A8_SRGB;
-            CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC3_SRGB_BLOCK);
+            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
+            }
+            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC3_SRGB_BLOCK);
+            }
             return VK_FORMAT_R8G8B8A8_SRGB;
         }
         else{
-            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
-            if(hq) return VK_FORMAT_R8G8B8A8_UNORM;
-            CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC3_UNORM_BLOCK);
+            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
+            }
+            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC3_UNORM_BLOCK);
+            }
             return VK_FORMAT_R8G8B8A8_UNORM;
         }
-            break;
         case 3:
         if(srgb){
-            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
-            if(hq) return VK_FORMAT_R8G8B8_SRGB;
-            CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC1_RGB_SRGB_BLOCK);
+            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
+            }
+            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC1_RGB_SRGB_BLOCK);
+            }
             return VK_FORMAT_R8G8B8_SRGB;
         }
         else{
-            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
-            if(hq) return VK_FORMAT_R8G8B8_UNORM;
-            CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC1_RGB_UNORM_BLOCK);
+            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
+            }
+            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC1_RGB_UNORM_BLOCK);
+            }
             return VK_FORMAT_R8G8B8_UNORM;
         }
         case 2:
         if(srgb){
-            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
+            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
+            }
+            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
+            }
             return VK_FORMAT_R8G8_SRGB;
         }
         else{
-            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
-            if(hq) return VK_FORMAT_R8G8_UNORM;
-            CHECK_N_RETURN(VK_FORMAT_EAC_R11G11_UNORM_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC5_UNORM_BLOCK);
+            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
+            }
+            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_EAC_R11G11_UNORM_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC5_UNORM_BLOCK);
+            }
             return VK_FORMAT_R8G8_UNORM;
         }
         case 1:
         if(srgb){
-            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
+            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                // 용량이 줄어드는 포맷이 없음
+            }
+            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                // 용량이 줄어드는 포맷이 없음
+            }
             return VK_FORMAT_R8_SRGB;
         }
         else{
-            CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
-            if(hq) return VK_FORMAT_R8_UNORM;
-            CHECK_N_RETURN(VK_FORMAT_EAC_R11_UNORM_BLOCK);
-            CHECK_N_RETURN(VK_FORMAT_BC4_UNORM_BLOCK);
+            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                // 용량이 줄어드는 포맷이 없음
+            }
+            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                CHECK_N_RETURN(VK_FORMAT_EAC_R11_UNORM_BLOCK);
+                CHECK_N_RETURN(VK_FORMAT_BC4_UNORM_BLOCK);
+            }
             return VK_FORMAT_R8_UNORM;
         }
         default:
