@@ -196,7 +196,7 @@ namespace onart{
                     rp2s->start();
                     rp2s->push(&rot, 0, 64);
                     rp2s->push(&thr, 64, 68);
-                    rp2s->bind(0, YRGraphics::getRenderTarget(1), 0);
+                    rp2s->bind(0, off, 0);
                     rp2s->invoke(vb);
                     rp2s->execute(off);
                     if constexpr (YRGraphics::OPENGL_GRAPHICS) {
@@ -279,14 +279,16 @@ namespace onart{
         window->scrollCallback = recordScrollEvent;
 #endif
 
-        YRGraphics::RenderTarget* targets[2] = {
-            YRGraphics::createRenderTarget2D(128, 128, 0, YRGraphics::RenderTargetType::COLOR1, YRGraphics::RenderTargetInputOption::INPUT_ATTACHMENT),
-            YRGraphics::createRenderTarget2D(128, 128, 1, YRGraphics::RenderTargetType::COLOR1, YRGraphics::RenderTargetInputOption::SAMPLED_NEAREST)
-        };
         YRGraphics::createRenderPass2Cube(512, 512, 123, false, true);
         auto rtt = YRGraphics::RenderTargetType::COLOR1;
-        auto offrp = YRGraphics::createRenderPass(targets, 2, 0);
-        auto rp2s = YRGraphics::createRenderPass2Screen(nullptr, 1, 1, false);
+        YRGraphics::RenderPassCreationOptions rpopts{};
+        rpopts.width = 128;
+        rpopts.height = 128;
+        rpopts.linearSampled = false;
+        rpopts.subpassCount = 2;
+        auto offrp = YRGraphics::createRenderPass(0, rpopts);
+        rpopts.subpassCount = 1;
+        auto rp2s = YRGraphics::createRenderPass2Screen(1, rpopts);
         using testv_t = YRGraphics::Vertex<vec3, vec2>;
         testv_t verts[]{ {{-1,-1,0},{0,0}},{{-1,1,0},{0,1}},{{1,-1,0},{1,0}},{{1,1,0},{1,1}} };
         uint16_t inds[]{ 0,1,2,2,1,3 };
@@ -298,14 +300,14 @@ namespace onart{
             auto lo2 = YRGraphics::createPipelineLayout(&iaLayout, 1, 0, 1);
             VkVertexInputAttributeDescription desc[2];
             testv_t::info(desc, 0);
-            auto vs = YRGraphics::createShader(TEST_VERT, sizeof(TEST_VERT), 0);
-            auto fs = YRGraphics::createShader(TEST_FRAG, sizeof(TEST_FRAG), 1);
+            auto vs = YRGraphics::createShader(0, { TEST_VERT, sizeof(TEST_VERT) });
+            auto fs = YRGraphics::createShader(1, { TEST_FRAG, sizeof(TEST_FRAG) });
             YRGraphics::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, offrp, 0, 0, lo, vs, fs, 0);
-            vs = YRGraphics::createShader(TEST_IA_VERT, sizeof(TEST_IA_VERT), 2);
-            fs = YRGraphics::createShader(TEST_IA_FRAG, sizeof(TEST_IA_FRAG), 3);
+            vs = YRGraphics::createShader(2, { TEST_IA_VERT, sizeof(TEST_IA_VERT) });
+            fs = YRGraphics::createShader(3, { TEST_IA_FRAG, sizeof(TEST_IA_FRAG) });
             YRGraphics::createPipeline(nullptr, 0, 0, nullptr, 0, 0, offrp, 1, 0, lo2, vs, fs, 1);
-            vs = YRGraphics::createShader(TEST_TX_VERT, sizeof(TEST_TX_VERT), 4);
-            fs = YRGraphics::createShader((uint32_t*)SCALEPX, sizeof(SCALEPX), 5);
+            vs = YRGraphics::createShader(4, { TEST_TX_VERT, sizeof(TEST_TX_VERT) });
+            fs = YRGraphics::createShader(5, { SCALEPX, sizeof(SCALEPX) });
             YRGraphics::createPipeline(nullptr, 0, 0, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, 2);
             YRGraphics::createNullMesh(3, 1);
             YRGraphics::MeshCreationOptions opts{};

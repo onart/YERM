@@ -182,12 +182,6 @@ namespace onart {
         else return pMesh();
     }
 
-    VkMachine::RenderTarget* VkMachine::getRenderTarget(int32_t name){
-        auto it = singleton->renderTargets.find(name);
-        if(it != singleton->renderTargets.end()) return it->second;
-        else return nullptr;
-    }
-
     VkMachine::UniformBuffer* VkMachine::getUniformBuffer(int32_t name){
         auto it = singleton->uniformBuffers.find(name);
         if(it != singleton->uniformBuffers.end()) return it->second;
@@ -643,18 +637,16 @@ namespace onart {
         return singleton->meshes[key] = std::make_shared<publicmesh>(vib, viba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
     }
 
-    VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, int32_t name, RenderTargetType type, RenderTargetInputOption sampled, bool useDepthInput, bool useStencil, bool mmap){
+    VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, RenderTargetType type, bool useDepthInput, bool sampled, bool linear){
         if(!singleton->allocator) {
             LOGWITH("Warning: Tried to create image before initialization");
             return nullptr;
         }
-        if(useDepthInput && useStencil) {
+        if (useDepthInput && (type & RenderTargetType::STENCIL)) {
             LOGWITH("Warning: Can\'t use stencil buffer while using depth buffer as sampled image or input attachment"); // TODO? 엄밀히 말하면 스텐실만 입력첨부물로 쓸 수는 있는데 이걸 꼭 해야 할지
             return nullptr;
         }
 
-        auto it = singleton->renderTargets.find(name);
-        if(it != singleton->renderTargets.end()) {return it->second;}
         ImageSet *color1 = nullptr, *color2 = nullptr, *color3 = nullptr, *ds = nullptr;
         VkImageCreateInfo imgInfo{};
         imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -666,17 +658,16 @@ namespace onart {
         imgInfo.arrayLayers = 1;
         imgInfo.samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
         imgInfo.sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE;
-        imgInfo.tiling = mmap ? VkImageTiling::VK_IMAGE_TILING_LINEAR : VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
+        imgInfo.tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
         imgInfo.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
 
         VmaAllocationCreateInfo allocInfo{};
         allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-        if(mmap) allocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
-        else allocInfo.preferredFlags = VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;        
+        allocInfo.preferredFlags = VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
         if((int)type & 0b1){
             color1 = new ImageSet;
-            imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | ((sampled != RenderTargetInputOption::INPUT_ATTACHMENT) ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
+            imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
             imgInfo.format = singleton->surface.format.format;
             reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color1->img, &color1->alloc, nullptr);
             if(reason != VK_SUCCESS) {
@@ -735,7 +726,7 @@ namespace onart {
         }
         if((int)type & 0b1000) {
             ds = new ImageSet;
-            imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | ((sampled != RenderTargetInputOption::INPUT_ATTACHMENT) ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : (useDepthInput ? VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT : 0));
+            imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : (useDepthInput ? VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT : 0));
             imgInfo.format = VkFormat::VK_FORMAT_D24_UNORM_S8_UINT;
             reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &ds->img, &ds->alloc, nullptr);
             if(reason != VK_SUCCESS) {
@@ -747,7 +738,7 @@ namespace onart {
                 return nullptr;
             }
             VkImageAspectFlags dsFlags = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT;
-            if(useStencil) dsFlags |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
+            if (type & RenderTargetType::STENCIL) dsFlags |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
             ds->view = createImageView(singleton->device, ds->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, dsFlags);
             if(!ds->view){
                 if(color1) {color1->free(); delete color1;}
@@ -763,7 +754,7 @@ namespace onart {
         if(color3) {singleton->images.insert(color3); nim++;}
         if(ds) {singleton->images.insert(ds); if(useDepthInput) nim++;}
 
-        VkDescriptorSetLayout layout = (sampled != RenderTargetInputOption::INPUT_ATTACHMENT) ? singleton->textureLayout[0] : singleton->inputAttachmentLayout[0];
+        VkDescriptorSetLayout layout = sampled ? singleton->textureLayout[0] : singleton->inputAttachmentLayout[0];
         VkDescriptorSetLayout layouts[4] = {layout, layout, layout, layout};
         VkDescriptorSet dsets[4]{};
 
@@ -784,11 +775,11 @@ namespace onart {
         wr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         wr.descriptorCount = 1;
         wr.pImageInfo = &imageInfo;
-        if(sampled == RenderTargetInputOption::SAMPLED_LINEAR) {
+        if(sampled && linear) {
             imageInfo.sampler = singleton->textureSampler[0];
             wr.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         }
-        else if (sampled == RenderTargetInputOption::SAMPLED_NEAREST) {
+        else if (sampled) {
             imageInfo.sampler = singleton->nearestSampler;
             wr.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         }
@@ -816,8 +807,7 @@ namespace onart {
             wr.dstSet = dsets[nim];
             vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr); // 입력 첨부물 기술자를 위한 이미지 뷰에서는 DEPTH, STENCIL을 동시에 명시할 수 없음. 솔직히 깊이를 입력첨부물로는 안 쓸 것 같긴 한데 
         }
-        if(name == INT32_MIN) return new RenderTarget(type, width, height, color1, color2, color3, ds, (bool)sampled, mmap, dsets);
-        return singleton->renderTargets[name] = new RenderTarget(type, width, height, color1, color2, color3, ds, (bool)sampled, mmap, dsets);
+        return new RenderTarget(type, width, height, color1, color2, color3, ds, dsets, sampled, useDepthInput);
     }
 
     void VkMachine::removeImageSet(VkMachine::ImageSet* set) {
@@ -829,14 +819,14 @@ namespace onart {
         }
     }
 
-    VkShaderModule VkMachine::createShader(const uint32_t* spv, size_t size, int32_t name) {
+    VkShaderModule VkMachine::createShader(int32_t name, const ShaderModuleCreationOptions& opts) {
         VkShaderModule ret = getShader(name);
         if(ret) return ret;
 
         VkShaderModuleCreateInfo smInfo{};
         smInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        smInfo.codeSize = size;
-        smInfo.pCode = spv;
+        smInfo.codeSize = opts.size;
+        smInfo.pCode = (uint32_t*)opts.source;
         reason = vkCreateShaderModule(singleton->device, &smInfo, nullptr, &ret);
         if(reason != VK_SUCCESS) {
             LOGWITH("Failed to create shader moudle:", reason,resultAsString(reason));
@@ -1574,8 +1564,8 @@ namespace onart {
         VkMachine::singleton->streamTextures.erase(key);
     }
 
-    VkMachine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil, bool sampled, bool mmap, VkDescriptorSet* dsets)
-    :type(type), width(width), height(height), color1(color1), color2(color2), color3(color3), depthstencil(depthstencil), sampled(sampled), mapped(mmap){
+    VkMachine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil, VkDescriptorSet* dsets, bool sampled, bool depthInput)
+        :type(type), width(width), height(height), color1(color1), color2(color2), color3(color3), depthstencil(depthstencil), sampled(sampled), depthInput(depthInput) {
         int nim=0;
         if(color1) {
             dset1 = dsets[nim++];
@@ -1700,7 +1690,7 @@ namespace onart {
             arr[0].format = singleton->surface.format.format;
             arr[0].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
             arr[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            arr[0].storeOp = (sampled || mapped) ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            arr[0].storeOp = sampled ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
             arr[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             arr[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
             arr[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -1719,7 +1709,7 @@ namespace onart {
             arr[colorCount].format = VkFormat::VK_FORMAT_D24_UNORM_S8_UINT;
             arr[colorCount].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
             arr[colorCount].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            arr[colorCount].storeOp = (sampled || mapped) ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE; // 그림자맵에서야 필요하고 그 외에는 필요없음
+            arr[colorCount].storeOp = sampled ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE; // 그림자맵에서야 필요하고 그 외에는 필요없음
             arr[colorCount].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             arr[colorCount].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
             arr[colorCount].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -2000,17 +1990,16 @@ namespace onart {
         return singleton->cubePasses[key] = r;
     }
 
-    VkMachine::RenderPass2Screen* VkMachine::createRenderPass2Screen(RenderTargetType* tgs, uint32_t subpassCount, int32_t name, bool useDepth, bool* useDepthAsInput){
+    VkMachine::RenderPass2Screen* VkMachine::createRenderPass2Screen(int32_t name, const RenderPassCreationOptions& opts) {
         RenderPass2Screen* r = getRenderPass2Screen(name);
-        if(r) return r;
-
-        if(subpassCount == 0) return nullptr;
-        std::vector<RenderTarget*> targets(subpassCount - 1);
-        for(uint32_t i = 0; i < subpassCount - 1; i++){
-            targets[i] = createRenderTarget2D(singleton->swapchain.extent.width, singleton->swapchain.extent.height, INT32_MIN, tgs[i], RenderTargetInputOption::INPUT_ATTACHMENT, useDepthAsInput ? useDepthAsInput[i] : false);
-            if(!targets[i]){
+        if (r) return r;
+        if (opts.subpassCount == 0) return nullptr;
+        std::vector<RenderTarget*> targets(opts.subpassCount - 1);
+        for (uint32_t i = 0; i < opts.subpassCount - 1; i++) {
+            targets[i] = createRenderTarget2D(singleton->swapchain.extent.width, singleton->swapchain.extent.height, opts.targets[i], opts.depthInput ? opts.depthInput[i] : false, false, false);
+            if (!targets[i]) {
                 LOGHERE;
-                for(RenderTarget* t:targets) delete t;
+                for (RenderTarget* t : targets) delete t;
                 return nullptr;
             }
         }
@@ -2019,7 +2008,7 @@ namespace onart {
         VmaAllocation dsAlloc = VK_NULL_HANDLE;
         VkImageView dsImageView = VK_NULL_HANDLE;
 
-        if(subpassCount == 1 && useDepth) {
+        if (opts.subpassCount == 1 && (opts.screenDepthStencil & (RenderTargetType::DEPTH | RenderTargetType::STENCIL))) {
             VkImageCreateInfo imgInfo{};
             imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
             imgInfo.arrayLayers = 1;
@@ -2036,48 +2025,48 @@ namespace onart {
             imgInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
             VmaAllocationCreateInfo allocInfo{};
             allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
-            
-            if((reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &dsImage, &dsAlloc, nullptr)) != VK_SUCCESS){
+
+            if ((reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &dsImage, &dsAlloc, nullptr)) != VK_SUCCESS) {
                 LOGWITH("Failed to create depth/stencil image for last one");
-                for(RenderTarget* t:targets) delete t;
+                for (RenderTarget* t : targets) delete t;
                 return nullptr;
             }
 
             dsImageView = createImageView(singleton->device, dsImage, VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
-            if(!dsImageView){
+            if (!dsImageView) {
                 LOGHERE;
                 vmaDestroyImage(singleton->allocator, dsImage, dsAlloc);
-                for(RenderTarget* t:targets) delete t;
+                for (RenderTarget* t : targets) delete t;
                 return nullptr;
             }
         }
 
-        std::vector<VkSubpassDescription> subpasses(subpassCount);
-        std::vector<VkAttachmentDescription> attachments(subpassCount * 4);
-        std::vector<VkAttachmentReference> colorRefs(subpassCount * 4);
-        std::vector<VkAttachmentReference> inputRefs(subpassCount * 4);
-        std::vector<VkSubpassDependency> dependencies(subpassCount);
-        std::vector<VkImageView> ivs(subpassCount * 4);
+        std::vector<VkSubpassDescription> subpasses(opts.subpassCount);
+        std::vector<VkAttachmentDescription> attachments(opts.subpassCount * 4);
+        std::vector<VkAttachmentReference> colorRefs(opts.subpassCount * 4);
+        std::vector<VkAttachmentReference> inputRefs(opts.subpassCount * 4);
+        std::vector<VkSubpassDependency> dependencies(opts.subpassCount);
+        std::vector<VkImageView> ivs(opts.subpassCount * 4);
 
         uint32_t totalAttachments = 0;
         uint32_t totalInputAttachments = 0;
         uint32_t inputAttachmentCount = 0;
-    
-        for(uint32_t i = 0; i < subpassCount - 1; i++){
+
+        for (uint32_t i = 0; i < opts.subpassCount - 1; i++) {
             uint32_t colorCount = targets[i]->attachmentRefs(&attachments[totalAttachments], false);
             subpasses[i].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
             subpasses[i].colorAttachmentCount = colorCount;
             subpasses[i].pColorAttachments = &colorRefs[totalAttachments];
             subpasses[i].inputAttachmentCount = inputAttachmentCount;
             subpasses[i].pInputAttachments = &inputRefs[totalInputAttachments - inputAttachmentCount];
-            if(targets[i]->depthstencil) subpasses[i].pDepthStencilAttachment = &colorRefs[totalAttachments + colorCount];
+            if (targets[i]->depthstencil) subpasses[i].pDepthStencilAttachment = &colorRefs[totalAttachments + colorCount];
             VkImageView views[4] = {
                 targets[i]->color1 ? targets[i]->color1->view : VK_NULL_HANDLE,
                 targets[i]->color2 ? targets[i]->color2->view : VK_NULL_HANDLE,
                 targets[i]->color3 ? targets[i]->color3->view : VK_NULL_HANDLE,
                 targets[i]->depthstencil ? targets[i]->depthstencil->view : VK_NULL_HANDLE
             };
-            for(uint32_t j = 0; j < colorCount; j++) {
+            for (uint32_t j = 0; j < colorCount; j++) {
                 colorRefs[totalAttachments].attachment = totalAttachments;
                 colorRefs[totalAttachments].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                 inputRefs[totalInputAttachments].attachment = totalAttachments;
@@ -2086,10 +2075,10 @@ namespace onart {
                 totalAttachments++;
                 totalInputAttachments++;
             }
-            if(targets[i]->depthstencil){
+            if (targets[i]->depthstencil) {
                 colorRefs[totalAttachments].attachment = totalAttachments;
                 colorRefs[totalAttachments].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                if(targets[i]->dsetDS) {
+                if (targets[i]->dsetDS) {
                     inputRefs[totalInputAttachments].attachment = totalAttachments;
                     inputRefs[totalInputAttachments].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                     totalInputAttachments++;
@@ -2097,14 +2086,14 @@ namespace onart {
                 ivs[totalAttachments] = views[3];
                 totalAttachments++;
             }
-            dependencies[i+1].srcSubpass = i;
-            dependencies[i+1].dstSubpass = i + 1;
-            dependencies[i+1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-            dependencies[i+1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            dependencies[i+1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            dependencies[i+1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            dependencies[i+1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-            inputAttachmentCount = colorCount; if(targets[i]->dsetDS) inputAttachmentCount++;
+            dependencies[i + 1].srcSubpass = i;
+            dependencies[i + 1].dstSubpass = i + 1;
+            dependencies[i + 1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dependencies[i + 1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            dependencies[i + 1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            dependencies[i + 1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            dependencies[i + 1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+            inputAttachmentCount = colorCount; if (targets[i]->dsetDS) inputAttachmentCount++;
         }
 
         attachments[totalAttachments].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -2116,20 +2105,20 @@ namespace onart {
         attachments[totalAttachments].format = singleton->surface.format.format;
         attachments[totalAttachments].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
 
-        subpasses[subpassCount - 1].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpasses[subpassCount - 1].pInputAttachments = &inputRefs[totalInputAttachments - inputAttachmentCount];
-        subpasses[subpassCount - 1].inputAttachmentCount = inputAttachmentCount;
-        subpasses[subpassCount - 1].colorAttachmentCount = 1;
-        subpasses[subpassCount - 1].pColorAttachments = &colorRefs[totalAttachments];
+        subpasses[opts.subpassCount - 1].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpasses[opts.subpassCount - 1].pInputAttachments = &inputRefs[totalInputAttachments - inputAttachmentCount];
+        subpasses[opts.subpassCount - 1].inputAttachmentCount = inputAttachmentCount;
+        subpasses[opts.subpassCount - 1].colorAttachmentCount = 1;
+        subpasses[opts.subpassCount - 1].pColorAttachments = &colorRefs[totalAttachments];
 
         colorRefs[totalAttachments].attachment = totalAttachments;
         colorRefs[totalAttachments].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkImageView& swapchainImageViewPlace = ivs[totalAttachments];
-        
+
         totalAttachments++;
 
-        if(dsImage){
+        if (dsImage) {
             attachments[totalAttachments].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
             attachments[totalAttachments].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             attachments[totalAttachments].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -2140,13 +2129,13 @@ namespace onart {
             attachments[totalAttachments].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
             colorRefs[totalAttachments].attachment = totalAttachments;
             colorRefs[totalAttachments].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            subpasses[subpassCount - 1].pDepthStencilAttachment = &colorRefs[totalAttachments];
+            subpasses[opts.subpassCount - 1].pDepthStencilAttachment = &colorRefs[totalAttachments];
             ivs[totalAttachments] = dsImageView;
             totalAttachments++;
         }
 
         dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-        dependencies[0].dstSubpass = subpassCount - 1;
+        dependencies[0].dstSubpass = opts.subpassCount - 1;
         dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         dependencies[0].srcAccessMask = 0;
         dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -2155,17 +2144,17 @@ namespace onart {
 
         VkRenderPassCreateInfo rpInfo{};
         rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        rpInfo.subpassCount = subpassCount;
+        rpInfo.subpassCount = opts.subpassCount;
         rpInfo.pSubpasses = subpasses.data();
         rpInfo.attachmentCount = totalAttachments;
         rpInfo.pAttachments = attachments.data();
-        rpInfo.dependencyCount = subpassCount;
+        rpInfo.dependencyCount = opts.subpassCount;
         rpInfo.pDependencies = &dependencies[0];
         VkRenderPass newPass;
 
-        if((reason = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
-            LOGWITH("Failed to create renderpass:",reason,resultAsString(reason));
-            for(RenderTarget* t:targets) delete t;
+        if ((reason = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS) {
+            LOGWITH("Failed to create renderpass:", reason, resultAsString(reason));
+            for (RenderTarget* t : targets) delete t;
             vmaDestroyImage(singleton->allocator, dsImage, dsAlloc);
             return nullptr;
         }
@@ -2180,14 +2169,14 @@ namespace onart {
         fbInfo.height = singleton->swapchain.extent.height;
         fbInfo.layers = 1;
         uint32_t i = 0;
-        for(VkFramebuffer& fb: fbs){
+        for (VkFramebuffer& fb : fbs) {
             swapchainImageViewPlace = singleton->swapchain.imageView[i++];
-            if((reason = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
-                LOGWITH("Failed to create framebuffer:",reason,resultAsString(reason));
-                for(VkFramebuffer d: fbs) vkDestroyFramebuffer(singleton->device, d, nullptr);
+            if ((reason = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS) {
+                LOGWITH("Failed to create framebuffer:", reason, resultAsString(reason));
+                for (VkFramebuffer d : fbs) vkDestroyFramebuffer(singleton->device, d, nullptr);
                 vkDestroyRenderPass(singleton->device, newPass, nullptr);
                 vkDestroyImageView(singleton->device, dsImageView, nullptr);
-                for(RenderTarget* t:targets) delete t;
+                for (RenderTarget* t : targets) delete t;
                 vmaDestroyImage(singleton->allocator, dsImage, dsAlloc);
                 return nullptr;
             }
@@ -2197,47 +2186,49 @@ namespace onart {
         return ret;
     }
 
-    VkMachine::RenderPass* VkMachine::createRenderPass(RenderTarget** targets, uint32_t subpassCount, int32_t name){
-        RenderPass* r = getRenderPass(name);
-        if(r) return r;
-        if(subpassCount == 0) return nullptr;
-        for(uint32_t i = 0; i < subpassCount - 1; i++) {
-            if(targets[i]->sampled) {
-                LOGWITH("Warning: the given target",i,"was not made to be an input attachment(sampled = true)");
-                return nullptr;
+    VkMachine::RenderPass* VkMachine::createRenderPass(int32_t key, const RenderPassCreationOptions& opts){
+        if (RenderPass* r = getRenderPass(key)) { return r; }
+        if (opts.subpassCount == 0 || opts.subpassCount > 16) { return {}; }
+        RenderTarget* targets[16]{};
+        for (uint32_t i = 0; i < opts.subpassCount; i++) {
+            RenderTargetType rtype = opts.targets ? opts.targets[i] : RenderTargetType::COLOR1;
+            bool diType = opts.depthInput ? opts.depthInput[i] : false;
+            targets[i] = createRenderTarget2D(opts.width, opts.height, rtype, diType, i == opts.subpassCount - 1, opts.linearSampled);
+            if (!targets[i]) {
+                LOGHERE;
+                for (uint32_t j = 0; j < i; j++) {
+                    delete targets[i];
+                }
+                return {};
             }
         }
-        if(!targets[subpassCount - 1]->sampled){
-            LOGWITH("Warning: the last given target was made to be an input attachment(sampled = false)");
-            return nullptr;
-        }
 
-        std::vector<VkSubpassDescription> subpasses(subpassCount);
-        std::vector<VkAttachmentDescription> attachments(subpassCount * 4);
-        std::vector<VkAttachmentReference> colorRefs(subpassCount * 4);
-        std::vector<VkAttachmentReference> inputRefs(subpassCount * 4);
-        std::vector<VkSubpassDependency> dependencies(subpassCount);
-        std::vector<VkImageView> ivs(subpassCount * 4);
+        std::vector<VkSubpassDescription> subpasses(opts.subpassCount);
+        std::vector<VkAttachmentDescription> attachments(opts.subpassCount * 4);
+        std::vector<VkAttachmentReference> colorRefs(opts.subpassCount * 4);
+        std::vector<VkAttachmentReference> inputRefs(opts.subpassCount * 4);
+        std::vector<VkSubpassDependency> dependencies(opts.subpassCount);
+        std::vector<VkImageView> ivs(opts.subpassCount * 4);
 
         uint32_t totalAttachments = 0;
         uint32_t totalInputAttachments = 0;
         uint32_t inputAttachmentCount = 0;
 
-        for(uint32_t i = 0; i < subpassCount; i++){
-            uint32_t colorCount = targets[i]->attachmentRefs(&attachments[totalAttachments], i == (subpassCount - 1));
+        for (uint32_t i = 0; i < opts.subpassCount; i++) {
+            uint32_t colorCount = targets[i]->attachmentRefs(&attachments[totalAttachments], i == (opts.subpassCount - 1));
             subpasses[i].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
             subpasses[i].colorAttachmentCount = colorCount;
             subpasses[i].pColorAttachments = &colorRefs[totalAttachments];
             subpasses[i].inputAttachmentCount = inputAttachmentCount;
             subpasses[i].pInputAttachments = &inputRefs[totalInputAttachments - inputAttachmentCount];
-            if(targets[i]->depthstencil) subpasses[i].pDepthStencilAttachment = &colorRefs[totalAttachments + colorCount];
+            if (targets[i]->depthstencil) subpasses[i].pDepthStencilAttachment = &colorRefs[totalAttachments + colorCount];
             VkImageView views[4] = {
                 targets[i]->color1 ? targets[i]->color1->view : VK_NULL_HANDLE,
                 targets[i]->color2 ? targets[i]->color2->view : VK_NULL_HANDLE,
                 targets[i]->color3 ? targets[i]->color3->view : VK_NULL_HANDLE,
                 targets[i]->depthstencil ? targets[i]->depthstencil->view : VK_NULL_HANDLE
             };
-            for(uint32_t j = 0; j < colorCount; j++) {
+            for (uint32_t j = 0; j < colorCount; j++) {
                 colorRefs[totalAttachments].attachment = totalAttachments;
                 colorRefs[totalAttachments].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                 inputRefs[totalInputAttachments].attachment = totalAttachments;
@@ -2246,10 +2237,10 @@ namespace onart {
                 totalAttachments++;
                 totalInputAttachments++;
             }
-            if(targets[i]->depthstencil){
+            if (targets[i]->depthstencil) {
                 colorRefs[totalAttachments].attachment = totalAttachments;
                 colorRefs[totalAttachments].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                if(targets[i]->dsetDS) {
+                if (targets[i]->dsetDS) {
                     inputRefs[totalInputAttachments].attachment = totalAttachments;
                     inputRefs[totalInputAttachments].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                     totalInputAttachments++;
@@ -2264,28 +2255,28 @@ namespace onart {
             dependencies[i].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
             dependencies[i].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
             dependencies[i].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-            inputAttachmentCount = colorCount; if(targets[i]->depthstencil) inputAttachmentCount++;
+            inputAttachmentCount = colorCount; if (targets[i]->depthstencil) inputAttachmentCount++;
         }
 
-        dependencies[0].srcSubpass = subpassCount - 1;
+        dependencies[0].srcSubpass = opts.subpassCount - 1;
         dependencies[0].dstSubpass = VK_SUBPASS_EXTERNAL;
-        dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT| VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
         dependencies[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         dependencies[0].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         dependencies[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-		
+
         VkRenderPassCreateInfo rpInfo{};
         rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        rpInfo.subpassCount = subpassCount;
+        rpInfo.subpassCount = opts.subpassCount;
         rpInfo.pSubpasses = subpasses.data();
         rpInfo.attachmentCount = totalAttachments;
         rpInfo.pAttachments = attachments.data();
-        rpInfo.dependencyCount = subpassCount; // 스왑체인 의존성은 이 함수를 통해 만들지 않기 때문에 이대로 사용
+        rpInfo.dependencyCount = opts.subpassCount; // 스왑체인 의존성은 이 함수를 통해 만들지 않기 때문에 이대로 사용
         rpInfo.pDependencies = &dependencies[0];
         VkRenderPass newPass;
-        if((reason = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS){
-            LOGWITH("Failed to create renderpass:",reason,resultAsString(reason));
+        if ((reason = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS) {
+            LOGWITH("Failed to create renderpass:", reason, resultAsString(reason));
             return nullptr;
         }
 
@@ -2298,17 +2289,16 @@ namespace onart {
         fbInfo.width = targets[0]->width;
         fbInfo.height = targets[0]->height;
         fbInfo.layers = 1; // 큐브맵이면 6인데 일단 그건 다른 함수로 한다고 침
-        if((reason = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
-            LOGWITH("Failed to create framebuffer:",reason,resultAsString(reason));
+        if ((reason = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS) {
+            LOGWITH("Failed to create framebuffer:", reason, resultAsString(reason));
             return nullptr;
         }
 
-        RenderPass* ret = new RenderPass(newPass, fb, subpassCount);
-        for(uint32_t i = 0; i < subpassCount; i++){ ret->targets[i] = targets[i]; }
+        RenderPass* ret = new RenderPass(newPass, fb, opts.subpassCount);
+        for (uint32_t i = 0; i < opts.subpassCount; i++) { ret->targets[i] = targets[i]; }
         ret->setViewport((float)targets[0]->width, (float)targets[0]->height, 0.0f, 0.0f);
         ret->setScissor(targets[0]->width, targets[0]->height, 0, 0);
-        if(name == INT32_MIN) return ret;
-        return singleton->renderPasses[name] = ret;
+        return singleton->renderPasses[key] = ret;
     }
 
     VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr,
@@ -2489,6 +2479,9 @@ namespace onart {
         vkDestroyFence(singleton->device, fence, nullptr);
         vkDestroyFramebuffer(singleton->device, fb, nullptr);
         vkDestroyRenderPass(singleton->device, rp, nullptr);
+        for (RenderTarget* targ : targets) {
+            delete targ;
+        }
     }
 
     void VkMachine::RenderPass::usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass){
@@ -2501,23 +2494,30 @@ namespace onart {
         if(currentPass == subpass) { vkCmdBindPipeline(cb, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline); }
     }
 
-    void VkMachine::RenderPass::reconstructFB(VkMachine::RenderTarget** targets, uint32_t count){
-        vkDestroyFramebuffer(singleton->device, fb, nullptr);
-        fb = VK_NULL_HANDLE;
-        if(stageCount != count) {
-            LOGWITH("The given parameter is incompatible to this renderpass");
-            return;
-        }
-        for(uint32_t i = 0; i < count; i++){
-            if(this->targets[i]->type != targets[i]->type) {
-                LOGWITH("The given parameter is incompatible to this renderpass");
+    void VkMachine::RenderPass::resize(int width, int height, bool linear) {
+        wait();
+        RenderTarget* targets[16]{};
+        for (uint32_t i = 0; i < stageCount; i++) {
+            RenderTargetType rtype = targets[i]->type;
+            bool diType = targets[i]->depthInput;
+            targets[i] = createRenderTarget2D(width, height, rtype, diType, i == stageCount - 1, linear);
+            if (!targets[i]) {
+                LOGHERE;
+                for (uint32_t j = 0; j < i; j++) {
+                    delete targets[i];
+                }
                 return;
             }
-            this->targets[i] = targets[i];
         }
+        reconstructFB(targets);
+    }
+
+    void VkMachine::RenderPass::reconstructFB(VkMachine::RenderTarget** targets){
+        vkDestroyFramebuffer(singleton->device, fb, nullptr);
+        fb = VK_NULL_HANDLE;
         std::vector<VkImageView> ivs;
-        ivs.reserve(count * 4);
-        for(uint32_t i = 0; i < count; i++){
+        ivs.reserve(stageCount * 4);
+        for(uint32_t i = 0; i < stageCount; i++){
             RenderTarget* target = targets[i];
             if(target->color1){
                 ivs.push_back(targets[0]->color1->view);
@@ -2546,6 +2546,10 @@ namespace onart {
         }
         setViewport((float)targets[0]->width, (float)targets[0]->height, 0.0f, 0.0f);
         setScissor(targets[0]->width, targets[0]->height, 0, 0);
+        for (int i = 0; i < stageCount; i++) {
+            delete this->targets[i];
+            this->targets[i] = targets[i];
+        }
     }
 
     void VkMachine::RenderPass::setViewport(float width, float height, float x, float y, bool applyNow){
@@ -2596,11 +2600,12 @@ namespace onart {
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
     }
 
-    void VkMachine::RenderPass::bind(uint32_t pos, RenderTarget* target, uint32_t index){
+    void VkMachine::RenderPass::bind(uint32_t pos, RenderPass* prevPass, uint32_t index){
         if(currentPass == -1){
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
+        RenderTarget* target = prevPass->targets.back();
         if(!target->sampled){
             LOGWITH("Invalid call: this target is not made with texture");
             return;
@@ -2628,6 +2633,14 @@ namespace onart {
             return;
         }
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &dset, 0, nullptr);
+    }
+
+    void VkMachine::RenderPass::bind(uint32_t pos, RenderPass2Cube* prevPass, uint32_t index) {
+        if (currentPass == -1) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &prevPass->csamp, 0, nullptr);
     }
 
     void VkMachine::RenderPass::push(void* input, uint32_t start, uint32_t end){
@@ -3151,6 +3164,9 @@ namespace onart {
             dsAlloc = nullptr;
 
             // ^^^ 스왑이 있으므로 위 파트는 이론상 없어도 알아서 해제되지만 있는 편이 메모리 때문에 더 좋을 것 같음
+            RenderPassCreationOptions opts{};
+            opts.subpassCount = pipelines.size();
+            opts.screenDepthStencil = RenderTargetType(useFinalDepth ? RenderTargetType::DEPTH | RenderTargetType::STENCIL : RenderTargetType::COLOR1);
 
             std::vector<RenderTargetType> types(targets.size());
             struct bool8{bool b;};
@@ -3161,7 +3177,9 @@ namespace onart {
                 delete targets[i];
             }
             targets.clear();
-            RenderPass2Screen* newDat = singleton->createRenderPass2Screen(types.data(), (uint32_t)pipelines.size(), INT32_MIN, useFinalDepth, (bool*)useDepth.data());
+            opts.depthInput = (bool*)useDepth.data();
+
+            RenderPass2Screen* newDat = singleton->createRenderPass2Screen(INT32_MIN, opts);
             if(!newDat) {
                 this->~RenderPass2Screen();
                 return false;
@@ -3279,15 +3297,12 @@ namespace onart {
         vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
     }
 
-    void VkMachine::RenderPass2Screen::bind(uint32_t pos, RenderTarget* target, uint32_t index){
+    void VkMachine::RenderPass2Screen::bind(uint32_t pos, RenderPass* prevPass, uint32_t index){
         if(currentPass == -1){
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        if(!target->sampled){
-            LOGWITH("Invalid call: this target is not made with texture");
-            return;
-        }
+        RenderTarget* target = prevPass->targets.back();
         VkDescriptorSet dset;
         switch(index){
             case 0:
@@ -3311,6 +3326,14 @@ namespace onart {
             return;
         }
         vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &dset, 0, nullptr);
+    }
+
+    void VkMachine::RenderPass2Screen::bind(uint32_t pos, RenderPass2Cube* prevPass, uint32_t index) {
+        if (currentPass == -1) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &prevPass->csamp, 0, nullptr);
     }
 
      void VkMachine::RenderPass2Screen::invoke(const pMesh& mesh, uint32_t start, uint32_t count){

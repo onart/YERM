@@ -89,21 +89,17 @@ namespace onart {
             class UniformBuffer;
             using PipelineInputVertexSpec = VkVertexInputAttributeDescription;
             /// @brief 렌더 타겟의 유형입니다.
-            enum class RenderTargetType { 
+            enum RenderTargetType { 
                 /// @brief 색 버퍼 1개를 보유합니다.
                 COLOR1 = 0b1,
                 /// @brief 색 버퍼 2개를 보유합니다.
                 COLOR2 = 0b11,
                 /// @brief 색 버퍼 3개를 보유합니다.
                 COLOR3 = 0b111,
-                /// @brief 깊이/스텐실 버퍼만을 보유합니다.
+                /// @brief 깊이 버퍼를 보유합니다.
                 DEPTH = 0b1000,
-                /// @brief 색 버퍼 1개와 깊이/스텐실 버퍼를 보유합니다.
-                COLOR1DEPTH = 0b1001,
-                /// @brief 색 버퍼 2개와 깊이/스텐실 버퍼를 보유합니다.
-                COLOR2DEPTH = 0b1011,
-                /// @brief 색 버퍼 3개와 깊이/스텐실 버퍼를 보유합니다.
-                COLOR3DEPTH = 0b1111
+                /// @brief 스텐실 버퍼를 보유합니다.
+                STENCIL = 0b10000,
             };
             /// @brief 렌더타겟을 텍스처, 입력 첨부물 중 어떤 것으로 사용할지 결정합니다.
             enum class RenderTargetInputOption {
@@ -171,6 +167,29 @@ namespace onart {
                 /// @brief false인 경우 데이터를 수정할 수 있고 그러기 유리한 위치에 저장합니다. 기본값 true
                 bool fixed = true;
             };
+            struct RenderPassCreationOptions {
+                /// @brief 타겟의 공통 크기입니다. 기본값 없음
+                int width, height;
+                /// @brief 서브패스 수입니다. Cube 대상의 렌더패스 생성 시에는 무시됩니다. 기본값 1
+                uint32_t subpassCount = 1;
+                /// @brief 타겟의 유형입니다. @ref RenderTargetType nullptr를 주면 모두 COLOR1로 취급되지만, nullptr를 주지 않는 경우에는 모든 것이 주어져야 합니다.
+                /// Screen 대상의 RenderPass에서는 스왑체인인 마지막을 제외한 만큼 주어져야 합니다. 기본값 nullptr
+                RenderTargetType* targets = nullptr;
+                /// @brief 각 패스의 중간에 깊이 버퍼를 사용할 경우 그것을 input attachment로 사용할지 여부입니다. nullptr를 주면 일괄 false로 취급되며 그 외에는 모든 것이 주어져야 합니다. 기본값 nullptr
+                bool* depthInput = nullptr;
+                /// @brief true를 주면 최종 타겟을 텍스처로 사용할 때 linear 필터를 사용합니다. 기본값 true
+                bool linearSampled = true;
+                /// @brief screen 대상의 렌더패스의 최종 타겟에 depth 또는 stencil을 포함할지 결정합니다. 즉, RenderTargetType::DEPTH, RenderTargetType::STENCIL 이외에는 무시됩니다. 기본값 COLOR1
+                RenderTargetType screenDepthStencil = RenderTargetType::COLOR1;
+            };
+            struct ShaderModuleCreationOptions {
+                /// @brief SPIR-V 바이너리입니다. 기본값 없음
+                const void* source;
+                /// @brief source의 크기(바이트)입니다. 기본값 없음
+                size_t size;
+                /// @brief 대상 셰이더 단계입니다. Vulkan에서는 사용하지 않습니다. 기본값 없음
+                ShaderStage stage;
+            };
             /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
             static void handle();
             /// @brief 스왑체인 회전 변동 관련 최적의 처리를 위해 응용단에서 추가로 가해야 할 회전입니다. PC 버전에서는 반드시 단위행렬이 리턴됩니다.
@@ -213,34 +232,19 @@ namespace onart {
             static pStreamTexture createStreamTexture(int32_t key, uint32_t width, uint32_t height, bool linearSampler = true);
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
             static void asyncCreateTexture(int32_t key, const uint8_t* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
-            /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다. 이것을 해제하는 수단은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
-            /// @param width 가로 길이(px).
-            /// @param height 세로 길이(px).
-            /// @param key 이후 별도로 접근할 수 있는 이름을 지정합니다. 단, 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다. INT32_MIN, 즉 -2147483648 값은 예약되어 있어 사용이 불가능합니다.
-            /// @param type @ref RenderTargetType 참고하세요.
-            /// @param sampled true면 샘플링 텍스처로 사용되고, false면 입력 첨부물로 사용됩니다. 일단은 화면을 최종 목적지로 간주하기 때문에 그 외의 용도는 없습니다.
-            /// @param useDepthInput 이 타겟이 입력 첨부물 혹은 텍스처로 사용될 경우에 깊이 버퍼도 입력 첨부물로 사용할지 여부입니다. 깊이가 입력 첨부물 혹은 샘플링으로 사용될 경우, 스텐실 버퍼는 사용할 수 없습니다.
-            /// @param useStencil true면 깊이 이미지에 더불어 스텐실 버퍼를 사용합니다.
-            /// @param mmap 이것이 true라면 픽셀 데이터에 순차로 접근할 수 있습니다. 단, 렌더링 성능이 낮아질 가능성이 매우 높습니다.
-            /// @return 이것을 통해 렌더 패스를 생성할 수 있습니다.
-            static RenderTarget* createRenderTarget2D(int width, int height, int32_t key, RenderTargetType type = RenderTargetType::COLOR1DEPTH, RenderTargetInputOption sampled = RenderTargetInputOption::SAMPLED_LINEAR, bool useDepthInput = false, bool useStencil = false, bool mmap = false);
             /// @brief SPIR-V 컴파일된 셰이더를 VkShaderModule 형태로 저장하고 가져옵니다.
             /// @param spv SPIR-V 코드
             /// @param size 주어진 SPIR-V 코드의 길이(바이트)
             /// @param key 이후 별도로 접근할 수 있는 이름을 지정합니다. 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다.
-            static VkShaderModule createShader(const uint32_t* spv, size_t size, int32_t key);
+            static VkShaderModule createShader(int32_t key, const ShaderModuleCreationOptions& opts);
             /// @brief 셰이더에서 사용할 수 있는 uniform 버퍼를 생성하여 리턴합니다. 이것을 해제하는 방법은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
             /// @param length 이 값이 1이면 버퍼 하나를 생성하며, 2 이상이면 동적 공유 버퍼를 생성합니다. 동적 공유 버퍼는 렌더 패스 진행 중 바인드할 영역을 바꿀 수 있습니다.
-            /// @param size 각 버퍼의 크기입니다.
-            /// @param stages 이 자원에 접근할 수 있는 셰이더 단계들입니다. (비트 플래그의 조합)
             /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
-            /// @param binding 바인딩 번호입니다.
+            /// @param opts @ref UniformBufferCreationOptions
             static UniformBuffer* createUniformBuffer(int32_t key, const UniformBufferCreationOptions& opts);
-            /// @brief 주어진 렌더 타겟들을 대상으로 하는 렌더패스를 구성합니다.
-            /// @param targets 렌더 타겟 포인터의 배열입니다. 마지막 것을 제외한 모든 타겟은 input attachment로 생성되었어야 하며 그렇지 않은 경우 실패합니다.
-            /// @param subpassCount targets 배열의 크기입니다.
-            /// @param key 이름입니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. INT32_MIN, 즉 -2147483648은 예약된 값이기 때문에 사용할 수 없습니다.
-            static RenderPass* createRenderPass(RenderTarget** targets, uint32_t subpassCount, int32_t key);
+            /// @brief 렌더 패스를 생성합니다. 렌더 패스는 렌더 타겟과 유의어로 보아도 되나, 여러 개의 서브패스로 구성됩니다.
+            /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
+            static RenderPass* createRenderPass(int32_t key, const RenderPassCreationOptions& opts);
             /// @brief 큐브맵 대상의 렌더패스를 생성합니다.
             /// @param width 타겟으로 생성되는 각 이미지의 가로 길이입니다.
             /// @param height 타겟으로 생성되는 각 이미지의 세로 길이입니다.
@@ -249,12 +253,8 @@ namespace onart {
             /// @param useDepth true인 경우 깊이 버퍼를 이미지에 사용합니다. useDepth와 useColor가 모두 true인 경우 샘플링은 색 버퍼에 대해서만 가능합니다.
             static RenderPass2Cube* createRenderPass2Cube(uint32_t width, uint32_t height, int32_t key, bool useColor, bool useDepth);
             /// @brief 화면으로 이어지는 렌더패스를 생성합니다. 각 패스의 타겟들은 현재 창의 해상도와 동일하게 맞춰집니다.
-            /// @param targets 생성할 렌더 타겟들의 타입 배열입니다. 서브패스의 마지막은 이것을 제외한 스왑체인 이미지입니다.
-            /// @param subpassCount 최종 서브패스의 수입니다. 즉 targets 배열 길이 + 1을 입력해야 합니다.
             /// @param key 이름입니다. (RenderPass 객체와 같은 집합을 공유하지 않음) 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. INT32_MIN, 즉 -2147483648은 예약된 값이기 때문에 사용할 수 없습니다.
-            /// @param useDepth subpassCount가 1이고 이 값이 true인 경우 최종 패스에서 깊이/스텐실 이미지를 사용하게 됩니다. subpassCount가 1이 아니면 무시됩니다.
-            /// @param useDepthAsInput targets와 일대일 대응하며, 대응하는 성분의 깊이 성분을 다음 서브패스의 입력으로 사용하려면 true를 줍니다. nullptr를 주는 경우 일괄 false로 취급됩니다. 즉 nullptr가 아니라면 반드시 subpassCount - 1 길이의 배열이 주어져야 합니다.
-            static RenderPass2Screen* createRenderPass2Screen(RenderTargetType* targets, uint32_t subpassCount, int32_t key, bool useDepth = true, bool* useDepthAsInput = nullptr);
+            static RenderPass2Screen* createRenderPass2Screen(int32_t key, const RenderPassCreationOptions& opts);
             /// @brief 파이프라인 레이아웃을 만듭니다. 파이파라인 레이아웃은 셰이더에서 접근할 수 있는 uniform 버퍼, 입력 첨부물, 텍스처 등의 사양을 말합니다.
             /// @param layouts 레이아웃 객체의 배열입니다. Texture, UniformBuffer, RenderTarget의 getLayout으로 얻을 수 있습니다.
             /// @param count layouts의 길이
@@ -317,8 +317,6 @@ namespace onart {
             static VkPipeline getPipeline(int32_t key);
             /// @brief 만들어 둔 파이프라인 레이아웃을 리턴합니다. 없으면 nullptr를 리턴합니다.
             static VkPipelineLayout getPipelineLayout(int32_t key);
-            /// @brief 만들어 둔 렌더 타겟을 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static RenderTarget* getRenderTarget(int32_t key);
             /// @brief 만들어 둔 공유 버퍼를 리턴합니다. 없으면 nullptr를 리턴합니다.
             static UniformBuffer* getUniformBuffer(int32_t key);
             /// @brief 만들어 둔 셰이더 모듈을 리턴합니다. 없으면 nullptr를 리턴합니다.
@@ -383,6 +381,8 @@ namespace onart {
             VkResult qSubmit(const VkPresentInfoKHR* present);
             /// @brief vulkan 객체를 없앱니다.
             void free();
+        private:
+            static RenderTarget* createRenderTarget2D(int width, int height, RenderTargetType type, bool useDepthInput, bool sampled, bool linear);
             ~VkMachine();
             /// @brief 이 클래스 객체는 Game 밖에서는 생성, 소멸 호출이 불가능합니다.
             inline void operator delete(void* p){::operator delete(p);}
@@ -469,9 +469,9 @@ namespace onart {
             VkMachine::ImageSet* color1, *color2, *color3, *depthstencil;
             VkDescriptorSet dset1 = VK_NULL_HANDLE, dset2 = VK_NULL_HANDLE, dset3 = VK_NULL_HANDLE, dsetDS = VK_NULL_HANDLE;
             unsigned width, height;
-            const bool mapped, sampled;
+            const bool sampled, depthInput;
             const RenderTargetType type;
-            RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, bool, bool, VkDescriptorSet*);
+            RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkDescriptorSet*, bool, bool);
             ~RenderTarget();
     };
 
@@ -508,7 +508,12 @@ namespace onart {
             /// @param pos 바인드할 set 번호
             /// @param target 바인드할 타겟
             /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
-            void bind(uint32_t pos, RenderTarget* target, uint32_t index);
+            void bind(uint32_t pos, RenderPass* target, uint32_t index);
+            /// @brief 주어진 렌더 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다. 이 패스의 프레임버퍼에서 사용 중인 렌더타겟은 (어차피 접근도 불가능하지만) 사용할 수 없습니다.
+            /// @param pos 바인드할 set 번호
+            /// @param target 바인드할 타겟
+            /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
+            void bind(uint32_t pos, RenderPass2Cube* target, uint32_t index);
             /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
             /// @param pos 바인드할 set 번호
             /// @param tx 바인드할 텍스처
@@ -542,13 +547,12 @@ namespace onart {
             /// @param timeout 기다릴 최대 시간(ns), UINT64_MAX (~0) 값이 입력되면 무한정 기다립니다.
             /// @return 렌더패스 동작이 실제로 끝나서 리턴했으면 true입니다.
             bool wait(uint64_t timeout = UINT64_MAX);
-            /// @brief 프레임버퍼를 주어진 2D 타겟에 대하여 재구성합니다. 주어지는 타겟들은 렌더패스를 만들 때의 사양과 일치해야 합니다.
-            /// @param targets RenderTarget 포인터 배열입니다.
-            /// @param count targets의 길이로 이 값이 2 이상이면 모든 타겟의 크기가 동일해야 합니다.
-            void reconstructFB(RenderTarget** targets, uint32_t count);
+            /// @brief 렌더타겟의 크기를 일괄 변경합니다.
+            void resize(int width, int height, bool linearSampled = true);
         private:
             RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount); // 이후 다수의 서브패스를 쓸 수 있도록 변경
             ~RenderPass();
+            void reconstructFB(RenderTarget** targets);
             const uint16_t stageCount;
             VkFramebuffer fb = VK_NULL_HANDLE;
             VkRenderPass rp = VK_NULL_HANDLE;
@@ -680,7 +684,12 @@ namespace onart {
             /// @param pos 바인드할 set 번호
             /// @param target 바인드할 타겟
             /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
-            void bind(uint32_t pos, RenderTarget* target, uint32_t index);
+            void bind(uint32_t pos, RenderPass* target, uint32_t index);
+            /// @brief 주어진 렌더 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다. 이 패스의 프레임버퍼에서 사용 중인 렌더타겟은 (어차피 접근도 불가능하지만) 사용할 수 없습니다.
+            /// @param pos 바인드할 set 번호
+            /// @param target 바인드할 타겟
+            /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
+            void bind(uint32_t pos, RenderPass2Cube* target, uint32_t index);
             /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
             /// @param pos 바인드할 set 번호
             /// @param tx 바인드할 텍스처
