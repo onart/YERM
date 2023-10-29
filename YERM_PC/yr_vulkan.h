@@ -76,6 +76,8 @@ namespace onart {
             /// @brief 직접 불러오는 텍스처입니다.
             class Texture;
             using pTexture = std::shared_ptr<Texture>;
+            class TextureSet;
+            using pTextureSet = std::shared_ptr<TextureSet>;
             /// @brief 메모리 맵으로 고정된 텍스처입니다. 실시간으로 CPU단에서 데이터를 수정할 수 있습니다. 동영상이나 다른 창의 화면 등을 텍스처로 사용할 때 적합합니다.
             class StreamTexture;
             using pStreamTexture = std::shared_ptr<StreamTexture>;
@@ -130,8 +132,6 @@ namespace onart {
                 bool srgb = false;
                 /// @brief 이미지의 채널 수를 지정합니다. 이 값은 BasisU 텍스처에 대하여 사용되며 그 외에는 이 값을 무시하고 원본 이미지의 채널 수를 사용합니다. 기본값 4
                 int nChannels = 4;
-                /// @brief 바인딩 번호입니다. 기본값 0
-                uint32_t binding = 0;
             };
             enum ShaderStage: VkFlags {
                 VERTEX = VK_SHADER_STAGE_VERTEX_BIT,
@@ -190,6 +190,85 @@ namespace onart {
                 /// @brief 대상 셰이더 단계입니다. Vulkan에서는 사용하지 않습니다. 기본값 없음
                 ShaderStage stage;
             };
+
+            enum class ShaderResourceType: uint8_t {
+                NONE = 0,
+                UNIFORM_BUFFER_1 = 1,
+                DYNAMIC_UNIFORM_BUFFER_1 = 2,
+                TEXTURE_1 = 3,
+                TEXTURE_2 = 4,
+                TEXTURE_3 = 5,
+                TEXTURE_4 = 6,
+                INPUT_ATTACHMENT_1 = 7,
+                INPUT_ATTACHMENT_2 = 8,
+                INPUT_ATTACHMENT_3 = 9,
+                INPUT_ATTACHMENT_4 = 10,
+            };
+
+            struct PipelineLayoutOptions {
+                ShaderResourceType pos0 = ShaderResourceType::NONE;
+                ShaderResourceType pos1 = ShaderResourceType::NONE;
+                ShaderResourceType pos2 = ShaderResourceType::NONE;
+                ShaderResourceType pos3 = ShaderResourceType::NONE;
+                bool usePush = false;
+            };
+
+            enum class CompareOp {
+                NEVER = VK_COMPARE_OP_NEVER,
+                LESS = VK_COMPARE_OP_LESS,
+                EQUAL = VK_COMPARE_OP_EQUAL,
+                LTE = VK_COMPARE_OP_LESS_OR_EQUAL,
+                GREATER = VK_COMPARE_OP_GREATER,
+                NE = VK_COMPARE_OP_NOT_EQUAL,
+                GTE = VK_COMPARE_OP_GREATER_OR_EQUAL,
+                ALWAYS = VK_COMPARE_OP_ALWAYS,
+            };
+
+            enum class StencilOp {
+                KEEP = VK_STENCIL_OP_KEEP,
+                ZERO = VK_STENCIL_OP_ZERO,
+                REPLACE = VK_STENCIL_OP_REPLACE,
+                PLUS1_CLAMP = VK_STENCIL_OP_INCREMENT_AND_CLAMP,
+                MINUSE1_CLAMP = VK_STENCIL_OP_DECREMENT_AND_CLAMP,
+                INVERT = VK_STENCIL_OP_INVERT,
+                PLUS1_WRAP = VK_STENCIL_OP_INCREMENT_AND_WRAP,
+                MINUS1_WRAP = VK_STENCIL_OP_DECREMENT_AND_WRAP,
+            };
+
+            struct DepthStencilTesting {
+                CompareOp comparison = CompareOp::LESS;
+                bool depthTest = false;
+                bool depthWrite = false;
+                bool stencilTest = false;
+                struct StencilWorks {
+                    StencilOp onFail = StencilOp::KEEP;
+                    StencilOp onDepthFail = StencilOp::KEEP;
+                    StencilOp onPass = StencilOp::KEEP;
+                    CompareOp compare = CompareOp::ALWAYS;
+                    uint32_t reference = 0;
+                    uint32_t writeMask = 0xff;
+                    uint32_t compareMask = 0xff;
+                }stencilFront, stencilBack;
+            };
+
+            struct PipelineCreationOptions {
+                PipelineInputVertexSpec* vertexSpec = nullptr;
+                uint32_t vertexSize = 0;
+                uint32_t vertexAttributeCount = 0;
+                PipelineInputVertexSpec* instanceSpec = nullptr;
+                uint32_t instanceDataStride = 0;
+                uint32_t instanceAttributeCount = 0;
+                RenderPass* pass = nullptr;
+                RenderPass2Screen* pass2screen = nullptr;
+                uint32_t subpassIndex = 0;
+                VkShaderModule vertexShader;
+                VkShaderModule fragmentShader;
+                VkShaderModule geometryShader = nullptr;
+                VkShaderModule tessellationControlShader = nullptr;
+                VkShaderModule tessellationEvaluationShader = nullptr;
+                PipelineLayoutOptions shaderResources;
+                DepthStencilTesting depthStencil;
+            };
             /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
             static void handle();
             /// @brief 스왑체인 회전 변동 관련 최적의 처리를 위해 응용단에서 추가로 가해야 할 회전입니다. PC 버전에서는 반드시 단위행렬이 리턴됩니다.
@@ -232,6 +311,8 @@ namespace onart {
             static pStreamTexture createStreamTexture(int32_t key, uint32_t width, uint32_t height, bool linearSampler = true);
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
             static void asyncCreateTexture(int32_t key, const uint8_t* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
+            /// @brief 여러 개의 텍스처를 한 set으로 바인드하는 집합을 생성합니다.
+            static pTextureSet createTextureSet(int32_t key, const pTexture& binding0, const pTexture& binding1, const pTexture& binding2 = {}, const pTexture& binding3 = {});
             /// @brief SPIR-V 컴파일된 셰이더를 VkShaderModule 형태로 저장하고 가져옵니다.
             /// @param spv SPIR-V 코드
             /// @param size 주어진 SPIR-V 코드의 길이(바이트)
@@ -255,50 +336,8 @@ namespace onart {
             /// @brief 화면으로 이어지는 렌더패스를 생성합니다. 각 패스의 타겟들은 현재 창의 해상도와 동일하게 맞춰집니다.
             /// @param key 이름입니다. (RenderPass 객체와 같은 집합을 공유하지 않음) 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. INT32_MIN, 즉 -2147483648은 예약된 값이기 때문에 사용할 수 없습니다.
             static RenderPass2Screen* createRenderPass2Screen(int32_t key, const RenderPassCreationOptions& opts);
-            /// @brief 파이프라인 레이아웃을 만듭니다. 파이파라인 레이아웃은 셰이더에서 접근할 수 있는 uniform 버퍼, 입력 첨부물, 텍스처 등의 사양을 말합니다.
-            /// @param layouts 레이아웃 객체의 배열입니다. Texture, UniformBuffer, RenderTarget의 getLayout으로 얻을 수 있습니다.
-            /// @param count layouts의 길이
-            /// @param stages 푸시 상수에 접근할 수 있는 파이프라인 단계 플래그들입니다. 이 값에 0 외의 값이 들어가면 푸시 상수 공간은 항상 128바이트가 명시됩니다. 0이 들어가면 푸시 상수는 사용한다고 명시되지 않습니다.
-            /// @param key 이름입니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
-            static VkPipelineLayout createPipelineLayout(VkDescriptorSetLayout* layouts, uint32_t count, VkShaderStageFlags stages, int32_t key);
-            /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 사용할 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
-            /// @param vinfo 정점 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다.
-            /// @param vsize 개별 정점의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
-            /// @param vattr vinfo 배열의 길이, 즉 정점 속성의 수입니다.
-            /// @param iinfo 인스턴스 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다. 인스턴싱이 들어가지 않는 파이프라인인 경우 nullptr를 주면 됩니다.
-            /// @param isize 개별 인스턴스 속성 집합의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
-            /// @param iattr iinfo 배열의 길이, 즉 인스턴스 속성의 수입니다. 인스턴싱이 들어가지 않는 파이프라인인 경우 반드시 0을 주어야 합니다.
-            /// @param pass 이 파이프라인을 사용할 렌더패스입니다. 이걸 명시했다고 꼭 여기에만 사용할 수 있는 것은 아닙니다. 입/출력 첨부물의 사양이 맞기만 하면 됩니다.
-            /// @param subpass 이 파이프라인을 사용할, 주어진 렌더패스의 서브패스 번호입니다. 이걸 명시했다고 꼭 여기에만 사용할 수 있는 것은 아닙니다. 입/출력 첨부물의 사양이 맞기만 하면 됩니다.
-            /// @param flags 파이프라인 고정 옵션의 플래그입니다. @ref PipelineOptions
-            /// @param vs 정점 셰이더 모듈입니다.
-            /// @param fs 조각 셰이더 모듈입니다.
-            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
-            /// @param front 앞면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
-            /// @param back 뒷면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
-            /// @param tc 테셀레이션 컨트롤 셰이더 모듈입니다. 사용하지 않으려면 VK_NULL_HANDLE을 주면 됩니다.
-            /// @param te 테셀레이션 계산 셰이더 모듈입니다. 사용하지 않으려면 VK_NULL_HANDLE을 주면 됩니다.
-            /// @param gs 지오메트리 셰이더 모듈입니다. 사용하지 않으려면 VK_NULL_HANDLE을 주면 됩니다.
-            static VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, RenderPass* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr, VkShaderModule tc = VK_NULL_HANDLE, VkShaderModule te = VK_NULL_HANDLE, VkShaderModule gs = VK_NULL_HANDLE);
-            /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 사용할 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
-            /// @param vinfo 정점 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다.
-            /// @param vsize 개별 정점의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
-            /// @param vattr vinfo 배열의 길이, 즉 정점 속성의 수입니다.
-            /// @param iinfo 인스턴스 속성 바인드를 위한 것입니다. Vertex 템플릿 클래스로부터 얻을 수 있습니다. 인스턴싱이 들어가지 않는 파이프라인인 경우 nullptr를 주면 됩니다.
-            /// @param isize 개별 인스턴스 속성 집합의 크기입니다. Vertex 템플릿 클래스에 sizeof를 사용하여 얻을 수 있습니다.
-            /// @param iattr iinfo 배열의 길이, 즉 인스턴스 속성의 수입니다. 인스턴싱이 들어가지 않는 파이프라인인 경우 반드시 0을 주어야 합니다.
-            /// @param pass 이 파이프라인을 사용할 렌더패스입니다. 이걸 명시했다고 꼭 여기에만 사용할 수 있는 것은 아닙니다. 입/출력 첨부물의 사양이 맞기만 하면 됩니다.
-            /// @param subpass 이 파이프라인을 사용할, 주어진 렌더패스의 서브패스 번호입니다. 이걸 명시했다고 꼭 여기에만 사용할 수 있는 것은 아닙니다. 입/출력 첨부물의 사양이 맞기만 하면 됩니다.
-            /// @param flags 파이프라인 고정 옵션의 플래그입니다. @ref PipelineOptions
-            /// @param vs 정점 셰이더 모듈입니다.
-            /// @param fs 조각 셰이더 모듈입니다.
-            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
-            /// @param front 앞면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
-            /// @param back 뒷면에 대한 스텐실 연산 인수입니다. 사용하지 않으려면 nullptr를 주면 됩니다.
-            /// @param tc 테셀레이션 컨트롤 셰이더 모듈입니다. 사용하지 않으려면 VK_NULL_HANDLE을 주면 됩니다.
-            /// @param te 테셀레이션 계산 셰이더 모듈입니다. 사용하지 않으려면 VK_NULL_HANDLE을 주면 됩니다.
-            /// @param gs 지오메트리 셰이더 모듈입니다. 사용하지 않으려면 VK_NULL_HANDLE을 주면 됩니다.
-            static VkPipeline createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front = nullptr, VkStencilOpState* back = nullptr, VkShaderModule tc = VK_NULL_HANDLE, VkShaderModule te = VK_NULL_HANDLE, VkShaderModule gs = VK_NULL_HANDLE);
+            /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 불러올 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
+            static VkPipeline createPipeline(int32_t key, const PipelineCreationOptions& opts);
             /// @brief 정점 버퍼를 생성합니다.
             /// @param key 사용할 이름입니다. 중복된 이름을 입력하는 경우 기존의 Mesh를 리턴합니다.
             /// @param opts @ref MeshCreationOptions
@@ -315,14 +354,14 @@ namespace onart {
             static RenderPass2Cube* getRenderPass2Cube(int32_t key);
             /// @brief 만들어 둔 파이프라인을 리턴합니다. 없으면 nullptr를 리턴합니다.
             static VkPipeline getPipeline(int32_t key);
-            /// @brief 만들어 둔 파이프라인 레이아웃을 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static VkPipelineLayout getPipelineLayout(int32_t key);
             /// @brief 만들어 둔 공유 버퍼를 리턴합니다. 없으면 nullptr를 리턴합니다.
             static UniformBuffer* getUniformBuffer(int32_t key);
             /// @brief 만들어 둔 셰이더 모듈을 리턴합니다. 없으면 nullptr를 리턴합니다.
             static VkShaderModule getShader(int32_t key);
             /// @brief 올려 둔 텍스처 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pTexture getTexture(int32_t key);
+            /// @brief 올려 둔 텍스처 집합 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
+            static pTextureSet getTextureSet(int32_t key);
             /// @brief 만들어 둔 텍스처 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pStreamTexture getStreamTexture(int32_t key);
             /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
@@ -337,10 +376,6 @@ namespace onart {
             inline static VkDevice getDevice() { return singleton->device; }
             /// @brief Vma 할당기를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
             inline static VmaAllocator getAllocator() { return singleton->allocator; }
-            /// @brief 주어진 바인딩 번호의 텍스처 기술자 집합(combined sampler) 레이아웃을 리턴합니다.
-            inline static VkDescriptorSetLayout getTextureLayout(uint32_t binding) { assert(binding < 4); return singleton->textureLayout[binding]; }
-            /// @brief 주어진 바인딩 번호의 입력 첨부물 기술자 집합 레이아웃을 리턴합니다.
-            inline static VkDescriptorSetLayout getInputAttachmentLayout(uint32_t binding) { assert(binding < 4); return singleton->inputAttachmentLayout[binding]; }
         private:
             /// @brief 기본 Vulkan 컨텍스트를 생성합니다. 이 객체를 생성하면 기본적으로 인스턴스, 물리 장치, 가상 장치, 창 표면이 생성됩니다.
             VkMachine(Window*);
@@ -361,8 +396,6 @@ namespace onart {
             void createSwapchain(uint32_t width, uint32_t height, Window* window = nullptr);
             /// @brief 기존 스왑체인과 관련된 모든 것을 해제합니다.
             void destroySwapchain();
-            /// @brief 텍스처와 입력 첨부물에 대한 기술자 집합 레이아웃을 미리 만들어 둡니다.
-            bool createLayouts();
             /// @brief 샘플러들을 미리 만들어 둡니다.
             bool createSamplers();
             /// @brief 펜스를 생성합니다. (해제는 알아서)
@@ -383,6 +416,8 @@ namespace onart {
             void free();
         private:
             static RenderTarget* createRenderTarget2D(int width, int height, RenderTargetType type, bool useDepthInput, bool sampled, bool linear);
+            static VkPipelineLayout createPipelineLayout(const PipelineLayoutOptions& options);
+            static VkDescriptorSetLayout getDescriptorSetLayout(ShaderResourceType);
             ~VkMachine();
             /// @brief 이 클래스 객체는 Game 밖에서는 생성, 소멸 호출이 불가능합니다.
             inline void operator delete(void* p){::operator delete(p);}
@@ -412,8 +447,7 @@ namespace onart {
             VkCommandPool tCommandPool = VK_NULL_HANDLE;
             VkCommandBuffer baseBuffer[1]={};
             VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
-            VkDescriptorSetLayout textureLayout[4] = {}; // 바인딩 0~3 하나씩
-            VkDescriptorSetLayout inputAttachmentLayout[4] = {}; // 바인딩 0~3 하나씩
+            std::map<ShaderResourceType, VkDescriptorSetLayout> descriptorSetLayouts;
             
             VkSampler textureSampler[16] = {}; // maxLod 1~17. TODO: 비등방성 샘플링 선택 제공
             VkSampler nearestSampler = VK_NULL_HANDLE; // maxLod 1
@@ -428,10 +462,11 @@ namespace onart {
             std::map<int32_t, RenderTarget*> renderTargets;
             std::map<int32_t, VkShaderModule> shaders;
             std::map<int32_t, UniformBuffer*> uniformBuffers;
-            std::map<int32_t, VkPipelineLayout> pipelineLayouts;
+            std::map<int64_t, VkPipelineLayout> pipelineLayouts;
             std::map<int32_t, VkPipeline> pipelines;
             std::map<int32_t, pMesh> meshes;
             std::map<int32_t, pTexture> textures;
+            std::map<int32_t, pTextureSet> textureSets;
             std::map<int32_t, pStreamTexture> streamTextures;
 
             std::mutex textureGuard;
@@ -465,13 +500,12 @@ namespace onart {
             /// @brief 이 타겟을 위한 첨부물을 기술합니다.
             /// @return 색 첨부물의 수(최대 3)
             uint32_t attachmentRefs(VkAttachmentDescription* descr, bool forSample);
-            uint32_t getDescriptorSets(VkDescriptorSet* out);
             VkMachine::ImageSet* color1, *color2, *color3, *depthstencil;
-            VkDescriptorSet dset1 = VK_NULL_HANDLE, dset2 = VK_NULL_HANDLE, dset3 = VK_NULL_HANDLE, dsetDS = VK_NULL_HANDLE;
+            VkDescriptorSet dset = VK_NULL_HANDLE;
             unsigned width, height;
             const bool sampled, depthInput;
             const RenderTargetType type;
-            RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkDescriptorSet*, bool, bool);
+            RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkMachine::ImageSet*, VkDescriptorSet, bool, bool);
             ~RenderTarget();
     };
 
@@ -504,16 +538,18 @@ namespace onart {
             /// @param pos 바인드할 set 번호
             /// @param tx 바인드할 텍스처
             void bind(uint32_t pos, const pTexture& tx);
+            /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+            /// @param pos 바인드할 set 번호
+            /// @param tx 바인드할 텍스처
+            void bind(uint32_t pos, const pTextureSet& tx);
             /// @brief 주어진 렌더 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다. 이 패스의 프레임버퍼에서 사용 중인 렌더타겟은 사용할 수 없습니다.
             /// @param pos 바인드할 set 번호
             /// @param target 바인드할 타겟
-            /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
-            void bind(uint32_t pos, RenderPass* target, uint32_t index);
+            void bind(uint32_t pos, RenderPass* target);
             /// @brief 주어진 렌더 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다. 이 패스의 프레임버퍼에서 사용 중인 렌더타겟은 (어차피 접근도 불가능하지만) 사용할 수 없습니다.
             /// @param pos 바인드할 set 번호
             /// @param target 바인드할 타겟
-            /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
-            void bind(uint32_t pos, RenderPass2Cube* target, uint32_t index);
+            void bind(uint32_t pos, RenderPass2Cube* target);
             /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
             /// @param pos 바인드할 set 번호
             /// @param tx 바인드할 텍스처
@@ -592,8 +628,11 @@ namespace onart {
             /// @brief 주어진 렌더 타겟의 결과를 텍스처로 바인드합니다.
             /// @param pos 바인드할 set 번호
             /// @param target 바인드할 타겟
-            /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
-            void bind(uint32_t pos, RenderTarget* target, uint32_t index);
+            void bind(uint32_t pos, RenderPass* target);
+            /// @brief 주어진 렌더 타겟의 결과를 텍스처로 바인드합니다.
+            /// @param pos 바인드할 set 번호
+            /// @param target 바인드할 타겟
+            void bind(uint32_t pos, RenderPass2Cube* target);
             /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
             /// @param pos 바인드할 set 번호
             /// @param tx 바인드할 텍스처
@@ -683,13 +722,11 @@ namespace onart {
             /// @brief 주어진 렌더 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다. 이 패스의 프레임버퍼에서 사용 중인 렌더타겟은 (어차피 접근도 불가능하지만) 사용할 수 없습니다.
             /// @param pos 바인드할 set 번호
             /// @param target 바인드할 타겟
-            /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
-            void bind(uint32_t pos, RenderPass* target, uint32_t index);
+            void bind(uint32_t pos, RenderPass* target);
             /// @brief 주어진 렌더 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다. 이 패스의 프레임버퍼에서 사용 중인 렌더타겟은 (어차피 접근도 불가능하지만) 사용할 수 없습니다.
             /// @param pos 바인드할 set 번호
             /// @param target 바인드할 타겟
-            /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
-            void bind(uint32_t pos, RenderPass2Cube* target, uint32_t index);
+            void bind(uint32_t pos, RenderPass2Cube* target);
             /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
             /// @param pos 바인드할 set 번호
             /// @param tx 바인드할 텍스처
@@ -759,6 +796,7 @@ namespace onart {
     class VkMachine::Texture{
         friend class VkMachine;
         friend class RenderPass;
+        friend class TextureSet;
         public:
             /// @brief 사용하지 않는 텍스처 데이터를 정리합니다.
             /// @param removeUsing 사용하는 텍스처 데이터도 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getTexture로 찾을 수 없습니다.)
@@ -768,7 +806,7 @@ namespace onart {
             /// @brief 원본 텍스처의 크기입니다.
             const uint16_t width, height;
         protected:
-            Texture(VkImage img, VkImageView imgView, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding, uint16_t width, uint16_t height);
+            Texture(VkImage img, VkImageView imgView, VmaAllocation alloc, VkDescriptorSet dset, uint16_t width, uint16_t height);
             VkDescriptorSetLayout getLayout();
             ~Texture();
         private:
@@ -776,7 +814,19 @@ namespace onart {
             VkImageView view;
             VmaAllocation alloc;
             VkDescriptorSet dset;
-            uint32_t binding;
+            bool linearSampled;
+    };
+
+    class VkMachine::TextureSet {
+        friend class VkMachine;
+        friend class RenderPass;
+        friend class RenderPass2Screen;
+    protected:
+        ~TextureSet();
+    private:
+        pTexture textures[4]{};
+        VkDescriptorSet dset;
+        int textureCount;
     };
 
     class VkMachine::StreamTexture {

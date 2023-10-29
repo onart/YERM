@@ -196,7 +196,7 @@ namespace onart{
                     rp2s->start();
                     rp2s->push(&rot, 0, 64);
                     rp2s->push(&thr, 64, 68);
-                    rp2s->bind(0, off, 0);
+                    rp2s->bind(0, off);
                     rp2s->invoke(vb);
                     rp2s->execute(off);
                     if constexpr (YRGraphics::OPENGL_GRAPHICS) {
@@ -294,21 +294,39 @@ namespace onart{
         uint16_t inds[]{ 0,1,2,2,1,3 };
 #ifdef YR_USE_VULKAN
         if constexpr (YRGraphics::VULKAN_GRAPHICS) {
-            VkDescriptorSetLayout texLayout = YRGraphics::getTextureLayout(0);
-            VkDescriptorSetLayout iaLayout = YRGraphics::getInputAttachmentLayout(0);
-            auto lo = YRGraphics::createPipelineLayout(&texLayout, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0);
-            auto lo2 = YRGraphics::createPipelineLayout(&iaLayout, 1, 0, 1);
             VkVertexInputAttributeDescription desc[2];
             testv_t::info(desc, 0);
             auto vs = YRGraphics::createShader(0, { TEST_VERT, sizeof(TEST_VERT) });
             auto fs = YRGraphics::createShader(1, { TEST_FRAG, sizeof(TEST_FRAG) });
-            YRGraphics::createPipeline(desc, sizeof(testv_t), 2, nullptr, 0, 0, offrp, 0, 0, lo, vs, fs, 0);
+            YRGraphics::PipelineCreationOptions pipeInfo{};
+            pipeInfo.vertexSpec = desc;
+            pipeInfo.vertexAttributeCount = 2;
+            pipeInfo.vertexSize = sizeof(testv_t);
+            pipeInfo.pass = offrp;
+            pipeInfo.subpassIndex = 0;
+            pipeInfo.vertexShader = vs;
+            pipeInfo.fragmentShader = fs;
+            pipeInfo.shaderResources.pos0 = YRGraphics::ShaderResourceType::TEXTURE_1;
+            pipeInfo.shaderResources.usePush = true;
+            YRGraphics::createPipeline(0, pipeInfo);
             vs = YRGraphics::createShader(2, { TEST_IA_VERT, sizeof(TEST_IA_VERT) });
             fs = YRGraphics::createShader(3, { TEST_IA_FRAG, sizeof(TEST_IA_FRAG) });
-            YRGraphics::createPipeline(nullptr, 0, 0, nullptr, 0, 0, offrp, 1, 0, lo2, vs, fs, 1);
+            pipeInfo.vertexShader = vs;
+            pipeInfo.fragmentShader = fs;
+            pipeInfo.subpassIndex = 1;
+            pipeInfo.shaderResources.pos0 = YRGraphics::ShaderResourceType::INPUT_ATTACHMENT_1;
+            pipeInfo.vertexSpec = nullptr;
+            pipeInfo.vertexAttributeCount = 0;
+            YRGraphics::createPipeline(1, pipeInfo);
             vs = YRGraphics::createShader(4, { TEST_TX_VERT, sizeof(TEST_TX_VERT) });
             fs = YRGraphics::createShader(5, { SCALEPX, sizeof(SCALEPX) });
-            YRGraphics::createPipeline(nullptr, 0, 0, nullptr, 0, 0, rp2s, 0, 0, lo, vs, fs, 2);
+            pipeInfo.vertexShader = vs;
+            pipeInfo.fragmentShader = fs;
+            pipeInfo.shaderResources.pos0 = YRGraphics::ShaderResourceType::TEXTURE_1;
+            pipeInfo.pass = nullptr;
+            pipeInfo.pass2screen = rp2s;
+            pipeInfo.subpassIndex = 0;
+            YRGraphics::createPipeline(2, pipeInfo);
             YRGraphics::createNullMesh(3, 1);
             YRGraphics::MeshCreationOptions opts{};
             opts.vertexCount = sizeof(verts) / sizeof(verts[0]);

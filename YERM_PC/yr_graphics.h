@@ -23,21 +23,15 @@
 #include "yr_d3d11.h"
 namespace onart {
     using YRGraphics = D3D11Machine;
-    using pipelinelayout_t = unsigned;
     using pipeline_t = D3D11Machine::Pipeline*;
     using shader_t = ID3D11DeviceChild*;
-    using descriptorSet_t = int;
-    using descriptorSetLayout_t = int;
 }
 #elif defined(YR_USE_OPENGL)
 #include "yr_opengl.h"
 namespace onart{
     using YRGraphics = GLMachine;
-    using pipelinelayout_t = unsigned;
     using pipeline_t = GLMachine::Pipeline*;
     using shader_t = unsigned;
-    using descriptorSet_t = int;
-    using descriptorSetLayout_t = int;
 }
 #elif defined(YR_USE_GLES)
 #error "OpenGL ES not ready"
@@ -49,21 +43,15 @@ namespace onart{
 #include "../YERM_webgpu/yr_webgpu.h"
 namespace onart{
     using YRGraphics = WGMachine;
-    using pipelinelayout_t = VkPipelineLayout;
     using pipeline_t = VkPipeline;
     using shader_t = VkShaderModule;
-    using descriptorSet_t = VkDescriptorSet;
-    using descriptorSetLayout_t = VkDescriptorSetLayout;
 }
 #else
 #include "yr_vulkan.h"
 namespace onart{
     using YRGraphics = VkMachine;
-    using pipelinelayout_t = VkPipelineLayout;
     using pipeline_t = VkPipeline;
     using shader_t = VkShaderModule;
-    using descriptorSet_t = VkDescriptorSet;
-    using descriptorSetLayout_t = VkDescriptorSetLayout;
 }
 #endif
 

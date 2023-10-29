@@ -131,7 +131,7 @@ namespace onart {
             return;
         }
 
-        if(!createLayouts() || !createSamplers()){
+        if(!createSamplers()){
             free();
             return;
         }
@@ -167,12 +167,6 @@ namespace onart {
     VkPipeline VkMachine::getPipeline(int32_t name){
         auto it = singleton->pipelines.find(name);
         if(it != singleton->pipelines.end()) return it->second;
-        else return VK_NULL_HANDLE;
-    }
-
-    VkPipelineLayout VkMachine::getPipelineLayout(int32_t name){
-        auto it = singleton->pipelineLayouts.find(name);
-        if(it != singleton->pipelineLayouts.end()) return it->second;
         else return VK_NULL_HANDLE;
     }
 
@@ -217,6 +211,12 @@ namespace onart {
         auto it = singleton->textures.find(name);
         if (it != singleton->textures.end()) return it->second;
         else return pTexture();
+    }
+
+    VkMachine::pTextureSet VkMachine::getTextureSet(int32_t name) {
+        auto it = singleton->textureSets.find(name);
+        if (it != singleton->textureSets.end()) return it->second;
+        else return pTextureSet();
     }
 
     VkMachine::pStreamTexture VkMachine::getStreamTexture(int32_t name) {
@@ -345,44 +345,11 @@ namespace onart {
         swapchain.handle = VK_NULL_HANDLE;
     }
 
-    bool VkMachine::createLayouts(){
-        VkDescriptorSetLayoutBinding txBinding{};
-        txBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        txBinding.descriptorCount = 1;
-        txBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = 1;
-        layoutInfo.pBindings = &txBinding;
-
-        for(txBinding.binding = 0; txBinding.binding < 4; txBinding.binding++){
-            reason = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &textureLayout[txBinding.binding]);
-            if(reason != VK_SUCCESS){
-                LOGWITH("Failed to create texture descriptor set layout binding ",txBinding.binding,':', reason,resultAsString(reason));
-                return false;
-            }
-        }
-
-        txBinding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-
-        for(txBinding.binding = 0; txBinding.binding < 4; txBinding.binding++){
-            reason = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &inputAttachmentLayout[txBinding.binding]);
-            if(reason != VK_SUCCESS){
-                LOGWITH("Failed to create input attachment descriptor set layout binding ",txBinding.binding,':', reason,resultAsString(reason));
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     void VkMachine::free() {
         vkDeviceWaitIdle(device);
-        for(VkDescriptorSetLayout& layout: textureLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = VK_NULL_HANDLE; }
-        for(VkDescriptorSetLayout& layout: inputAttachmentLayout) { vkDestroyDescriptorSetLayout(device, layout, nullptr); layout = VK_NULL_HANDLE; }
         for(VkSampler& sampler: textureSampler) { vkDestroySampler(device, sampler, nullptr); sampler = VK_NULL_HANDLE; }
         vkDestroySampler(device, nearestSampler, nullptr); nearestSampler = VK_NULL_HANDLE;
+        for(auto& ly: descriptorSetLayouts) { vkDestroyDescriptorSetLayout(device, ly.second, nullptr); }
         for(auto& cp: cubePasses) { delete cp.second; }
         for(auto& fp: finalPasses) { delete fp.second; }
         for(auto& rp: renderPasses) { delete rp.second; }
@@ -391,11 +358,13 @@ namespace onart {
         for(auto& pp: pipelines) { vkDestroyPipeline(device, pp.second, nullptr); }
         for(auto& pp: pipelineLayouts) { vkDestroyPipelineLayout(device, pp.second, nullptr); }
 
+        descriptorSetLayouts.clear();
         streamTextures.clear();
         textures.clear();
         meshes.clear();
         pipelines.clear();
         pipelineLayouts.clear();
+        textureSets.clear();
         cubePasses.clear();
         finalPasses.clear();
         renderPasses.clear();
@@ -753,13 +722,15 @@ namespace onart {
         if(color2) {singleton->images.insert(color2); nim++;}
         if(color3) {singleton->images.insert(color3); nim++;}
         if(ds) {singleton->images.insert(ds); if(useDepthInput) nim++;}
+        VkDescriptorSetLayout layout = sampled ? 
+            getDescriptorSetLayout((ShaderResourceType)((int)ShaderResourceType::TEXTURE_1 + nim - 1)) : 
+            getDescriptorSetLayout((ShaderResourceType)((int)ShaderResourceType::INPUT_ATTACHMENT_1 + nim - 1))
+            ;
+        VkDescriptorSet dset;
 
-        VkDescriptorSetLayout layout = sampled ? singleton->textureLayout[0] : singleton->inputAttachmentLayout[0];
-        VkDescriptorSetLayout layouts[4] = {layout, layout, layout, layout};
-        VkDescriptorSet dsets[4]{};
+        singleton->allocateDescriptorSets(&layout, 1, &dset);
 
-        singleton->allocateDescriptorSets(layouts, nim, dsets);
-        if(!dsets[0]){
+        if(!dset){
             LOGHERE;
             if(color1) {color1->free(); delete color1;}
             if(color2) {color2->free(); delete color2;}
@@ -770,11 +741,11 @@ namespace onart {
         VkDescriptorImageInfo imageInfo{};
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // TODO: 주의
         VkWriteDescriptorSet wr{};
-        wr.dstBinding = 0;
         wr.dstArrayElement = 0;
         wr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         wr.descriptorCount = 1;
         wr.pImageInfo = &imageInfo;
+        wr.dstSet = dset;
         if(sampled && linear) {
             imageInfo.sampler = singleton->textureSampler[0];
             wr.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -789,25 +760,25 @@ namespace onart {
         nim = 0;
         if(color1){
             imageInfo.imageView = color1->view;
-            wr.dstSet = dsets[nim++];
+            wr.dstBinding = nim++;
             vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
             if(color2){
+                wr.dstBinding = nim++;
                 imageInfo.imageView = color2->view;
-                wr.dstSet = dsets[nim++];
                 vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
                 if(color3){
+                    wr.dstBinding = nim++;
                     imageInfo.imageView = color3->view;
-                    wr.dstSet = dsets[nim++];
                     vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
                 }
             }
         }
         if(ds && useDepthInput){
             imageInfo.imageView = ds->view;
-            wr.dstSet = dsets[nim];
+            wr.dstBinding = nim++;
             vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr); // 입력 첨부물 기술자를 위한 이미지 뷰에서는 DEPTH, STENCIL을 동시에 명시할 수 없음. 솔직히 깊이를 입력첨부물로는 안 쓸 것 같긴 한데 
         }
-        return new RenderTarget(type, width, height, color1, color2, color3, ds, dsets, sampled, useDepthInput);
+        return new RenderTarget(type, width, height, color1, color2, color3, ds, dset, sampled, useDepthInput);
     }
 
     void VkMachine::removeImageSet(VkMachine::ImageSet* set) {
@@ -1059,8 +1030,8 @@ namespace onart {
         }
 
         VkDescriptorSet newSet;
-        uint64_t binding = opts.binding;
-        singleton->allocateDescriptorSets(&textureLayout[binding], 1, &newSet);
+        auto layout = getDescriptorSetLayout(ShaderResourceType::TEXTURE_1);
+        singleton->allocateDescriptorSets(&layout, 1, &newSet);
         if(!newSet){
             LOGHERE;
             vkDestroyImageView(device, newView, nullptr);
@@ -1081,17 +1052,19 @@ namespace onart {
         VkWriteDescriptorSet descriptorWrite{};
         descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         descriptorWrite.dstSet = newSet;
-        descriptorWrite.dstBinding = binding;
+        descriptorWrite.dstBinding = 0;
         descriptorWrite.dstArrayElement = 0;
         descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         descriptorWrite.descriptorCount = 1;
         descriptorWrite.pImageInfo = &dsImageInfo;
         vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
         
-        struct txtr:public Texture{ inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint32_t _5, uint16_t _6, uint16_t _7):Texture(_1,_2,_3,_4,_5,_6,_7){} };
-        if (key == INT32_MIN) return std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
+        struct txtr:public Texture{ inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint16_t _5, uint16_t _6):Texture(_1,_2,_3,_4,_5,_6){} };
+        pTexture ret = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, imgInfo.extent.width, imgInfo.extent.height);
+        ret->linearSampled = opts.linearSampled;
+        if (key == INT32_MIN) return ret;
         std::unique_lock<std::mutex> _(textureGuard);
-        return textures[key] = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
+        return textures[key] = std::move(ret);
     }
 
     VkMachine::pStreamTexture VkMachine::createStreamTexture(int32_t key, uint32_t width, uint32_t height, bool linearSampler) {
@@ -1199,8 +1172,9 @@ namespace onart {
             return nullptr;
         }
 
+        auto layout = getDescriptorSetLayout(ShaderResourceType::TEXTURE_1);
         VkDescriptorSet newSet;
-        singleton->allocateDescriptorSets(&singleton->textureLayout[0], 1, &newSet); // TODO: 여기 바인딩 번호 선택권
+        singleton->allocateDescriptorSets(&layout, 1, &newSet);
         if (!newSet) {
             LOGHERE;
             vkDestroyImageView(singleton->device, newView, nullptr);
@@ -1294,8 +1268,8 @@ namespace onart {
         VkMachine::singleton->qSubmit(false, 1, &submitInfo, fence);
     }
 
-    VkDescriptorSetLayout VkMachine::StreamTexture::getLayout() {
-        return singleton->textureLayout[binding];
+    VkMachine::TextureSet::~TextureSet() {
+        vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
     }
 
     static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, VkMachine::TextureFormatOptions option){
@@ -1500,6 +1474,59 @@ namespace onart {
         }, handler, vkm_strand::GENERAL);
     }
 
+    VkMachine::pTextureSet VkMachine::createTextureSet(int32_t key, const pTexture& binding0, const pTexture& binding1, const pTexture& binding2, const pTexture& binding3) {
+        if (!binding0 || !binding1) {
+            LOGWITH("At least 2 textures must be given");
+            return {};
+        }
+        int length = binding2 ? (binding3 ? 4 : 3) : 2;
+        VkDescriptorSetLayout layout;
+        switch (length)
+        {
+        case 4:
+            layout = getDescriptorSetLayout(ShaderResourceType::TEXTURE_4);
+            break;
+        case 3:
+            layout = getDescriptorSetLayout(ShaderResourceType::TEXTURE_3);
+            break;
+        case 2:
+            layout = getDescriptorSetLayout(ShaderResourceType::TEXTURE_2);
+            break;
+        default:
+            break;
+        }
+        VkDescriptorSet dset{};
+        singleton->allocateDescriptorSets(&layout, 1, &dset);
+        if (!dset) {
+            LOGHERE;
+            return {};
+        }
+
+        VkWriteDescriptorSet wr[4]{};
+        VkDescriptorImageInfo imageInfo[4]{};
+        pTexture textures[4] = { binding0, binding1, binding2, binding3 };
+
+        for (int i = 0; i < length; i++) {
+            wr[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            wr[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            wr[i].descriptorCount = 1;
+            wr[i].dstArrayElement = 0;
+            wr[i].dstBinding = i;
+            wr[i].pImageInfo = &imageInfo[i];
+            wr[i].dstSet = dset;
+
+            imageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageInfo[i].sampler = singleton->textureSampler[0];
+            imageInfo[i].imageView = textures[i]->view;
+        }
+
+        vkUpdateDescriptorSets(singleton->device, length, wr, 0, nullptr);
+        struct __tset:public TextureSet {};
+        pTextureSet ret = std::make_shared<__tset>();
+        if (key == INT32_MIN) return ret;
+        return singleton->textureSets[key] = std::move(ret);
+    }
+
     void VkMachine::asyncCreateTexture(int32_t key, const uint8_t* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts) {
         if(key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
@@ -1529,15 +1556,11 @@ namespace onart {
         }, handler, vkm_strand::GENERAL);
     }
 
-    VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding, uint16_t width, uint16_t height) :img(img), view(view), alloc(alloc), dset(dset), binding(binding), width(width), height(height) { }
+    VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc, VkDescriptorSet dset, uint16_t width, uint16_t height) :img(img), view(view), alloc(alloc), dset(dset), width(width), height(height) { }
     VkMachine::Texture::~Texture(){
         vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
         vkDestroyImageView(singleton->device, view, nullptr);
         vmaDestroyImage(singleton->allocator, img, alloc);
-    }
-
-    VkDescriptorSetLayout VkMachine::Texture::getLayout(){
-        return singleton->textureLayout[binding];
     }
 
     void VkMachine::Texture::collect(bool removeUsing) {
@@ -1564,38 +1587,8 @@ namespace onart {
         VkMachine::singleton->streamTextures.erase(key);
     }
 
-    VkMachine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil, VkDescriptorSet* dsets, bool sampled, bool depthInput)
-        :type(type), width(width), height(height), color1(color1), color2(color2), color3(color3), depthstencil(depthstencil), sampled(sampled), depthInput(depthInput) {
-        int nim=0;
-        if(color1) {
-            dset1 = dsets[nim++];
-            if(color2) {
-                dset2 = dsets[nim++];
-                if(color3){
-                    dset3 = dsets[nim++];
-                }
-            }
-        }
-        if(depthstencil){
-            dsetDS = dsets[nim];
-        }
-    }
-
-    uint32_t VkMachine::RenderTarget::getDescriptorSets(VkDescriptorSet* sets){
-        int nim = 0;
-        if(dset1) {
-            sets[nim++]=dset1;
-            if(dset2){
-                sets[nim++]=dset2;
-                if(dset3){
-                    sets[nim++]=dset3;
-                }
-            }
-        }
-        if(depthstencil){
-            sets[nim] = dsetDS;
-        }
-        return nim;
+    VkMachine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil, VkDescriptorSet dset, bool sampled, bool depthInput)
+        :type(type), width(width), height(height), color1(color1), color2(color2), color3(color3), depthstencil(depthstencil), sampled(sampled), depthInput(depthInput), dset(dset) {
     }
 
     VkMachine::UniformBuffer* VkMachine::createUniformBuffer(int32_t name, const UniformBufferCreationOptions& opts){
@@ -1720,10 +1713,11 @@ namespace onart {
     }
 
     VkMachine::RenderTarget::~RenderTarget(){
-        if(color1) { singleton->removeImageSet(color1); if(dset1) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset1); }
-        if(color2) { singleton->removeImageSet(color2); if(dset2) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset2); }
-        if(color3) { singleton->removeImageSet(color3); if(dset3) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset3); }
-        if(depthstencil) { singleton->removeImageSet(depthstencil); if (dsetDS) vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dsetDS); }
+        if(color1) { singleton->removeImageSet(color1); }
+        if(color2) { singleton->removeImageSet(color2); }
+        if(color3) { singleton->removeImageSet(color3); }
+        if(depthstencil) { singleton->removeImageSet(depthstencil); }
+        vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
     }
 
     VkMachine::RenderPass2Cube* VkMachine::createRenderPass2Cube(uint32_t width, uint32_t height, int32_t key, bool useColor, bool useDepth) {
@@ -1929,8 +1923,8 @@ namespace onart {
         singleton->allocateCommandBuffers(1, true, true, &prim);
         singleton->allocateCommandBuffers(1, false, true, &sec);
         singleton->allocateCommandBuffers(6, false, true, facewise);
-        
-        singleton->allocateDescriptorSets(&singleton->textureLayout[1], 1, &dset); // 바인딩 1
+        auto layout = getDescriptorSetLayout(ShaderResourceType::TEXTURE_1);
+        singleton->allocateDescriptorSets(&layout, 1, &dset);
 
         if(!prim || !sec || !fence || !semaphore || !dset || !facewise[0]){
             LOGHERE;
@@ -1960,7 +1954,7 @@ namespace onart {
         writer.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writer.descriptorCount = 1;
         writer.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        writer.dstBinding = 1;
+        writer.dstBinding = 0;
         writer.dstSet = dset;
         writer.pImageInfo = &diInfo;
         writer.dstArrayElement = 0;
@@ -2078,7 +2072,7 @@ namespace onart {
             if (targets[i]->depthstencil) {
                 colorRefs[totalAttachments].attachment = totalAttachments;
                 colorRefs[totalAttachments].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                if (targets[i]->dsetDS) {
+                if (targets[i]->depthInput) {
                     inputRefs[totalInputAttachments].attachment = totalAttachments;
                     inputRefs[totalInputAttachments].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                     totalInputAttachments++;
@@ -2093,7 +2087,7 @@ namespace onart {
             dependencies[i + 1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
             dependencies[i + 1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
             dependencies[i + 1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
-            inputAttachmentCount = colorCount; if (targets[i]->dsetDS) inputAttachmentCount++;
+            inputAttachmentCount = colorCount; if (targets[i]->depthInput) inputAttachmentCount++;
         }
 
         attachments[totalAttachments].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -2240,7 +2234,7 @@ namespace onart {
             if (targets[i]->depthstencil) {
                 colorRefs[totalAttachments].attachment = totalAttachments;
                 colorRefs[totalAttachments].layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                if (targets[i]->dsetDS) {
+                if (targets[i]->depthInput) {
                     inputRefs[totalInputAttachments].attachment = totalAttachments;
                     inputRefs[totalInputAttachments].layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                     totalInputAttachments++;
@@ -2301,133 +2295,400 @@ namespace onart {
         return singleton->renderPasses[key] = ret;
     }
 
-    VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t vsize, uint32_t vattr,
-    VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, RenderPass* pass, uint32_t subpass,
-    uint32_t flags, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front, VkStencilOpState* back, VkShaderModule tc, VkShaderModule te, VkShaderModule gs){
-        VkPipeline ret = getPipeline(name);
-        if(ret) {
-            pass->usePipeline(ret, layout, subpass);
-            return ret;
-        }
-
-        if(!(vs && fs)){
+    VkPipeline VkMachine::createPipeline(int32_t key, const PipelineCreationOptions& opts) {
+        if (VkPipeline ret = getPipeline(key)) { return ret; }
+        if (!(opts.vertexShader && opts.fragmentShader)) {
             LOGWITH("Vertex and fragment shader should be provided.");
             return VK_NULL_HANDLE;
         }
-
-        if(tc && te) {
-            if(!singleton->physicalDevice.features.tessellationShader) {
+        if (opts.tessellationControlShader && opts.tessellationEvaluationShader) {
+            if (!singleton->physicalDevice.features.tessellationShader) {
                 LOGWITH("Tesselation shaders are inavailable in this device. Try to use another pipeline.");
                 return VK_NULL_HANDLE;
             }
         }
-        else if(tc || te){
+        else if (opts.tessellationEvaluationShader || opts.tessellationControlShader) {
             LOGWITH("Tesselation control shader and tesselation evaluation shader must be both null or both available.");
             return VK_NULL_HANDLE;
         }
-        if(gs && !singleton->physicalDevice.features.geometryShader) {
+
+        if (opts.geometryShader && !singleton->physicalDevice.features.geometryShader) {
             LOGWITH("Geometry shaders are inavailable in this device. Try to use another pipeline.");
             return VK_NULL_HANDLE;
         }
 
-        const uint32_t OPT_COLOR_COUNT =
-            (uint32_t)pass->targets[subpass]->type & 0b100 ? 3 :
-            (uint32_t)pass->targets[subpass]->type & 0b10 ? 2 :
-            (uint32_t)pass->targets[subpass]->type & 0b1 ? 1 :
-            0;
-        const bool OPT_USE_DEPTHSTENCIL = (int)pass->targets[subpass]->type & 0b1000;
+        uint32_t OPT_COLOR_COUNT = 0;
+        bool OPT_USE_DEPTHSTENCIL = false;
+        VkRenderPass rp;
 
-        ret = onart::createPipeline(singleton->device, vinfo, vsize, vattr, iinfo, isize, iattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, tc, te, gs, front, back);
-        if(!ret){
-            LOGHERE;
-            return VK_NULL_HANDLE;
-        }
-        pass->usePipeline(ret, layout, subpass);
-        if(name == INT32_MIN) return ret;
-        return singleton->pipelines[name] = ret;
-    }
-
-    VkPipeline VkMachine::createPipeline(VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr,
-    VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr,
-    RenderPass2Screen* pass, uint32_t subpass, uint32_t flags, VkPipelineLayout layout,
-    VkShaderModule vs, VkShaderModule fs, int32_t name, VkStencilOpState* front, VkStencilOpState* back,
-    VkShaderModule tc, VkShaderModule te, VkShaderModule gs) {
-        VkPipeline ret = getPipeline(name);
-        if(ret) {
-            pass->usePipeline(ret, layout, subpass);
-            return ret;
-        }
-
-        if(!(vs && fs)){
-            LOGWITH("Vertex and fragment shader should be provided.");
-            return VK_NULL_HANDLE;
-        }
-
-        if(tc && te) {
-            if(!singleton->physicalDevice.features.tessellationShader) {
-                LOGWITH("Tesselation shaders are inavailable in this device. Try to use another pipeline.");
+        if (opts.pass) {
+            if (opts.subpassIndex >= opts.pass->stageCount) {
+                LOGWITH("Invalid subpass index.");
                 return VK_NULL_HANDLE;
             }
+            OPT_COLOR_COUNT = opts.pass->targets[opts.subpassIndex]->type & 0b100 ? 3 :
+                opts.pass->targets[opts.subpassIndex]->type & 0b10 ? 2 :
+                opts.pass->targets[opts.subpassIndex]->type & 0b1 ? 1 :
+                0;
+            OPT_USE_DEPTHSTENCIL = opts.pass->targets[opts.subpassIndex]->type & 0b1000;
+            rp = opts.pass->rp;
         }
-        else if(tc || te){
-            LOGWITH("Tesselation control shader and tesselation evaluation shader must be both null or both available.");
+        else if (opts.pass2screen) {
+            if (opts.subpassIndex >= opts.pass2screen->pipelines.size()) {
+                LOGWITH("Invalid subpass index.");
+                return VK_NULL_HANDLE;
+            }
+            if (opts.subpassIndex == opts.pass2screen->targets.size()) {
+                OPT_COLOR_COUNT = 1;
+                OPT_USE_DEPTHSTENCIL = opts.pass2screen->dsView;
+            }
+            else {
+                OPT_COLOR_COUNT = opts.pass2screen->targets[opts.subpassIndex]->type & 0b100 ? 3 :
+                    opts.pass2screen->targets[opts.subpassIndex]->type & 0b10 ? 2 :
+                    opts.pass2screen->targets[opts.subpassIndex]->type & 0b1 ? 1 :
+                    0;
+                OPT_USE_DEPTHSTENCIL = opts.pass2screen->targets[opts.subpassIndex]->type & 0b1000;
+            }
+            rp = opts.pass2screen->rp;
+        }
+        else {
+            LOGWITH("RenderPass or RenderPass2Screen or RenderPass2Cube must be given");
             return VK_NULL_HANDLE;
         }
-        if(gs && !singleton->physicalDevice.features.geometryShader) {
-            LOGWITH("Geometry shaders are inavailable in this device. Try to use another pipeline.");
-            return VK_NULL_HANDLE;
+        VkPipelineLayout layout = createPipelineLayout(opts.shaderResources);
+
+        VkPipelineShaderStageCreateInfo shaderStagesInfo[5] = {};
+        shaderStagesInfo[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStagesInfo[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        shaderStagesInfo[0].module = opts.vertexShader;
+        shaderStagesInfo[0].pName = "main";
+
+        uint32_t lastStage = 1;
+
+        if (opts.tessellationControlShader) {
+            shaderStagesInfo[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            shaderStagesInfo[1].stage = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+            shaderStagesInfo[1].module = opts.tessellationControlShader;
+            shaderStagesInfo[1].pName = "main";
+            shaderStagesInfo[2].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            shaderStagesInfo[2].stage = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+            shaderStagesInfo[2].module = opts.tessellationEvaluationShader;
+            shaderStagesInfo[2].pName = "main";
+            lastStage = 3;
+        }
+        if (opts.geometryShader) {
+            shaderStagesInfo[lastStage].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            shaderStagesInfo[lastStage].stage = VK_SHADER_STAGE_GEOMETRY_BIT;
+            shaderStagesInfo[lastStage].module = opts.geometryShader;
+            shaderStagesInfo[lastStage].pName = "main";
+            lastStage++;
         }
 
-        uint32_t OPT_COLOR_COUNT;
-        bool OPT_USE_DEPTHSTENCIL;
-        if(subpass == pass->targets.size()) {
-            OPT_COLOR_COUNT = 1;
-            OPT_USE_DEPTHSTENCIL = pass->dsView;
-        }
-        else{
-            OPT_COLOR_COUNT =
-            (uint32_t)pass->targets[subpass]->type & 0b100 ? 3 :
-            (uint32_t)pass->targets[subpass]->type & 0b10 ? 2 :
-            (uint32_t)pass->targets[subpass]->type & 0b1 ? 1 :
-            0;
-            OPT_USE_DEPTHSTENCIL = (int)pass->targets[subpass]->type & 0b1000;
+        shaderStagesInfo[lastStage].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStagesInfo[lastStage].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        shaderStagesInfo[lastStage].module = opts.fragmentShader;
+        shaderStagesInfo[lastStage].pName = "main";
+        lastStage++;
+
+        VkVertexInputBindingDescription vbind[2]{};
+        vbind[0].binding = 0;
+        vbind[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        vbind[0].stride = opts.vertexSize;
+
+        vbind[1].binding = 1;
+        vbind[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+        vbind[1].stride = opts.instanceDataStride;
+
+        std::vector<VkVertexInputAttributeDescription> attrs(opts.vertexAttributeCount + opts.instanceAttributeCount);
+        if (opts.vertexAttributeCount) std::copy(opts.vertexSpec, opts.vertexSpec + opts.vertexAttributeCount, attrs.data());
+        if (opts.instanceAttributeCount) std::copy(opts.instanceSpec, opts.instanceSpec + opts.instanceAttributeCount, attrs.data() + opts.vertexAttributeCount);
+
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInputInfo.vertexBindingDescriptionCount = (opts.vertexAttributeCount ? 1 : 0) + (opts.instanceAttributeCount ? 1 : 0);
+        vertexInputInfo.pVertexBindingDescriptions = opts.vertexAttributeCount ? vbind : vbind + 1;
+        vertexInputInfo.vertexAttributeDescriptionCount = (uint32_t)attrs.size();
+        vertexInputInfo.pVertexAttributeDescriptions = attrs.data();
+
+        VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo{};
+        inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
+
+        VkPipelineRasterizationStateCreateInfo rtrInfo{};
+        rtrInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rtrInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+        rtrInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rtrInfo.lineWidth = 1.0f;
+        rtrInfo.polygonMode = VK_POLYGON_MODE_FILL;
+
+        VkPipelineDepthStencilStateCreateInfo dsInfo{};
+        dsInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        dsInfo.depthCompareOp = (VkCompareOp)opts.depthStencil.comparison;
+        dsInfo.depthTestEnable = opts.depthStencil.depthTest;
+        dsInfo.depthWriteEnable = opts.depthStencil.depthWrite;
+        dsInfo.stencilTestEnable = opts.depthStencil.stencilTest;
+        dsInfo.front.compareMask = opts.depthStencil.stencilFront.compareMask;
+        dsInfo.front.writeMask = opts.depthStencil.stencilFront.writeMask;
+        dsInfo.front.reference = opts.depthStencil.stencilFront.reference;
+        dsInfo.front.compareOp = (VkCompareOp)opts.depthStencil.stencilFront.compare;
+        dsInfo.front.failOp = (VkStencilOp)opts.depthStencil.stencilFront.onFail;
+        dsInfo.front.depthFailOp = (VkStencilOp)opts.depthStencil.stencilFront.onDepthFail;
+        dsInfo.front.passOp = (VkStencilOp)opts.depthStencil.stencilFront.onPass;
+
+        dsInfo.back.compareMask = opts.depthStencil.stencilBack.compareMask;
+        dsInfo.back.writeMask = opts.depthStencil.stencilBack.writeMask;
+        dsInfo.back.reference = opts.depthStencil.stencilBack.reference;
+        dsInfo.back.compareOp = (VkCompareOp)opts.depthStencil.stencilBack.compare;
+        dsInfo.back.failOp = (VkStencilOp)opts.depthStencil.stencilBack.onFail;
+        dsInfo.back.depthFailOp = (VkStencilOp)opts.depthStencil.stencilBack.onDepthFail;
+        dsInfo.back.passOp = (VkStencilOp)opts.depthStencil.stencilBack.onPass;
+
+        VkPipelineColorBlendAttachmentState blendStates[3]{};
+        for (VkPipelineColorBlendAttachmentState& blendInfo : blendStates) {
+            blendInfo.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            blendInfo.colorBlendOp = VK_BLEND_OP_ADD;
+            blendInfo.alphaBlendOp = VK_BLEND_OP_ADD;
+            blendInfo.blendEnable = VK_TRUE;
+            blendInfo.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            blendInfo.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blendInfo.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            blendInfo.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
         }
 
-        ret = onart::createPipeline(singleton->device, vinfo, size, vattr, iinfo, isize, iattr, pass->rp, subpass, flags, OPT_COLOR_COUNT, OPT_USE_DEPTHSTENCIL, layout, vs, fs, tc, te, gs, front, back);
-        if(!ret){
-            LOGHERE;
-            return VK_NULL_HANDLE;
+        VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
+        colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        colorBlendStateCreateInfo.attachmentCount = OPT_COLOR_COUNT;
+        colorBlendStateCreateInfo.pAttachments = blendStates;
+
+        VkDynamicState dynStates[2] = { VkDynamicState::VK_DYNAMIC_STATE_VIEWPORT, VkDynamicState::VK_DYNAMIC_STATE_SCISSOR };
+        VkPipelineDynamicStateCreateInfo dynInfo{};
+        dynInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynInfo.pDynamicStates = dynStates;
+        dynInfo.dynamicStateCount = sizeof(dynStates) / sizeof(dynStates[0]);
+
+        VkPipelineViewportStateCreateInfo viewportInfo{};
+        viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewportInfo.viewportCount = 1;
+        viewportInfo.scissorCount = 1;
+
+        VkPipelineMultisampleStateCreateInfo msInfo{};
+        msInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        msInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; // TODO: 선택권
+
+        VkPipelineTessellationStateCreateInfo tessInfo{};
+        tessInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO;
+        tessInfo.patchControlPoints = 3; // TODO: 선택권
+
+        VkGraphicsPipelineCreateInfo pInfo{};
+        pInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pInfo.stageCount = lastStage;
+        pInfo.pStages = shaderStagesInfo;
+        pInfo.pVertexInputState = &vertexInputInfo;
+        pInfo.renderPass = rp;
+        pInfo.subpass = opts.subpassIndex;
+        pInfo.pDynamicState = &dynInfo;
+        pInfo.layout = layout;
+        pInfo.pRasterizationState = &rtrInfo;
+        pInfo.pViewportState = &viewportInfo;
+        pInfo.pMultisampleState = &msInfo;
+        pInfo.pInputAssemblyState = &inputAssemblyInfo;
+        if (opts.tessellationEvaluationShader) pInfo.pTessellationState = &tessInfo;
+        if (OPT_COLOR_COUNT) { pInfo.pColorBlendState = &colorBlendStateCreateInfo; }
+        if (opts.depthStencil.depthTest || opts.depthStencil.stencilTest) { pInfo.pDepthStencilState = &dsInfo; }
+        VkPipeline ret;
+        VkResult result = vkCreateGraphicsPipelines(singleton->device, VK_NULL_HANDLE, 1, &pInfo, nullptr, &ret);
+        if (result != VK_SUCCESS) {
+            LOGWITH("Failed to create pipeline:", result, resultAsString(result));
+            return {};
+            VkMachine::reason = result;
         }
-        pass->usePipeline(ret, layout, subpass);
-        if(name == INT32_MIN) return ret;
-        return singleton->pipelines[name] = ret;
+        VkMachine::reason = result;
+        if (opts.pass) { 
+            opts.pass->usePipeline(ret, layout, opts.subpassIndex);
+        }
+        else if (opts.pass2screen) {
+            opts.pass2screen->usePipeline(ret, layout, opts.subpassIndex);
+        }
+        return singleton->pipelines[key] = ret;
     }
 
-    VkPipelineLayout VkMachine::createPipelineLayout(VkDescriptorSetLayout* layouts, uint32_t count,  VkShaderStageFlags stages, int32_t name){
-        VkPipelineLayout ret = getPipelineLayout(name);
-        if(ret) return ret;
+    VkDescriptorSetLayout VkMachine::getDescriptorSetLayout(ShaderResourceType type) {
+        auto it = singleton->descriptorSetLayouts.find(type);
+        if (it != singleton->descriptorSetLayouts.end()) {
+            return it->second;
+        }
+        VkDescriptorSetLayoutCreateInfo info{};
+        VkDescriptorSetLayoutBinding bindings[4]{};
+        info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        info.pBindings = bindings;
+        switch (type) {
+        case onart::VkMachine::ShaderResourceType::NONE: {
+            return {};
+        }
+        case onart::VkMachine::ShaderResourceType::UNIFORM_BUFFER_1:
+        {
+            info.bindingCount = 1;
+            bindings[0].binding = 0;
+            bindings[0].descriptorCount = 1;
+            bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            bindings[0].stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+            break;
+        }
+        case onart::VkMachine::ShaderResourceType::DYNAMIC_UNIFORM_BUFFER_1:
+        {
+            info.bindingCount = 1;
+            bindings[0].binding = 0;
+            bindings[0].descriptorCount = 1;
+            bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+            bindings[0].stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+            break;
+        }
+        case onart::VkMachine::ShaderResourceType::TEXTURE_1:
+        {
+            info.bindingCount = 1;
+            for (int i = 0; i < 1; i++) {
+                bindings[i].binding = i;
+                bindings[i].descriptorCount = 1;
+                bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                bindings[i].stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+            }
+            break;
+        }
+        case onart::VkMachine::ShaderResourceType::TEXTURE_2:
+        {
+            info.bindingCount = 2;
+            for (int i = 0; i < 2; i++) {
+                bindings[i].binding = i;
+                bindings[i].descriptorCount = 1;
+                bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                bindings[i].stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+            }
+            break;
+        }
+        case onart::VkMachine::ShaderResourceType::TEXTURE_3:
+        {
+            info.bindingCount = 3;
+            for (int i = 0; i < 3; i++) {
+                bindings[i].binding = i;
+                bindings[i].descriptorCount = 1;
+                bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                bindings[i].stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+            }
+            break;
+        }
+        case onart::VkMachine::ShaderResourceType::TEXTURE_4:
+        {
+            info.bindingCount = 4;
+            for (int i = 0; i < 4; i++) {
+                bindings[i].binding = i;
+                bindings[i].descriptorCount = 1;
+                bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                bindings[i].stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+            }
+            break;
+        }
+        case onart::VkMachine::ShaderResourceType::INPUT_ATTACHMENT_1:
+        {
+            info.bindingCount = 1;
+            for (int i = 0; i < 1; i++) {
+                bindings[i].binding = i;
+                bindings[i].descriptorCount = 1;
+                bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+                bindings[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            }
+            break;
+        }
+        case onart::VkMachine::ShaderResourceType::INPUT_ATTACHMENT_2:
+        {
+            info.bindingCount = 1;
+            for (int i = 0; i < 1; i++) {
+                bindings[i].binding = i;
+                bindings[i].descriptorCount = 1;
+                bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+                bindings[i].stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+            }
+            break;
+        }
+        case onart::VkMachine::ShaderResourceType::INPUT_ATTACHMENT_3:
+        {
+            info.bindingCount = 3;
+            for (int i = 0; i < 3; i++) {
+                bindings[i].binding = i;
+                bindings[i].descriptorCount = 1;
+                bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+                bindings[i].stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+            }
+            break;
+        }
+        case onart::VkMachine::ShaderResourceType::INPUT_ATTACHMENT_4:
+        {
+            info.bindingCount = 4;
+            for (int i = 0; i < 4; i++) {
+                bindings[i].binding = i;
+                bindings[i].descriptorCount = 1;
+                bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+                bindings[i].stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+            }
+            break;
+        }
+        default:
+        {
+            LOGWITH("Invalid resource type");
+            return {};
+        }
+        }
+
+        VkDescriptorSetLayout layout;
+        VkResult result = vkCreateDescriptorSetLayout(singleton->device, &info, nullptr, &layout);
+        if (result != VK_SUCCESS) {
+            LOGWITH("Failed to create descriptor set layout:", result);
+            reason = result;
+            return {};
+        }
+        return singleton->descriptorSetLayouts[type] = layout;
+    }
+
+    VkPipelineLayout VkMachine::createPipelineLayout(const PipelineLayoutOptions& opts) {
+        int64_t key = ((int64_t)opts.pos0) | ((int64_t)opts.pos1 << 8) | ((int64_t)opts.pos2 << 16) | ((int64_t)opts.pos3 << 24);
+        if (opts.usePush) key |= (0xffLL << 32);
+        auto it = singleton->pipelineLayouts.find(key);
+        if (it != singleton->pipelineLayouts.end()) { return it->second; }
+
+        if (opts.pos0 == ShaderResourceType::NONE && !opts.usePush) {
+            LOGWITH("Shader resource type must be specified sequentially. Cannot make pipeline layout with no resource type and no push constant");
+            return {};
+        }
+
+        VkDescriptorSetLayout layouts[4]{
+            getDescriptorSetLayout(opts.pos0),
+            getDescriptorSetLayout(opts.pos1),
+            getDescriptorSetLayout(opts.pos2),
+            getDescriptorSetLayout(opts.pos3)
+        };
+
+        uint32_t layoutCount = 0;
+        for (layoutCount = 0; layoutCount < 4 && layouts[layoutCount]; layoutCount++);
 
         VkPushConstantRange pushRange{};
-
+        pushRange.offset = 0;
+        pushRange.size = 128;
+        pushRange.stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
+        
         VkPipelineLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         layoutInfo.pSetLayouts = layouts;
-        layoutInfo.setLayoutCount = count;
-        if(stages){
-            pushRange.size = 128;
-            pushRange.offset = 0;
-            pushRange.stageFlags = stages;
-            layoutInfo.pushConstantRangeCount = 1;
-            layoutInfo.pPushConstantRanges = &pushRange;
-        }
+        layoutInfo.setLayoutCount = layoutCount;
+        layoutInfo.pPushConstantRanges = &pushRange;
+        layoutInfo.pushConstantRangeCount = opts.usePush ? 1 : 0;
 
-        reason = vkCreatePipelineLayout(singleton->device, &layoutInfo, nullptr, &ret);
-        if(reason != VK_SUCCESS){
-            LOGWITH("Failed to create pipeline layout:",reason,resultAsString(reason));
-            return VK_NULL_HANDLE;
+        VkPipelineLayout layout;
+        VkResult result = vkCreatePipelineLayout(singleton->device, &layoutInfo, nullptr, &layout);
+        if (result != VK_SUCCESS) {
+            LOGWITH("Failed to create pipeline layout:", result, resultAsString(result));
+            return {};
         }
-        if(name == INT32_MIN) return ret;
-        return singleton->pipelineLayouts[name] = ret;
+        return singleton->pipelineLayouts[key] = layout;
     }
 
     VkMachine::Mesh::Mesh(VkBuffer vb, VmaAllocation vba, size_t vcount, size_t icount, size_t ioff, void *vmap, bool use32):vb(vb),vba(vba),vcount(vcount),icount(icount),ioff(ioff),vmap(vmap),idxType(use32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16){ }
@@ -2600,42 +2861,24 @@ namespace onart {
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
     }
 
-    void VkMachine::RenderPass::bind(uint32_t pos, RenderPass* prevPass, uint32_t index){
+    void VkMachine::RenderPass::bind(uint32_t pos, const pTextureSet& tx) {
+        if (currentPass == -1) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
+    }
+
+    void VkMachine::RenderPass::bind(uint32_t pos, RenderPass* prevPass){
         if(currentPass == -1){
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
         RenderTarget* target = prevPass->targets.back();
-        if(!target->sampled){
-            LOGWITH("Invalid call: this target is not made with texture");
-            return;
-        }
-        VkDescriptorSet dset;
-        switch(index){
-            case 0:
-                dset = target->dset1;
-                break;
-            case 1:
-                dset = target->dset2;
-                break;
-            case 2:
-                dset = target->dset3;
-                break;
-            case 3:
-                dset = target->dsetDS;
-                break;
-            default:
-                LOGWITH("Invalid render target index");
-                return;
-        }
-        if(!dset) {
-            LOGWITH("Invalid render target index");
-            return;
-        }
-        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &dset, 0, nullptr);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &target->dset, 0, nullptr);
     }
 
-    void VkMachine::RenderPass::bind(uint32_t pos, RenderPass2Cube* prevPass, uint32_t index) {
+    void VkMachine::RenderPass::bind(uint32_t pos, RenderPass2Cube* prevPass) {
         if (currentPass == -1) {
             LOGWITH("Invalid call: render pass not begun");
             return;
@@ -2648,7 +2891,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdPushConstants(cb, pipelineLayouts[currentPass], VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT | VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
+        vkCmdPushConstants(cb, pipelineLayouts[currentPass], VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
     }
 
     void VkMachine::RenderPass::invoke(const pMesh& mesh, uint32_t start, uint32_t count){
@@ -2816,9 +3059,7 @@ namespace onart {
         }
         else{
             vkCmdNextSubpass(cb, VK_SUBPASS_CONTENTS_INLINE);
-            VkDescriptorSet dset[4];
-            uint32_t count = targets[currentPass - 1]->getDescriptorSets(dset);
-            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, count, dset, 0, nullptr);
+            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &targets[currentPass - 1]->dset, 0, nullptr); // 서브패스는 무조건 0부터 시작해야 이게 유지되긴 할듯..
         }
         vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]);
         vkCmdSetViewport(cb, 0, 1, &viewport);
@@ -2889,38 +3130,13 @@ namespace onart {
         vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
     }
 
-    void VkMachine::RenderPass2Cube::bind(uint32_t pos, RenderTarget* target, uint32_t index){
+    void VkMachine::RenderPass2Cube::bind(uint32_t pos, RenderPass* prevPass){
         if(!recording){
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        if(!target->sampled){
-            LOGWITH("Invalid call: this target is not made with texture");
-            return;
-        }
-        VkDescriptorSet dset;
-        switch(index){
-            case 0:
-                dset = target->dset1;
-                break;
-            case 1:
-                dset = target->dset2;
-                break;
-            case 2:
-                dset = target->dset3;
-                break;
-            case 3:
-                dset = target->dsetDS;
-                break;
-            default:
-                LOGWITH("Invalid render target index");
-                return;
-        }
-        if(!dset) {
-            LOGWITH("Invalid render target index");
-            return;
-        }
-        vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &dset, 0, nullptr);
+        RenderTarget* target = prevPass->targets.back();
+        vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &target->dset, 0, nullptr);
     }
   
     void VkMachine::RenderPass2Cube::usePipeline(VkPipeline pipeline, VkPipelineLayout layout){
@@ -2934,7 +3150,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdPushConstants(scb, pipelineLayout, VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT | VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
+        vkCmdPushConstants(scb, pipelineLayout, VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
     }
 
     void VkMachine::RenderPass2Cube::invoke(const pMesh& mesh, uint32_t start, uint32_t count){
@@ -3297,38 +3513,16 @@ namespace onart {
         vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
     }
 
-    void VkMachine::RenderPass2Screen::bind(uint32_t pos, RenderPass* prevPass, uint32_t index){
+    void VkMachine::RenderPass2Screen::bind(uint32_t pos, RenderPass* prevPass){
         if(currentPass == -1){
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
         RenderTarget* target = prevPass->targets.back();
-        VkDescriptorSet dset;
-        switch(index){
-            case 0:
-                dset = target->dset1;
-                break;
-            case 1:
-                dset = target->dset2;
-                break;
-            case 2:
-                dset = target->dset3;
-                break;
-            case 3:
-                dset = target->dsetDS;
-                break;
-            default:
-                LOGWITH("Invalid render target index");
-                return;
-        }
-        if(!dset) {
-            LOGWITH("Invalid render target index");
-            return;
-        }
-        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &dset, 0, nullptr);
+        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &target->dset, 0, nullptr);
     }
 
-    void VkMachine::RenderPass2Screen::bind(uint32_t pos, RenderPass2Cube* prevPass, uint32_t index) {
+    void VkMachine::RenderPass2Screen::bind(uint32_t pos, RenderPass2Cube* prevPass) {
         if (currentPass == -1) {
             LOGWITH("Invalid call: render pass not begun");
             return;
@@ -3474,9 +3668,7 @@ namespace onart {
         }
         else{
             vkCmdNextSubpass(cbs[currentCB], VK_SUBPASS_CONTENTS_INLINE);
-            VkDescriptorSet dset[4];
-            uint32_t count = targets[currentPass - 1]->getDescriptorSets(dset);
-            vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, count, dset, 0, nullptr);
+            vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &targets[currentPass - 1]->dset, 0, nullptr);
         }
         vkCmdBindPipeline(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]);
         vkCmdSetViewport(cbs[currentCB], 0, 1, &viewport);
@@ -3550,7 +3742,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdPushConstants(cbs[currentCB], pipelineLayouts[currentPass], VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT | VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT, start, end - start, input); // TODO: 스펙: 파이프라인 레이아웃 생성 시 단계마다 가용 푸시상수 범위를 분리할 수 있으며(꼭 할 필요는 없는 듯 하긴 함) 여기서 매개변수로 범위와 STAGEFLAGBIT은 일치해야 함
+        vkCmdPushConstants(cbs[currentCB], pipelineLayouts[currentPass], VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스펙: 파이프라인 레이아웃 생성 시 단계마다 가용 푸시상수 범위를 분리할 수 있으며(꼭 할 필요는 없는 듯 하긴 함) 여기서 매개변수로 범위와 STAGEFLAGBIT은 일치해야 함
     }
 
     void VkMachine::RenderPass2Screen::usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass){
@@ -4081,149 +4273,6 @@ namespace onart {
             return VK_FORMAT_UNDEFINED;
         }
     #undef CHECK_N_RETURN
-    }
-
-    VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr,
-    VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr,
-    VkRenderPass pass, uint32_t subpass, uint32_t flags, const uint32_t OPT_COLOR_COUNT, const bool OPT_USE_DEPTHSTENCIL,
-    VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkShaderModule tc, VkShaderModule te, VkShaderModule gs, VkStencilOpState* front, VkStencilOpState* back) {
-        VkPipelineShaderStageCreateInfo shaderStagesInfo[5] = {};
-        shaderStagesInfo[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        shaderStagesInfo[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-        shaderStagesInfo[0].module = vs;
-        shaderStagesInfo[0].pName = "main";
-
-        uint32_t lastStage = 1;
-
-        if(tc) {
-            shaderStagesInfo[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            shaderStagesInfo[1].stage = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-            shaderStagesInfo[1].module = tc;
-            shaderStagesInfo[1].pName = "main";
-            shaderStagesInfo[2].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            shaderStagesInfo[2].stage = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-            shaderStagesInfo[2].module = te;
-            shaderStagesInfo[2].pName = "main";
-            lastStage = 3;
-        }
-        if(gs) {
-            shaderStagesInfo[lastStage].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            shaderStagesInfo[lastStage].stage = VK_SHADER_STAGE_GEOMETRY_BIT;
-            shaderStagesInfo[lastStage].module = gs;
-            shaderStagesInfo[lastStage].pName = "main";
-            lastStage++;
-        }
-
-        shaderStagesInfo[lastStage].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        shaderStagesInfo[lastStage].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        shaderStagesInfo[lastStage].module = fs;
-        shaderStagesInfo[lastStage].pName = "main";
-        lastStage++;
-
-        VkVertexInputBindingDescription vbind[2]{};
-        vbind[0].binding = 0;
-        vbind[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        vbind[0].stride = size;
-
-        vbind[1].binding = 1;
-        vbind[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
-        vbind[1].stride = isize;
-        
-        std::vector<VkVertexInputAttributeDescription> attrs(vattr + iattr);
-        if(vattr) std::copy(vinfo, vinfo + vattr, attrs.data());
-        if(iattr) std::copy(iinfo, iinfo + iattr, attrs.data() + vattr);
-
-        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
-        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertexInputInfo.vertexBindingDescriptionCount = (vattr ? 1 : 0) + (iattr ? 1 : 0);
-        vertexInputInfo.pVertexBindingDescriptions = vattr ? vbind : vbind + 1;
-        vertexInputInfo.vertexAttributeDescriptionCount = (uint32_t)attrs.size();
-        vertexInputInfo.pVertexAttributeDescriptions = attrs.data();
-
-        VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo{};
-        inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-        inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-        inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
-
-        VkPipelineRasterizationStateCreateInfo rtrInfo{};
-        rtrInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        rtrInfo.cullMode= VK_CULL_MODE_BACK_BIT;
-        rtrInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-        rtrInfo.lineWidth = 1.0f;
-        rtrInfo.polygonMode = VK_POLYGON_MODE_FILL;
-
-        VkPipelineDepthStencilStateCreateInfo dsInfo{};
-        if(OPT_USE_DEPTHSTENCIL){
-            dsInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-            dsInfo.depthCompareOp = VK_COMPARE_OP_LESS;
-            dsInfo.depthTestEnable = (flags & VkMachine::PipelineOptions::USE_DEPTH) ? VK_TRUE : VK_FALSE;
-            dsInfo.depthWriteEnable = dsInfo.depthWriteEnable;
-            dsInfo.stencilTestEnable = (flags & VkMachine::PipelineOptions::USE_STENCIL) ? VK_TRUE : VK_FALSE;
-            if(front) dsInfo.front = *front;
-            if(back) dsInfo.back = *back;
-        }
-
-        VkPipelineColorBlendAttachmentState blendStates[3]{};
-        for(VkPipelineColorBlendAttachmentState& blendInfo: blendStates){
-            blendInfo.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-            blendInfo.colorBlendOp = VK_BLEND_OP_ADD;
-            blendInfo.alphaBlendOp = VK_BLEND_OP_ADD;
-            blendInfo.blendEnable = VK_TRUE;
-            blendInfo.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-            blendInfo.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-            blendInfo.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-            blendInfo.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        }
-
-        VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
-        colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-        colorBlendStateCreateInfo.attachmentCount = OPT_COLOR_COUNT;
-        colorBlendStateCreateInfo.pAttachments = blendStates;
-
-        VkDynamicState dynStates[2] = {VkDynamicState::VK_DYNAMIC_STATE_VIEWPORT, VkDynamicState::VK_DYNAMIC_STATE_SCISSOR};
-        VkPipelineDynamicStateCreateInfo dynInfo{};
-        dynInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-        dynInfo.pDynamicStates = dynStates;
-        dynInfo.dynamicStateCount = sizeof(dynStates) / sizeof(dynStates[0]);
-
-        VkPipelineViewportStateCreateInfo viewportInfo{};
-        viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-        viewportInfo.viewportCount = 1;
-        viewportInfo.scissorCount = 1;
-
-        VkPipelineMultisampleStateCreateInfo msInfo{};
-        msInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-        msInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; // TODO: 선택권
-
-        VkPipelineTessellationStateCreateInfo tessInfo{};
-        tessInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO;
-        tessInfo.patchControlPoints = 3; // TODO: 선택권
-
-        VkGraphicsPipelineCreateInfo pInfo{};
-        pInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-        pInfo.stageCount = lastStage;
-        pInfo.pStages = shaderStagesInfo;
-        pInfo.pVertexInputState = &vertexInputInfo;
-        pInfo.renderPass = pass;
-        pInfo.subpass = subpass;
-        pInfo.pDynamicState = &dynInfo;
-        pInfo.layout = layout;
-        pInfo.pRasterizationState = &rtrInfo;
-        pInfo.pViewportState = &viewportInfo;
-        pInfo.pMultisampleState = &msInfo;
-        pInfo.pInputAssemblyState = &inputAssemblyInfo;
-        if(tc) pInfo.pTessellationState = &tessInfo;
-        if(OPT_COLOR_COUNT) { pInfo.pColorBlendState = &colorBlendStateCreateInfo; }
-        if(OPT_USE_DEPTHSTENCIL){ pInfo.pDepthStencilState = &dsInfo; }
-        VkPipeline ret;
-        VkResult result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pInfo, nullptr, &ret);
-        if(result != VK_SUCCESS){
-            LOGWITH("Failed to create pipeline:",result,resultAsString(result));
-            return VK_NULL_HANDLE;
-            VkMachine::reason = result;
-        }
-        VkMachine::reason = result;
-        return ret;
     }
 
     static const char* resultAsString(VkResult result) {
