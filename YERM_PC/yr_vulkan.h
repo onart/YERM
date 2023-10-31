@@ -93,15 +93,15 @@ namespace onart {
             /// @brief 렌더 타겟의 유형입니다.
             enum RenderTargetType { 
                 /// @brief 색 버퍼 1개를 보유합니다.
-                COLOR1 = 0b1,
+                RTT_COLOR1 = 0b1,
                 /// @brief 색 버퍼 2개를 보유합니다.
-                COLOR2 = 0b11,
+                RTT_COLOR2 = 0b11,
                 /// @brief 색 버퍼 3개를 보유합니다.
-                COLOR3 = 0b111,
+                RTT_COLOR3 = 0b111,
                 /// @brief 깊이 버퍼를 보유합니다.
-                DEPTH = 0b1000,
+                RTT_DEPTH = 0b1000,
                 /// @brief 스텐실 버퍼를 보유합니다.
-                STENCIL = 0b10000,
+                RTT_STENCIL = 0b10000,
             };
 
             /// @brief 이미지 파일로부터 텍스처를 생성할 때 줄 수 있는 옵션입니다. 비트 OR로 여러 조건을 조합할 수 있습니다.
@@ -169,7 +169,7 @@ namespace onart {
                 /// @brief true를 주면 최종 타겟을 텍스처로 사용할 때 linear 필터를 사용합니다. 기본값 true
                 bool linearSampled = true;
                 /// @brief screen 대상의 렌더패스의 최종 타겟에 depth 또는 stencil을 포함할지 결정합니다. 즉, RenderTargetType::DEPTH, RenderTargetType::STENCIL 이외에는 무시됩니다. 기본값 COLOR1
-                RenderTargetType screenDepthStencil = RenderTargetType::COLOR1;
+                RenderTargetType screenDepthStencil = RenderTargetType::RTT_COLOR1;
             };
             struct ShaderModuleCreationOptions {
                 /// @brief SPIR-V 바이너리입니다. 기본값 없음
@@ -305,7 +305,6 @@ namespace onart {
             /// @param opts @ref ShaderModuleCreationOptions
             static VkShaderModule createShader(int32_t key, const ShaderModuleCreationOptions& opts);
             /// @brief 셰이더에서 사용할 수 있는 uniform 버퍼를 생성하여 리턴합니다. 이것을 해제하는 방법은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
-            /// @param length 이 값이 1이면 버퍼 하나를 생성하며, 2 이상이면 동적 공유 버퍼를 생성합니다. 동적 공유 버퍼는 렌더 패스 진행 중 바인드할 영역을 바꿀 수 있습니다.
             /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
             /// @param opts @ref UniformBufferCreationOptions
             static UniformBuffer* createUniformBuffer(int32_t key, const UniformBufferCreationOptions& opts);

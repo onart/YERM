@@ -464,7 +464,7 @@ namespace onart {
         vmaDestroyImage(singleton->allocator, img, alloc);
     }
 
-    VkMachine::pMesh VkMachine::createNullMesh(size_t vcount, int32_t name) {
+    VkMachine::pMesh VkMachine::createNullMesh(int32_t name, size_t vcount) {
         pMesh m = getMesh(name);
         if(m) { return m; }
         struct publicmesh:public Mesh{publicmesh(VkBuffer _1, VmaAllocation _2, size_t _3, size_t _4,size_t _5,void* _6,bool _7):Mesh(_1,_2,_3,_4,_5,_6,_7){}};
@@ -611,7 +611,7 @@ namespace onart {
             LOGWITH("Warning: Tried to create image before initialization");
             return nullptr;
         }
-        if (useDepthInput && (type & RenderTargetType::STENCIL)) {
+        if (useDepthInput && (type & RenderTargetType::RTT_STENCIL)) {
             LOGWITH("Warning: Can\'t use stencil buffer while using depth buffer as sampled image or input attachment"); // TODO? 엄밀히 말하면 스텐실만 입력첨부물로 쓸 수는 있는데 이걸 꼭 해야 할지
             return nullptr;
         }
@@ -707,7 +707,7 @@ namespace onart {
                 return nullptr;
             }
             VkImageAspectFlags dsFlags = VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT;
-            if (type & RenderTargetType::STENCIL) dsFlags |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
+            if (type & RenderTargetType::RTT_STENCIL) dsFlags |= VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT;
             ds->view = createImageView(singleton->device, ds->img, VkImageViewType::VK_IMAGE_VIEW_TYPE_2D, imgInfo.format, 1, 1, dsFlags);
             if(!ds->view){
                 if(color1) {color1->free(); delete color1;}
@@ -2012,7 +2012,7 @@ namespace onart {
         VmaAllocation dsAlloc = VK_NULL_HANDLE;
         VkImageView dsImageView = VK_NULL_HANDLE;
 
-        if (opts.subpassCount == 1 && (opts.screenDepthStencil & (RenderTargetType::DEPTH | RenderTargetType::STENCIL))) {
+        if (opts.subpassCount == 1 && (opts.screenDepthStencil & (RenderTargetType::RTT_DEPTH | RenderTargetType::RTT_STENCIL))) {
             VkImageCreateInfo imgInfo{};
             imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
             imgInfo.arrayLayers = 1;
@@ -2195,7 +2195,7 @@ namespace onart {
         if (opts.subpassCount == 0 || opts.subpassCount > 16) { return {}; }
         RenderTarget* targets[16]{};
         for (uint32_t i = 0; i < opts.subpassCount; i++) {
-            RenderTargetType rtype = opts.targets ? opts.targets[i] : RenderTargetType::COLOR1;
+            RenderTargetType rtype = opts.targets ? opts.targets[i] : RenderTargetType::RTT_COLOR1;
             bool diType = opts.depthInput ? opts.depthInput[i] : false;
             targets[i] = createRenderTarget2D(opts.width, opts.height, rtype, diType, i == opts.subpassCount - 1, opts.linearSampled);
             if (!targets[i]) {
@@ -3392,7 +3392,7 @@ namespace onart {
             // ^^^ 스왑이 있으므로 위 파트는 이론상 없어도 알아서 해제되지만 있는 편이 메모리 때문에 더 좋을 것 같음
             RenderPassCreationOptions opts{};
             opts.subpassCount = pipelines.size();
-            opts.screenDepthStencil = RenderTargetType(useFinalDepth ? RenderTargetType::DEPTH | RenderTargetType::STENCIL : RenderTargetType::COLOR1);
+            opts.screenDepthStencil = RenderTargetType(useFinalDepth ? RenderTargetType::RTT_DEPTH | RenderTargetType::RTT_STENCIL : RenderTargetType::RTT_COLOR1);
 
             std::vector<RenderTargetType> types(targets.size());
             struct bool8{bool b;};

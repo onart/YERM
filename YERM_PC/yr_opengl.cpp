@@ -1130,7 +1130,7 @@ namespace onart {
 
         std::vector<RenderTarget*> targets(opts.subpassCount);
         for (uint32_t i = 0; i < opts.subpassCount; i++) {
-            targets[i] = createRenderTarget2D(opts.width, opts.height, opts.targets ? opts.targets[i] : RenderTargetType::COLOR1, opts.depthInput, opts.linearSampled);
+            targets[i] = createRenderTarget2D(opts.width, opts.height, opts.targets ? opts.targets[i] : RenderTargetType::RTT_COLOR1, opts.depthInput, opts.linearSampled);
             if (!targets[i]) {
                 LOGHERE;
                 for (uint32_t j = 0; j < i; j++) {

@@ -280,7 +280,6 @@ namespace onart{
 #endif
 
         YRGraphics::createRenderPass2Cube(123, 512, 512, false, true);
-        auto rtt = YRGraphics::RenderTargetType::COLOR1;
         YRGraphics::RenderPassCreationOptions rpopts{};
         rpopts.width = 128;
         rpopts.height = 128;

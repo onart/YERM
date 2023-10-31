@@ -88,17 +88,17 @@ namespace onart {
             /// @brief 셰이더 자원을 나타냅니다. 동시에 사용되지만 않는다면 여러 렌더패스 간에 공유될 수 있습니다.
             class UniformBuffer;
             /// @brief 렌더 타겟의 유형입니다.
-            enum class RenderTargetType { 
+            enum RenderTargetType { 
                 /// @brief 색 버퍼 1개를 보유합니다.
-                COLOR1 = 0b1,
+                RTT_COLOR1 = 0b1,
                 /// @brief 색 버퍼 2개를 보유합니다.
-                COLOR2 = 0b11,
+                RTT_COLOR2 = 0b11,
                 /// @brief 색 버퍼 3개를 보유합니다.
-                COLOR3 = 0b111,
+                RTT_COLOR3 = 0b111,
                 /// @brief 깊이/스텐실 버퍼만을 보유합니다.
-                DEPTH = 0b1000,
+                RTT_DEPTH = 0b1000,
                 /// @brief 스텐실 버퍼를 보유합니다.
-                STENCIL = 0b10000,
+                RTT_STENCIL = 0b10000,
             };
             /// @brief 이미지 파일로부터 텍스처를 생성할 때 줄 수 있는 옵션입니다.
             enum TextureFormatOptions {
@@ -170,7 +170,7 @@ namespace onart {
                 /// @brief true를 주면 최종 타겟을 텍스처로 사용할 때 linear 필터를 사용합니다. 기본값 true
                 bool linearSampled = true;
                 /// @brief screen 대상의 렌더패스의 최종 타겟에 depth 또는 stencil을 포함할지 결정합니다. 즉, RenderTargetType::DEPTH, RenderTargetType::STENCIL 이외에는 무시됩니다. 기본값 COLOR1
-                RenderTargetType screenDepthStencil = RenderTargetType::COLOR1;
+                RenderTargetType screenDepthStencil = RenderTargetType::RTT_COLOR1;
             };
 
             struct ShaderModuleCreationOptions {
