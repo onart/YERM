@@ -279,7 +279,7 @@ namespace onart{
         window->scrollCallback = recordScrollEvent;
 #endif
 
-        YRGraphics::createRenderPass2Cube(512, 512, 123, false, true);
+        YRGraphics::createRenderPass2Cube(123, 512, 512, false, true);
         auto rtt = YRGraphics::RenderTargetType::COLOR1;
         YRGraphics::RenderPassCreationOptions rpopts{};
         rpopts.width = 128;
@@ -293,6 +293,16 @@ namespace onart{
         YRGraphics::asyncCreateTexture(0, TEX0, sizeof(TEX0), [](variant8) { loaded = true; });
         testv_t verts[]{ {{-1,-1,0},{0,0}},{{-1,1,0},{0,1}},{{1,-1,0},{1,0}},{{1,1,0},{1,1}} };
         uint16_t inds[]{ 0,1,2,2,1,3 };
+        YRGraphics::MeshCreationOptions mopts;
+        mopts.fixed = true;
+        mopts.vertexCount = sizeof(verts) / sizeof(verts[0]);
+        mopts.vertices = verts;
+        mopts.indices = inds;
+        mopts.indexCount = sizeof(inds) / sizeof(inds[0]);
+        mopts.singleVertexSize = sizeof(verts[0]);
+        mopts.singleIndexSize = sizeof(inds[0]);
+        YRGraphics::createMesh(0, mopts);
+        YRGraphics::createNullMesh(3, 1);
 #ifdef YR_USE_VULKAN
         if constexpr (YRGraphics::VULKAN_GRAPHICS) {
             VkVertexInputAttributeDescription desc[2];
@@ -328,15 +338,6 @@ namespace onart{
             pipeInfo.pass2screen = rp2s;
             pipeInfo.subpassIndex = 0;
             YRGraphics::createPipeline(2, pipeInfo);
-            YRGraphics::createNullMesh(3, 1);
-            YRGraphics::MeshCreationOptions opts{};
-            opts.vertexCount = sizeof(verts) / sizeof(verts[0]);
-            opts.singleVertexSize = sizeof(testv_t);
-            opts.singleIndexSize = sizeof(inds[0]);
-            opts.indexCount = sizeof(inds) / sizeof(inds[0]);
-            opts.indices = inds;
-            opts.vertices = verts;
-            YRGraphics::createMesh(0, opts);
             //YRGraphics::createTextureFromImage("g256.png", 0,YRGraphics::isSurfaceSRGB(),YRGraphics::IT_USE_ORIGINAL,false); loaded = true;
             //loaded = true; YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB());
         }
@@ -389,13 +390,18 @@ void main() {
             auto fs = YRGraphics::createShader(1, shaderOpts);
             YRGraphics::PipelineInputVertexSpec sp[2];
             testv_t::info(sp);
-            auto pp = YRGraphics::createPipeline(sp,sizeof(testv_t),2,nullptr, 0, 0, vs, fs, 0);
+            YRGraphics::PipelineCreationOptions opts;
+            opts.vertexShader = vs;
+            opts.fragmentShader = fs;
+            opts.vertexAttributeCount = 2;
+            opts.vertexSize = sizeof(testv_t);
+            opts.vertexSpec = sp;
+            opts.pass = offrp;
+            opts.subpassIndex = 0;
+            auto pp = YRGraphics::createPipeline(0, opts);
             offrp->usePipeline(pp, 0);
             offrp->usePipeline(pp, 1);
             rp2s->usePipeline(pp, 0);
-            //YRGraphics::asyncCreateTexture(TEX0, sizeof(TEX0), 4, [](variant8) { loaded = true; }, 0, YRGraphics::isSurfaceSRGB(), true, false);
-            YRGraphics::createNullMesh(3, 1);
-            YRGraphics::createMesh(verts, sizeof(testv_t), 4, inds, 2, 6, 0);
         }
 #elif defined(YR_USE_D3D11)
         const char TEST_D11_VERT1[] = R"(

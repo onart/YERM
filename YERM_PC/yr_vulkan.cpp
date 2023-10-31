@@ -1730,7 +1730,7 @@ namespace onart {
         vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
     }
 
-    VkMachine::RenderPass2Cube* VkMachine::createRenderPass2Cube(uint32_t width, uint32_t height, int32_t key, bool useColor, bool useDepth) {
+    VkMachine::RenderPass2Cube* VkMachine::createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth) {
         RenderPass2Cube* r = getRenderPass2Cube(key);
         if(r) return r;
         if(!(useColor || useDepth)){

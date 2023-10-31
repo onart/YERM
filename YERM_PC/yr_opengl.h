@@ -182,6 +182,85 @@ namespace onart {
                 ShaderStage stage;
             };
 
+            enum class ShaderResourceType : uint8_t {
+                NONE = 0,
+                UNIFORM_BUFFER_1 = 1,
+                DYNAMIC_UNIFORM_BUFFER_1 = 2,
+                TEXTURE_1 = 3,
+                TEXTURE_2 = 4,
+                TEXTURE_3 = 5,
+                TEXTURE_4 = 6,
+                INPUT_ATTACHMENT_1 = 7,
+                INPUT_ATTACHMENT_2 = 8,
+                INPUT_ATTACHMENT_3 = 9,
+                INPUT_ATTACHMENT_4 = 10,
+            };
+
+            struct PipelineLayoutOptions {
+                ShaderResourceType pos0 = ShaderResourceType::NONE;
+                ShaderResourceType pos1 = ShaderResourceType::NONE;
+                ShaderResourceType pos2 = ShaderResourceType::NONE;
+                ShaderResourceType pos3 = ShaderResourceType::NONE;
+                bool usePush = false;
+            };
+
+            enum class CompareOp {
+                NEVER = 0,
+                LESS = 1,
+                EQUAL = 2,
+                LTE = 3,
+                GREATER = 4,
+                NE = 5,
+                GTE = 6,
+                ALWAYS = 7,
+            };
+
+            enum class StencilOp {
+                KEEP = 0,
+                ZERO = 1,
+                REPLACE = 2,
+                PLUS1_CLAMP = 3,
+                MINUSE1_CLAMP = 4,
+                INVERT = 5,
+                PLUS1_WRAP = 6,
+                MINUS1_WRAP = 7,
+            };
+
+            struct DepthStencilTesting {
+                CompareOp comparison = CompareOp::LESS;
+                bool depthTest = false;
+                bool depthWrite = false;
+                bool stencilTest = false;
+                struct StencilWorks {
+                    StencilOp onFail = StencilOp::KEEP;
+                    StencilOp onDepthFail = StencilOp::KEEP;
+                    StencilOp onPass = StencilOp::KEEP;
+                    CompareOp compare = CompareOp::ALWAYS;
+                    uint32_t reference = 0;
+                    uint32_t writeMask = 0xff;
+                    uint32_t compareMask = 0xff;
+                }stencilFront, stencilBack;
+            };
+
+            struct PipelineCreationOptions {
+                PipelineInputVertexSpec* vertexSpec = nullptr;
+                uint32_t vertexSize = 0;
+                uint32_t vertexAttributeCount = 0;
+                PipelineInputVertexSpec* instanceSpec = nullptr;
+                uint32_t instanceDataStride = 0;
+                uint32_t instanceAttributeCount = 0;
+                RenderPass* pass = nullptr;
+                RenderPass2Screen* pass2screen = nullptr;
+                uint32_t subpassIndex = 0;
+                unsigned vertexShader;
+                unsigned fragmentShader;
+                unsigned geometryShader = 0;
+                unsigned tessellationControlShader = 0;
+                unsigned tessellationEvaluationShader = 0;
+                PipelineLayoutOptions shaderResources;
+                DepthStencilTesting depthStencil;
+            };
+
             /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
             static void handle();
             /// @brief 단위행렬이 리턴됩니다.
@@ -216,25 +295,22 @@ namespace onart {
             /// @param size mem 배열의 길이(바이트)
             /// @param opts @ref TextureCreationOptions
             /// @return 만들어진 텍스처 혹은 이미 있던 해당 key의 텍스처
-            static pTexture createTexture(int32_t key, const uint8_t* mem, size_t size, const TextureCreationOptions& opts);
+            static pTexture createTexture(int32_t key, const uint8_t* mem, size_t size, const TextureCreationOptions& opts = {});
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
             static void asyncCreateTexture(int32_t key, const uint8_t* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
             /// @brief 여러 개의 텍스처를 연속된 넘버으로 바인드하는 집합을 생성합니다.
             static pTextureSet createTextureSet(int32_t key, const pTexture& binding0, const pTexture& binding1, const pTexture& binding2 = {}, const pTexture& binding3 = {});
             /// @brief 빈 텍스처를 만듭니다. 메모리 맵으로 데이터를 올릴 수 있습니다. 올리는 데이터의 기본 형태는 BGRA 순서이며, 필요한 경우 셰이더에서 직접 스위즐링하여 사용합니다.
-            static pStreamTexture createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler = true);
+            static pStreamTexture createStreamTexture(int32_t key, uint32_t width, uint32_t height, bool linearSampler = true);
             /// @brief GLSL 셰이더를 컴파일하여 보관하고 가져옵니다.
             /// @brief SPIR-V 컴파일된 셰이더를 VkShaderModule 형태로 저장하고 가져옵니다.
             /// @param key 이후 별도로 접근할 수 있는 이름을 지정합니다. 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다.
             /// @param opts @ref ShaderModuleCreationOptions
             static unsigned createShader(int32_t key, const ShaderModuleCreationOptions& opts);
             /// @brief 셰이더에서 사용할 수 있는 uniform 버퍼를 생성하여 리턴합니다. 이것을 해제하는 방법은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
-            /// @param _0 OpenGL은 동시에 여러 개 렌더링 명령이 수행될 수 없으므로 사용되지 않습니다.
-            /// @param size 버퍼의 크기입니다.
-            /// @param stages 사용되지 않습니다.
-            /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다. 키 INT32_MIN + 1의 경우 push라는 인터페이스를 위해 사용되므로 이용할 수 없습니다.
-            /// @param binding 바인딩 번호입니다. 11번 바인딩을 사용하려 하는 경우 렌더패스의 push() 인터페이스는 사용하실 수 없습니다.
-            static UniformBuffer* createUniformBuffer(uint32_t _0, uint32_t size, size_t stages, int32_t key, uint32_t binding = 0);
+            /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
+            /// @param opts @ref UniformBufferCreationOptions
+            static UniformBuffer* createUniformBuffer(int32_t key, const UniformBufferCreationOptions& opts);
             /// @brief 렌더 패스를 생성합니다. 렌더 패스는 렌더 타겟과 유의어로 보아도 되나, 여러 개의 서브패스로 구성됩니다.
             /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
             static RenderPass* createRenderPass(int32_t key, const RenderPassCreationOptions& opts);
@@ -244,31 +320,19 @@ namespace onart {
             /// @param key 이름입니다.
             /// @param useColor true인 경우 색 버퍼 1개를 이미지에 사용합니다.
             /// @param useDepth true인 경우 깊이 버퍼를 이미지에 사용합니다. useDepth와 useColor가 모두 true인 경우 샘플링은 색 버퍼에 대해서만 가능합니다.
-            static RenderPass2Cube* createRenderPass2Cube(uint32_t width, uint32_t height, int32_t key, bool useColor, bool useDepth);
+            static RenderPass2Cube* createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth);
             /// @brief 화면으로 이어지는 렌더패스를 생성합니다. 각 패스의 타겟들은 현재 창의 해상도와 동일하게 맞춰집니다.
             static RenderPass2Screen* createRenderPass2Screen(int32_t key, const RenderPassCreationOptions& opts);
-            /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 사용할 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
-            /// @param vs 정점 셰이더 모듈입니다.
-            /// @param fs 조각 셰이더 모듈입니다.
-            /// @param name 이름입니다. 최대 15바이트까지만 가능합니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다.
-            /// @param tc 테셀레이션 컨트롤 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
-            /// @param te 테셀레이션 계산 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
-            /// @param gs 지오메트리 셰이더 모듈입니다. 사용하지 않으려면 0을 주면 됩니다.
-            static Pipeline* createPipeline(PipelineInputVertexSpec* vinfo, uint32_t vsize, uint32_t vattr, PipelineInputVertexSpec* iinfo, uint32_t isize, uint32_t iattr, unsigned vs, unsigned fs, int32_t name, unsigned tc = 0, unsigned te = 0, unsigned gs = 0);
-            /// @brief 정점 버퍼(모델) 객체를 생성합니다.
-            /// @param vdata 정점 데이터
-            /// @param vsize 정점 하나의 크기(바이트)
-            /// @param vcount 정점의 수
-            /// @param idata 인덱스 데이터입니다. 이 값은 vcount가 65536 이상일 경우 32비트 정수로, 그 외에는 16비트 정수로 취급됩니다.
-            /// @param isize 인덱스 하나의 크기입니다. 이 값은 반드시 2 또는 4여야 합니다.
-            /// @param icount 인덱스의 수입니다. 이 값이 0이면 인덱스 버퍼를 사용하지 않습니다.
-            /// @param key 프로그램 내에서 사용할 이름입니다.
-            /// @param stage 메모리 맵을 통해 지속적으로 데이터를 바꾸어 보낼지 선택합니다. stage가 false라서 메모리 맵을 사용하게 되는 경우 vdata, idata를 nullptr로 주어도 됩니다.
-            static pMesh createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, int32_t key, bool stage = true);
+            /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 불러올 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
+            static Pipeline* createPipeline(int32_t key, const PipelineCreationOptions& opts);
+            /// @brief 정점 버퍼를 생성합니다.
+            /// @param key 사용할 이름입니다. 중복된 이름을 입력하는 경우 기존의 Mesh를 리턴합니다.
+            /// @param opts @ref MeshCreationOptions
+            static pMesh createMesh(int32_t key, const MeshCreationOptions& opts);
             /// @brief 정점의 수 정보만 저장하는 메시 객체를 생성합니다. 이것은 파이프라인 자체에서 정점 데이터가 정의되어 있는 경우를 위한 것입니다.
             /// @param vcount 정점의 수
             /// @param name 프로그램 내에서 사용할 이름입니다.
-            static pMesh createNullMesh(size_t vcount, int32_t key);
+            static pMesh createNullMesh(int32_t key, size_t vcount);
             /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.
             static RenderPass2Screen* getRenderPass2Screen(int32_t key);
             /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.
@@ -277,8 +341,6 @@ namespace onart {
             static RenderPass2Cube* getRenderPass2Cube(int32_t key);
             /// @brief 만들어 둔 파이프라인을 리턴합니다. 없으면 nullptr를 리턴합니다.
             static Pipeline* getPipeline(int32_t key);
-            /// @brief 아무 동작도 하지 않습니다.
-            static unsigned getPipelineLayout(int32_t key);
             /// @brief 만들어 둔 공유 버퍼를 리턴합니다. 없으면 nullptr를 리턴합니다.
             static UniformBuffer* getUniformBuffer(int32_t key);
             /// @brief 만들어 둔 셰이더 모듈을 리턴합니다. 없으면 0을 리턴합니다.
@@ -583,6 +645,7 @@ namespace onart {
             std::vector<PipelineInputVertexSpec> ispec;
             const unsigned vertexSize, instanceAttrStride;
             vec4 clearColor;
+            DepthStencilTesting depthStencilOperation;
     };
 
     class GLMachine::Mesh{

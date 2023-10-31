@@ -137,7 +137,12 @@ namespace onart {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         singleton = this;
-        UniformBuffer* push = createUniformBuffer(1, 128, 0, INT32_MIN + 1, 11);
+
+        UniformBufferCreationOptions uopts;
+        uopts.binding = 11;
+        uopts.size = 128;
+
+        UniformBuffer* push = createUniformBuffer(INT32_MIN + 1, uopts);
         if (!push) {
             singleton = nullptr;
             return;
@@ -150,8 +155,6 @@ namespace onart {
         if(it != singleton->pipelines.end()) return it->second;
         else return {};
     }
-
-    unsigned GLMachine::getPipelineLayout(int32_t name){ return 0; }
 
     GLMachine::pMesh GLMachine::getMesh(int32_t name) {
         auto it = singleton->meshes.find(name);
@@ -236,7 +239,7 @@ namespace onart {
         free();
     }
 
-    GLMachine::pMesh GLMachine::createNullMesh(size_t vcount, int32_t name) {
+    GLMachine::pMesh GLMachine::createNullMesh(int32_t name, size_t vcount) {
         pMesh m = getMesh(name);
         if(m) { return m; }
         struct publicmesh:public Mesh{publicmesh(unsigned _1, unsigned _2, size_t _3, size_t _4, bool _5):Mesh(_1,_2,_3,_4,_5){}};
@@ -245,24 +248,22 @@ namespace onart {
         return singleton->meshes[name] = ret;
     }
 
-    GLMachine::pMesh GLMachine::createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, int32_t name, bool stage) {
-        
-        pMesh m = getMesh(name);
-        if(m) { return m; }
+    GLMachine::pMesh GLMachine::createMesh(int32_t key, const MeshCreationOptions& opts) {
+        if (pMesh m = getMesh(key)) { return m; }
 
         unsigned vb, ib = 0;
         glGenBuffers(1, &vb);
-        if(vb == 0) {
+        if (vb == 0) {
             LOGWITH("Failed to create vertex buffer");
             return {};
         }
-
-        if(icount != 0 && isize != 2 && isize != 4){
+        
+        if (opts.indexCount != 0 && opts.singleIndexSize != 2 && opts.singleIndexSize != 4) {
             LOGWITH("Invalid isize");
             return pMesh();
         }
 
-        if(icount != 0){
+        if (opts.indexCount != 0) {
             glGenBuffers(1, &ib);
             if (ib == 0) {
                 LOGWITH("Failed to create index buffer");
@@ -270,16 +271,16 @@ namespace onart {
                 return {};
             }
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, isize * icount, idata, stage ? GL_STATIC_DRAW : GL_DYNAMIC_DRAW);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, opts.singleIndexSize * opts.indexCount, opts.indices, opts.fixed ? GL_STATIC_DRAW : GL_DYNAMIC_DRAW);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
         }
-        
+
         glBindBuffer(GL_ARRAY_BUFFER, vb);
-        glBufferData(GL_ARRAY_BUFFER, vsize * vcount, vdata, stage ? GL_STATIC_DRAW : GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, opts.singleVertexSize * opts.vertexCount, opts.vertices, opts.fixed ? GL_STATIC_DRAW : GL_DYNAMIC_DRAW);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-        struct publicmesh:public Mesh{publicmesh(unsigned _1, unsigned _2, size_t _3, size_t _4,bool _5):Mesh(_1,_2,_3,_4,_5){}};
-        return singleton->meshes[name] = std::make_shared<publicmesh>(vb, ib, vcount, icount, isize==4);
+        struct publicmesh :public Mesh { publicmesh(unsigned _1, unsigned _2, size_t _3, size_t _4, bool _5) :Mesh(_1, _2, _3, _4, _5) {} };
+        return singleton->meshes[key] = std::make_shared<publicmesh>(vb, ib, opts.vertexCount, opts.indexCount, opts.singleIndexSize == 4);
     }
 
     GLMachine::RenderTarget* GLMachine::createRenderTarget2D(int width, int height, RenderTargetType type, bool useDepthInput, bool linear) {
@@ -511,7 +512,7 @@ namespace onart {
         return singleton->textureSets[key] = std::move(ret);
     }
 
-    GLMachine::pStreamTexture GLMachine::createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler) {
+    GLMachine::pStreamTexture GLMachine::createStreamTexture(int32_t key, uint32_t width, uint32_t height, bool linearSampler) {
         
         if ((width | height) == 0) return {};
         unsigned tex{};
@@ -913,7 +914,7 @@ namespace onart {
                     unsigned tex = 0, targ, err;
                     k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
                     if (k2result != KTX_SUCCESS) {
-                        LOGWITH("Failed to transcode ktx texture:", k2result, err);
+                        LOGWITH("Failed to upload ktx texture:", k2result, err);
                         ktxTexture_Destroy(ktxTexture(texture));
                     }
                     glBindTexture(GL_TEXTURE_2D, tex);
@@ -979,17 +980,16 @@ namespace onart {
         :type(type), width(width), height(height), color1(c1), color2(c2), color3(c3), depthStencil(ds), dsTexture(depthAsTexture), framebuffer(framebuffer) {
     }
 
-    GLMachine::UniformBuffer* GLMachine::createUniformBuffer(uint32_t length, uint32_t size, size_t stages, int32_t name, uint32_t binding){
-        UniformBuffer* ret = getUniformBuffer(name);
-        if(ret) return ret;
+    GLMachine::UniformBuffer* GLMachine::createUniformBuffer(int32_t key, const UniformBufferCreationOptions& opts) {
+        if (UniformBuffer* ret = getUniformBuffer(key)) { return ret; }
+
         unsigned ubo;
         glGenBuffers(1, &ubo);
         glBindBuffer(GL_UNIFORM_BUFFER, ubo);
-        glBufferData(GL_UNIFORM_BUFFER, size, nullptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_UNIFORM_BUFFER, opts.size, nullptr, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-        if(name == INT32_MIN) return new UniformBuffer(size, ubo, binding);
-        return singleton->uniformBuffers[name] = new UniformBuffer(size, ubo, binding);
+        return singleton->uniformBuffers[key] = new UniformBuffer(opts.size, ubo, opts.binding);
     }
 
     GLMachine::RenderTarget::~RenderTarget(){
@@ -1007,7 +1007,7 @@ namespace onart {
         if(framebuffer) glDeleteFramebuffers(1, &framebuffer);
     }
 
-    GLMachine::RenderPass2Cube* GLMachine::createRenderPass2Cube(uint32_t width, uint32_t height, int32_t key, bool useColor, bool useDepth) {
+    GLMachine::RenderPass2Cube* GLMachine::createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth) {
         RenderPass2Cube* r = getRenderPass2Cube(key);
         if(r) return r;
         if(!(useColor || useDepth)){
@@ -1147,28 +1147,23 @@ namespace onart {
         return singleton->renderPasses[key] = ret;
     }
 
-    GLMachine::Pipeline* GLMachine::createPipeline(PipelineInputVertexSpec* vinfo, uint32_t vsize, uint32_t vattr, PipelineInputVertexSpec* iinfo, uint32_t isize, uint32_t iattr, unsigned vs, unsigned fs, int32_t name, unsigned tc, unsigned te, unsigned gs){
-        Pipeline* ret = getPipeline(name);
-        if(ret) {
-            return ret;
-        }
-
-        if(!(vs | fs)){
+    GLMachine::Pipeline* GLMachine::createPipeline(int32_t key, const PipelineCreationOptions& opts) {
+        if (Pipeline* ret = getPipeline(key)) { return ret; }
+        if (!(opts.vertexShader | opts.fragmentShader)) {
             LOGWITH("Vertex and fragment shader should be provided.");
             return 0;
         }
-
         unsigned prog = glCreateProgram();
         if (prog == 0) {
             LOGWITH("Failed to create program");
             return 0;
         }
 
-        glAttachShader(prog, vs);
-        if (tc) glAttachShader(prog, tc);
-        if (te) glAttachShader(prog, te);
-        if (gs) glAttachShader(prog, gs);
-        glAttachShader(prog, fs);
+        glAttachShader(prog, opts.vertexShader);
+        if (opts.tessellationControlShader) glAttachShader(prog, opts.tessellationControlShader);
+        if (opts.tessellationEvaluationShader) glAttachShader(prog, opts.tessellationEvaluationShader);
+        if (opts.geometryShader) glAttachShader(prog, opts.geometryShader);
+        glAttachShader(prog, opts.fragmentShader);
         glLinkProgram(prog);
 
         constexpr int MAX_LOG = 4096;
@@ -1178,7 +1173,6 @@ namespace onart {
         if (logLen > 1 && logLen <= MAX_LOG) {
             LOGWITH(msg);
         }
-
         int linkStatus;
         glGetProgramiv(prog, GL_LINK_STATUS, &linkStatus);
         if (linkStatus != GL_TRUE) {
@@ -1186,13 +1180,11 @@ namespace onart {
             glDeleteProgram(prog);
             return 0;
         }
-
         glValidateProgram(prog);
         glGetProgramInfoLog(prog, MAX_LOG, &logLen, msg);
         if (logLen > 1 && logLen <= MAX_LOG) {
             LOGWITH(msg);
         }
-
         int valStatus;
         glGetProgramiv(prog, GL_VALIDATE_STATUS, &valStatus);
         if (valStatus != GL_TRUE) {
@@ -1200,12 +1192,12 @@ namespace onart {
             glDeleteProgram(prog);
             return 0;
         }
-
-        ret = singleton->pipelines[name] = new Pipeline(prog, {}, vsize, isize);
-        ret->vspec.resize(vattr);
-        ret->ispec.resize(iattr);
-        std::memcpy(ret->vspec.data(), vinfo, sizeof(vinfo[0]) * vattr);
-        std::memcpy(ret->ispec.data(), iinfo, sizeof(iinfo[0]) * iattr);
+        Pipeline* ret = singleton->pipelines[key] = new Pipeline(prog, {}, opts.vertexSize, opts.instanceDataStride);
+        ret->vspec.resize(opts.vertexAttributeCount);
+        ret->ispec.resize(opts.instanceAttributeCount);
+        std::memcpy(ret->vspec.data(), opts.vertexSpec, sizeof(opts.vertexSpec[0]) * opts.vertexAttributeCount);
+        std::memcpy(ret->ispec.data(), opts.instanceSpec, sizeof(opts.instanceSpec[0]) * opts.instanceAttributeCount);
+        ret->depthStencilOperation = opts.depthStencil;
         return ret;
     }
 
