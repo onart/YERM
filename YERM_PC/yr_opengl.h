@@ -74,6 +74,8 @@ namespace onart {
             /// @brief 직접 불러오는 텍스처입니다.
             class Texture;
             using pTexture = std::shared_ptr<Texture>;
+            class TextureSet;
+            using pTextureSet = std::shared_ptr<TextureSet>;
             /// @brief 메모리 맵으로 고정된 텍스처입니다. 실시간으로 CPU단에서 데이터를 수정할 수 있습니다. 동영상이나 다른 창의 화면 등을 텍스처로 사용할 때 적합합니다.
             class StreamTexture;
             using pStreamTexture = std::shared_ptr<StreamTexture>;
@@ -85,14 +87,6 @@ namespace onart {
             using pMesh = std::shared_ptr<Mesh>;
             /// @brief 셰이더 자원을 나타냅니다. 동시에 사용되지만 않는다면 여러 렌더패스 간에 공유될 수 있습니다.
             class UniformBuffer;
-            /// @brief 셰이더 유형입니다.
-            enum class ShaderType{
-                VERTEX = 0,
-                FRAGMENT = 1,
-                GEOMETRY = 2,
-                TESS_CTRL = 3,
-                TESS_EVAL = 4
-            };
             /// @brief 렌더 타겟의 유형입니다.
             enum class RenderTargetType { 
                 /// @brief 색 버퍼 1개를 보유합니다.
@@ -103,34 +97,91 @@ namespace onart {
                 COLOR3 = 0b111,
                 /// @brief 깊이/스텐실 버퍼만을 보유합니다.
                 DEPTH = 0b1000,
-                /// @brief 색 버퍼 1개와 깊이/스텐실 버퍼를 보유합니다.
-                COLOR1DEPTH = 0b1001,
-                /// @brief 색 버퍼 2개와 깊이/스텐실 버퍼를 보유합니다.
-                COLOR2DEPTH = 0b1011,
-                /// @brief 색 버퍼 3개와 깊이/스텐실 버퍼를 보유합니다.
-                COLOR3DEPTH = 0b1111
-            };
-            /// @brief 렌더타겟인 텍스처에서 샘플링할 방식을 선택합니다.
-            enum class RenderTargetInputOption {
-                INPUT_ATTACHMENT = 1, // GL 기반에서 이 옵션은 사용되지 않으며 SAMPLED_LINEAR로 넘어갑니다.
-                SAMPLED_LINEAR = 1,
-                SAMPLED_NEAREST = 2
-            };
-            /// @brief 파이프라인 생성 시 줄 수 있는 옵션입니다. 여기의 성분들을 비트 or하여 생성 함수에 전달합니다.
-            enum PipelineOptions: uint32_t {
-                USE_DEPTH = 0b1,
-                USE_STENCIL = 0b10,
-                CULL_BACK = 0b100,
+                /// @brief 스텐실 버퍼를 보유합니다.
+                STENCIL = 0b10000,
             };
             /// @brief 이미지 파일로부터 텍스처를 생성할 때 줄 수 있는 옵션입니다.
-            enum ImageTextureFormatOptions {
-                /// @brief 이미지 원본 형식을 사용합니다.
-                IT_USE_ORIGINAL = 0,
-                /// @brief 가능하면 품질을 최대한 유지하는 압축 텍스처를 사용합니다.
-                IT_USE_HQCOMPRESS = 1,
-                /// @brief 가능하면 압축 텍스처를 사용합니다.
-                IT_USE_COMPRESS = 2
+            enum TextureFormatOptions {
+                /// @brief 원본이 BasisU인 경우: 품질을 우선으로 트랜스코드합니다. 그 외: 그대로 사용합니다.
+                IT_PREFER_QUALITY = 0,
+                /// @brief 원본이 BasisU인 경우: 작은 용량을 우선으로 트랜스코드합니다. 원본이 비압축 형식인 경우: 하드웨어에서 가능한 경우 압축하여 사용니다. 그 외: 그대로 사용합니다.
+                IT_PREFER_COMPRESS = 1,
             };
+
+            /// @brief 텍스처 생성에 사용하는 옵션입니다.
+            struct TextureCreationOptions {
+                /// @brief @ref ImageTextureFormatOptions 기본값 IT_PREFER_QUALITY
+                TextureFormatOptions opts = IT_PREFER_QUALITY;
+                /// @brief 확대 또는 축소 샘플링 시 true면 bilinear 필터를 사용합니다. false면 nearest neighbor 필터를 사용합니다. 기본값 true
+                bool linearSampled = true;
+                /// @brief 원본 텍스처가 srgb 공간에 있는지 여부입니다. 기본값 false
+                bool srgb = false;
+                /// @brief 이미지의 채널 수를 지정합니다. 이 값은 BasisU 텍스처에 대하여 사용되며 그 외에는 이 값을 무시하고 원본 이미지의 채널 수를 사용합니다. 기본값 4
+                int nChannels = 4;
+            };
+
+            enum ShaderStage : uint32_t {
+                VERTEX = 1 << 0,
+                FRAGMENT = 1 << 1,
+                GEOMETRY = 1 << 2,
+                TESS_CTRL = 1 << 3,
+                TESS_EVAL = 1 << 4,
+                GRAPHICS_ALL = VERTEX | FRAGMENT | GEOMETRY | TESS_CTRL | TESS_EVAL
+            };
+
+            struct UniformBufferCreationOptions {
+                /// @brief 유니폼 버퍼의 크기입니다. 기본값 없음
+                size_t size;
+                /// @brief 유니폼 버퍼에 접근할 수 있는 셰이더 단계입니다. @ref ShaderStage 기본값 GRAPHICS_ALL
+                uint32_t accessibleStages = ShaderStage::GRAPHICS_ALL;
+                /// @brief 바인딩 번호입니다. 기본값 0
+                uint32_t binding = 0;
+                /// @brief OpenGL 기반에서는 사용되지 않습니다.
+                uint32_t count = 1;
+            };
+
+            struct MeshCreationOptions {
+                /// @brief 정점 데이터입니다. 기본값 없음
+                void* vertices;
+                /// @brief 정점 수입니다. 기본값 없음
+                size_t vertexCount;
+                /// @brief 개별 정점의 크기입니다. 기본값 없음
+                size_t singleVertexSize;
+                /// @brief 인덱스 데이터입니다. 기본값 nullptr
+                void* indices = nullptr;
+                /// @brief 인덱스 수입니다. 기본값 0
+                size_t indexCount = 0;
+                /// @brief 개별 인덱스의 크기입니다. 2 또는 4여야 합니다.
+                size_t singleIndexSize = 0;
+                /// @brief false인 경우 데이터를 수정할 수 있고 그러기 유리한 위치에 저장합니다. 기본값 true
+                bool fixed = true;
+            };
+
+            struct RenderPassCreationOptions {
+                /// @brief 타겟의 공통 크기입니다. 기본값 없음
+                int width, height;
+                /// @brief 서브패스 수입니다. Cube 대상의 렌더패스 생성 시에는 무시됩니다. 기본값 1
+                uint32_t subpassCount = 1;
+                /// @brief 타겟의 유형입니다. @ref RenderTargetType nullptr를 주면 모두 COLOR1로 취급되지만, nullptr를 주지 않는 경우에는 모든 것이 주어져야 합니다.
+                /// Screen 대상의 RenderPass에서는 스왑체인인 마지막을 제외한 만큼 주어져야 합니다. 기본값 nullptr
+                RenderTargetType* targets = nullptr;
+                /// @brief 각 패스의 중간에 깊이 버퍼를 사용할 경우 그것을 input attachment로 사용할지 여부입니다. nullptr를 주면 일괄 false로 취급되며 그 외에는 모든 것이 주어져야 합니다. 기본값 nullptr
+                bool* depthInput = nullptr;
+                /// @brief true를 주면 최종 타겟을 텍스처로 사용할 때 linear 필터를 사용합니다. 기본값 true
+                bool linearSampled = true;
+                /// @brief screen 대상의 렌더패스의 최종 타겟에 depth 또는 stencil을 포함할지 결정합니다. 즉, RenderTargetType::DEPTH, RenderTargetType::STENCIL 이외에는 무시됩니다. 기본값 COLOR1
+                RenderTargetType screenDepthStencil = RenderTargetType::COLOR1;
+            };
+
+            struct ShaderModuleCreationOptions {
+                /// @brief GLSL 소스입니다. 기본값 없음
+                const void* source;
+                /// @brief source의 크기(바이트)입니다. 기본값 없음
+                size_t size;
+                /// @brief 대상 셰이더 단계입니다. Vulkan에서는 사용하지 않습니다. 기본값 없음
+                ShaderStage stage;
+            };
+
             /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
             static void handle();
             /// @brief 단위행렬이 리턴됩니다.
@@ -138,57 +189,43 @@ namespace onart {
             /// @brief 보통 이미지 파일을 불러와 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
             /// @param fileName 파일 이름
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
-            /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
-            /// @param option 이미지를 압축 텍스처 형식으로 바꿀지 결정할 수 있습니다.
-            static pTexture createTextureFromImage(const char* fileName, int32_t key, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true);
-            /// @brief createTextureFromImage를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아닌 그냥 key). 매개변수 설명은 createTextureFromImage를 참고하세요.
-            static void asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(variant8)> handler, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true);
-            /// @brief 보통 이미지 데이터를 메모리에서 불러와 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
-            /// @param mem 이미지 시작 주소
-            /// @param size mem 배열의 길이(바이트)
+            /// @param opts @ref TextureCreationOptions
+            /// @return 만들어진 텍스처 혹은 이미 있던 해당 key의 텍스처
+            static pTexture createTextureFromImage(int32_t key, const char* fileName, const TextureCreationOptions& opts = {});
+            /// @brief @ref createTextureFromImage를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아닌 그냥 key). 매개변수 설명은 createTextureFromImage를 참고하세요.
+            static void asyncCreateTextureFromImage(int32_t key, const char* fileName, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
+            /// @param mem 데이터 위치
+            /// @param size 데이터 길이
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
-            /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
-            /// @param option 이미지를 압축 텍스처 형식으로 바꿀지 결정할 수 있습니다.
-            static pTexture createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true);
-            /// @brief createTextureFromImage를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아닌 그냥 key). 매개변수 설명은 createTextureFromImage를 참고하세요.
-            static void asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(variant8)> handler, bool srgb = true, ImageTextureFormatOptions option = IT_USE_ORIGINAL, bool linearSampler = true);
-            /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
+            /// @param opts @ref TextureCreationOptions
+            /// @return 만들어진 텍스처 혹은 이미 있던 해당 key의 텍스처
+            static pTexture createTextureFromImage(int32_t key, const void* mem, size_t size, const TextureCreationOptions& opts = {});
+            /// @brief @ref createTextureFromImage를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아닌 그냥 key). 매개변수 설명은 createTextureFromImage를 참고하세요.
+            static void asyncCreateTextureFromImage(int32_t key, const void* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
+            /// @brief ktx2 파일을 불러와 텍스처를 생성합니다. @ref 
+            /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param fileName 파일 이름
-            /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
-            /// @param nChannels 채널 수(색상)
-            /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
-            /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
-            static pTexture createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb = true, bool hq = true, bool linearSampler = true);
+            /// @param opts @ref TextureCreationOptions
+            /// @return 만들어진 텍스처 혹은 이미 있던 해당 key의 텍스처
+            static pTexture createTexture(int32_t key, const char* fileName, const TextureCreationOptions& opts = {});
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
-            static void asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(variant8)> handler, bool srgb = true, bool hq = true, bool linearSampler = true);
-            /// @brief 메모리 상의 ktx2 파일을 통해 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
+            static void asyncCreateTexture(int32_t key, const char* fileName, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
+            /// @brief 메모리 상의 ktx2 파일을 통해 텍스처를 생성합니다.
+            /// @param key 프로그램 내부에서 사용할 이름입니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param mem 이미지 시작 주소
             /// @param size mem 배열의 길이(바이트)
-            /// @param nChannels 채널 수(색상)
-            /// @param key 프로그램 내부에서 사용할 이름입니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
-            /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
-            /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
-            static pTexture createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb = true, bool hq = true, bool linearSampler = true);
+            /// @param opts @ref TextureCreationOptions
+            /// @return 만들어진 텍스처 혹은 이미 있던 해당 key의 텍스처
+            static pTexture createTexture(int32_t key, const uint8_t* mem, size_t size, const TextureCreationOptions& opts);
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
-            static void asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(variant8)> handler, int32_t key, bool srgb = true, bool hq = true, bool linearSampler = true);
+            static void asyncCreateTexture(int32_t key, const uint8_t* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
             /// @brief 빈 텍스처를 만듭니다. 메모리 맵으로 데이터를 올릴 수 있습니다. 올리는 데이터의 기본 형태는 BGRA 순서이며, 필요한 경우 셰이더에서 직접 스위즐링하여 사용합니다.
             static pStreamTexture createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler = true);
-            /// @brief 2D 렌더 타겟을 생성하고 핸들을 리턴합니다. 이것을 해제하는 수단은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
-            /// @param width 가로 길이(px).
-            /// @param height 세로 길이(px).
-            /// @param key 이후 별도로 접근할 수 있는 이름을 지정합니다. 단, 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다. INT32_MIN, 즉 -2147483648 값은 예약되어 있어 사용이 불가능합니다.
-            /// @param type @ref RenderTargetType 참고하세요.
-            /// @param sampled 사용되지 않습니다.
-            /// @param useDepthInput 깊이 버퍼를 렌더버퍼가 아닌 텍스처로 생성합니다.
-            /// @param useStencil true면 깊이 이미지에 더불어 스텐실 버퍼를 사용합니다.
-            /// @param mmap 이것이 true라면 픽셀 데이터에 순차로 접근할 수 있습니다. 단, 렌더링 성능이 낮아질 가능성이 매우 높습니다.
-            /// @return 이것을 통해 렌더 패스를 생성할 수 있습니다.
-            static RenderTarget* createRenderTarget2D(int width, int height, int32_t key, RenderTargetType type = RenderTargetType::COLOR1DEPTH, RenderTargetInputOption sampled = RenderTargetInputOption::SAMPLED_LINEAR, bool useDepthInput = false, bool useStencil = false, bool mmap = false);
-            /// @brief GLSL 셰이더 코드를 오브젝트로 저장하고 가져옵니다.
-            /// @param glsl GLSL 코드
-            /// @param size 주어진 GLSL 코드의 길이(바이트)
+            /// @brief GLSL 셰이더를 컴파일하여 보관하고 가져옵니다.
+            /// @brief SPIR-V 컴파일된 셰이더를 VkShaderModule 형태로 저장하고 가져옵니다.
             /// @param key 이후 별도로 접근할 수 있는 이름을 지정합니다. 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다.
-            static unsigned createShader(const char* glsl, size_t size, int32_t key, ShaderType type = ShaderType::VERTEX);
+            /// @param opts @ref ShaderModuleCreationOptions
+            static unsigned createShader(int32_t key, const ShaderModuleCreationOptions& opts);
             /// @brief 셰이더에서 사용할 수 있는 uniform 버퍼를 생성하여 리턴합니다. 이것을 해제하는 방법은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
             /// @param _0 OpenGL은 동시에 여러 개 렌더링 명령이 수행될 수 없으므로 사용되지 않습니다.
             /// @param size 버퍼의 크기입니다.
@@ -196,11 +233,9 @@ namespace onart {
             /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다. 키 INT32_MIN + 1의 경우 push라는 인터페이스를 위해 사용되므로 이용할 수 없습니다.
             /// @param binding 바인딩 번호입니다. 11번 바인딩을 사용하려 하는 경우 렌더패스의 push() 인터페이스는 사용하실 수 없습니다.
             static UniformBuffer* createUniformBuffer(uint32_t _0, uint32_t size, size_t stages, int32_t key, uint32_t binding = 0);
-            /// @brief 주어진 렌더 타겟들을 대상으로 하는 렌더패스를 구성합니다. OpenGL API의 경우 서브패스의 개념을 사용하지 않고 보통의 파이프라인으로 구성됩니다.
-            /// @param targets 렌더 타겟 포인터의 배열입니다.
-            /// @param subpassCount targets 배열의 크기입니다.
-            /// @param key 이름입니다. 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. INT32_MIN, 즉 -2147483648은 예약된 값이기 때문에 사용할 수 없습니다.
-            static RenderPass* createRenderPass(RenderTarget** targets, uint32_t subpassCount, int32_t key);
+            /// @brief 렌더 패스를 생성합니다. 렌더 패스는 렌더 타겟과 유의어로 보아도 되나, 여러 개의 서브패스로 구성됩니다.
+            /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
+            static RenderPass* createRenderPass(int32_t key, const RenderPassCreationOptions& opts);
             /// @brief 큐브맵 대상의 렌더패스를 생성합니다.
             /// @param width 타겟으로 생성되는 각 이미지의 가로 길이입니다.
             /// @param height 타겟으로 생성되는 각 이미지의 세로 길이입니다.
@@ -215,6 +250,7 @@ namespace onart {
             /// @param useDepth subpassCount가 1이고 이 값이 true인 경우 최종 패스에서 깊이/스텐실 이미지를 사용하게 됩니다. subpassCount가 1이 아니면 무시됩니다.
             /// @param useDepthAsInput targets와 일대일 대응하며, 대응하는 성분의 깊이 성분을 다음 서브패스의 입력으로 사용하려면 true를 줍니다. nullptr를 주는 경우 일괄 false로 취급됩니다. 즉 nullptr가 아니라면 반드시 subpassCount - 1 길이의 배열이 주어져야 합니다.
             static RenderPass2Screen* createRenderPass2Screen(RenderTargetType* targets, uint32_t subpassCount, int32_t key, bool useDepth = true, bool* useDepthAsInput = nullptr);
+            static RenderPass2Screen* createRenderPass2Screen(int32_t key, const RenderPassCreationOptions& opts);
             /// @brief 아무 동작도 하지 않습니다.
             static unsigned createPipelineLayout(...);
             /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 사용할 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
@@ -249,14 +285,12 @@ namespace onart {
             static Pipeline* getPipeline(int32_t key);
             /// @brief 아무 동작도 하지 않습니다.
             static unsigned getPipelineLayout(int32_t key);
-            /// @brief 만들어 둔 렌더 타겟을 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static RenderTarget* getRenderTarget(int32_t key);
             /// @brief 만들어 둔 공유 버퍼를 리턴합니다. 없으면 nullptr를 리턴합니다.
             static UniformBuffer* getUniformBuffer(int32_t key);
             /// @brief 만들어 둔 셰이더 모듈을 리턴합니다. 없으면 0을 리턴합니다.
             static unsigned getShader(int32_t key);
             /// @brief 올려 둔 텍스처 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
-            static pTexture getTexture(int32_t key, bool lock = false);
+            static pTexture getTexture(int32_t key);
             /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pMesh getMesh(int32_t key);
             /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
@@ -275,7 +309,8 @@ namespace onart {
             /// @brief 아무것도 하지 않습니다.
             void destroySwapchain();
             /// @brief ktxTexture2 객체로 텍스처를 생성합니다.
-            pTexture createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler = true);
+            pTexture createTexture(void* ktxObj, int32_t key, const TextureCreationOptions& opts);
+            static RenderTarget* createRenderTarget2D(int width, int height, RenderTargetType type, bool useDepthInput, bool linear);
             /// @brief vulkan 객체를 없앱니다.
             void free();
             ~GLMachine();
@@ -287,7 +322,6 @@ namespace onart {
             std::map<int32_t, RenderPass*> renderPasses;
             std::map<int32_t, RenderPass2Screen*> finalPasses;
             std::map<int32_t, RenderPass2Cube*> cubePasses;
-            std::map<int32_t, RenderTarget*> renderTargets;
             std::map<int32_t, unsigned> shaders;
             std::map<int32_t, UniformBuffer*> uniformBuffers;
             std::map<int32_t, Pipeline*> pipelines;
@@ -357,7 +391,11 @@ namespace onart {
             /// @param pos 바인드할 set 번호
             /// @param target 바인드할 타겟
             /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
-            void bind(uint32_t pos, RenderTarget* target, uint32_t index);
+            void bind(uint32_t pos, RenderPass* target);
+            /// @brief 주어진 렌더 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다. 이 패스의 프레임버퍼에서 사용 중인 렌더타겟은 사용할 수 없습니다.
+            /// @param pos 바인드할 set 번호
+            /// @param target 바인드할 타겟
+            void bind(uint32_t pos, RenderPass2Cube* target);
             /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
             /// @param pos 바인드할 set 번호
             /// @param tx 바인드할 텍스처
@@ -388,10 +426,10 @@ namespace onart {
             void execute(RenderPass* other = nullptr);
             /// @brief true를 리턴합니다.
             bool wait(uint64_t timeout = UINT64_MAX);
-            /// @brief 아무것도 하지 않습니다.
-            inline void reconstructFB(...) {}
+            /// @brief 렌더타겟의 크기를 일괄 변경합니다.
+            void resize(int width, int height, bool linearSampled = true);
         private:
-            RenderPass(RenderTarget** fb, uint16_t stageCount); // 이후 다수의 서브패스를 쓸 수 있도록 변경
+            RenderPass(uint16_t stageCount); // 이후 다수의 서브패스를 쓸 수 있도록 변경
             ~RenderPass();
             const uint16_t stageCount;
             std::vector<Pipeline*> pipelines;
@@ -432,8 +470,7 @@ namespace onart {
             /// @brief 주어진 렌더 타겟의 결과를 텍스처로 바인드합니다.
             /// @param pos 바인드할 set 번호
             /// @param target 바인드할 타겟
-            /// @param index 렌더 타겟 내의 인덱스입니다. (0~2는 색 버퍼, 3은 깊이 버퍼)
-            void bind(uint32_t pos, RenderTarget* target, uint32_t index);
+            void bind(uint32_t pos, RenderPass* target);
             /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
             /// @param pos 바인드할 set 번호
             /// @param tx 바인드할 텍스처
@@ -504,6 +541,11 @@ namespace onart {
         private:
             unsigned txo;
             uint32_t binding;
+    };
+
+    class GLMachine::TextureSet {
+        friend class GLMachine;
+        friend class RenderPass;
     };
 
     class GLMachine::StreamTexture {

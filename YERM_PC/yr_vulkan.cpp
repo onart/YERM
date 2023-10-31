@@ -1335,13 +1335,15 @@ namespace onart {
             LOGWITH("Failed to load image:", stbi_failure_reason());
             return {};
         }
+        TextureCreationOptions channelOpts = opts;
+        channelOpts.nChannels = nChannels;
         ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, opts.srgb, opts.opts);
         stbi_image_free(pix);
         if (!texture) {
             LOGHERE;
             return {};
         }
-        return singleton->createTexture(texture, key, opts);
+        return singleton->createTexture(texture, key, channelOpts);
     }
 
     VkMachine::pTexture VkMachine::createTextureFromImage(int32_t key, const void* mem, size_t size, const TextureCreationOptions& opts) {
@@ -1352,6 +1354,8 @@ namespace onart {
             LOGWITH("Failed to load image:", stbi_failure_reason());
             return pTexture();
         }
+        TextureCreationOptions channelOpts = opts;
+        channelOpts.nChannels = nChannels;
         ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, opts.srgb, opts.opts);
         stbi_image_free(pix);
         if (!texture) {

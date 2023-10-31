@@ -290,6 +290,7 @@ namespace onart{
         rpopts.subpassCount = 1;
         auto rp2s = YRGraphics::createRenderPass2Screen(1, rpopts);
         using testv_t = YRGraphics::Vertex<vec3, vec2>;
+        YRGraphics::asyncCreateTexture(0, TEX0, sizeof(TEX0), [](variant8) { loaded = true; });
         testv_t verts[]{ {{-1,-1,0},{0,0}},{{-1,1,0},{0,1}},{{1,-1,0},{1,0}},{{1,1,0},{1,1}} };
         uint16_t inds[]{ 0,1,2,2,1,3 };
 #ifdef YR_USE_VULKAN
@@ -336,7 +337,6 @@ namespace onart{
             opts.indices = inds;
             opts.vertices = verts;
             YRGraphics::createMesh(0, opts);
-            YRGraphics::asyncCreateTexture(0, TEX0, sizeof(TEX0), [](variant8) { loaded = true; });
             //YRGraphics::createTextureFromImage("g256.png", 0,YRGraphics::isSurfaceSRGB(),YRGraphics::IT_USE_ORIGINAL,false); loaded = true;
             //loaded = true; YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB());
         }
@@ -378,8 +378,15 @@ void main() {
 }
 )";
         if constexpr (YRGraphics::OPENGL_GRAPHICS) {
-            auto vs = YRGraphics::createShader(TEST_GL_VERT1, sizeof(TEST_GL_VERT1), 0, YRGraphics::ShaderType::VERTEX);
-            auto fs = YRGraphics::createShader(TEST_GL_FRAG1, sizeof(TEST_GL_FRAG1), 1, YRGraphics::ShaderType::FRAGMENT);
+            YRGraphics::ShaderModuleCreationOptions shaderOpts;
+            shaderOpts.size = sizeof(TEST_GL_VERT1);
+            shaderOpts.source = TEST_GL_VERT1;
+            shaderOpts.stage = YRGraphics::ShaderStage::VERTEX;
+            auto vs = YRGraphics::createShader(0, shaderOpts);
+            shaderOpts.size = sizeof(TEST_GL_FRAG1);
+            shaderOpts.source = TEST_GL_FRAG1;
+            shaderOpts.stage = YRGraphics::ShaderStage::FRAGMENT;
+            auto fs = YRGraphics::createShader(1, shaderOpts);
             YRGraphics::PipelineInputVertexSpec sp[2];
             testv_t::info(sp);
             auto pp = YRGraphics::createPipeline(sp,sizeof(testv_t),2,nullptr, 0, 0, vs, fs, 0);
@@ -387,7 +394,6 @@ void main() {
             offrp->usePipeline(pp, 1);
             rp2s->usePipeline(pp, 0);
             //YRGraphics::asyncCreateTexture(TEX0, sizeof(TEX0), 4, [](variant8) { loaded = true; }, 0, YRGraphics::isSurfaceSRGB(), true, false);
-            YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB()); loaded = true;
             YRGraphics::createNullMesh(3, 1);
             YRGraphics::createMesh(verts, sizeof(testv_t), 4, inds, 2, 6, 0);
         }

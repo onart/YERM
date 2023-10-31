@@ -159,12 +159,6 @@ namespace onart {
         else return pMesh();
     }
 
-    GLMachine::RenderTarget* GLMachine::getRenderTarget(int32_t name){
-        auto it = singleton->renderTargets.find(name);
-        if(it != singleton->renderTargets.end()) return it->second;
-        else return nullptr;
-    }
-
     GLMachine::UniformBuffer* GLMachine::getUniformBuffer(int32_t name){
         auto it = singleton->uniformBuffers.find(name);
         if(it != singleton->uniformBuffers.end()) return it->second;
@@ -195,18 +189,10 @@ namespace onart {
         else return 0;
     }
 
-    GLMachine::pTexture GLMachine::getTexture(int32_t name, bool lock){
-        if(lock){
-            std::unique_lock<std::mutex> _(singleton->textureGuard);
-            auto it = singleton->textures.find(name);
-            if(it != singleton->textures.end()) return it->second;
-            else return pTexture();
-        }
-        else{
-            auto it = singleton->textures.find(name);
-            if(it != singleton->textures.end()) return it->second;
-            else return pTexture();
-        }
+    GLMachine::pTexture GLMachine::getTexture(int32_t name){
+        auto it = singleton->textures.find(name);
+        if (it != singleton->textures.end()) return it->second;
+        else return pTexture();
     }
 
     void GLMachine::checkSurfaceHandle(){ }
@@ -219,8 +205,7 @@ namespace onart {
         surfaceWidth = width;
         surfaceHeight = height;
         for (auto& renderPass: finalPasses) {
-            renderPass.second->setViewport((float)width, (float)height, 0, 0, true); // 이후 수정 필요: 기존과 동등한 비중
-            renderPass.second->setScissor(width, height, 0, 0, true); // 이후 수정 필요: 기존과 동등한 비중
+            renderPass.second->resize(width, height);
         }
     }
 
@@ -230,7 +215,6 @@ namespace onart {
         for(auto& cp: cubePasses) { delete cp.second; }
         for(auto& fp: finalPasses) { delete fp.second; }
         for(auto& rp: renderPasses) { delete rp.second; }
-        for(auto& rt : renderTargets) { delete rt.second; }
         for(auto& sh: shaders) { glDeleteShader(sh.second); }
         for(auto& pp: pipelines) { delete pp.second; }
 
@@ -241,7 +225,6 @@ namespace onart {
         cubePasses.clear();
         finalPasses.clear();
         renderPasses.clear();
-        renderTargets.clear();
         shaders.clear();
     }
 
@@ -299,14 +282,7 @@ namespace onart {
         return singleton->meshes[name] = std::make_shared<publicmesh>(vb, ib, vcount, icount, isize==4);
     }
 
-    GLMachine::RenderTarget* GLMachine::createRenderTarget2D(int width, int height, int32_t name, RenderTargetType type, RenderTargetInputOption sampled, bool useDepthInput, bool useStencil, bool mmap){
-        if(useDepthInput && useStencil) {
-            LOGWITH("Warning: Can\'t use stencil buffer while using depth buffer as sampled image or input attachment"); // TODO? 엄밀히 말하면 스텐실만 입력첨부물로 쓸 수는 있는데 이걸 꼭 해야 할지
-            return nullptr;
-        }
-        auto it = singleton->renderTargets.find(name);
-        if(it != singleton->renderTargets.end()) {return it->second;}
-
+    GLMachine::RenderTarget* GLMachine::createRenderTarget2D(int width, int height, RenderTargetType type, bool useDepthInput, bool linear) {
         unsigned color1{}, color2{}, color3{}, ds{}, fb{};
         glGenFramebuffers(1, &fb);
         if (fb == 0) {
@@ -314,8 +290,7 @@ namespace onart {
             return nullptr;
         }
         glBindFramebuffer(GL_FRAMEBUFFER, fb);
-
-        if((int)type & 0b1){
+        if ((int)type & 0b1) {
             glGenTextures(1, &color1);
             if (color1 == 0) {
                 LOGWITH("Failed to create image:", reason, resultAsString(reason));
@@ -323,10 +298,10 @@ namespace onart {
             }
             glBindTexture(GL_TEXTURE_2D, color1);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linear ? GL_LINEAR : GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linear ? GL_LINEAR : GL_NEAREST);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color1, 0);
-            if((int)type & 0b10){
+            if ((int)type & 0b10) {
                 glGenTextures(1, &color2);
                 if (color2 == 0) {
                     LOGWITH("Failed to create image:", reason, resultAsString(reason));
@@ -337,10 +312,10 @@ namespace onart {
                 }
                 glBindTexture(GL_TEXTURE_2D, color2);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linear ? GL_LINEAR : GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linear ? GL_LINEAR : GL_NEAREST);
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, color2, 0);
-                if((int)type & 0b100){
+                if ((int)type & 0b100) {
                     glGenTextures(1, &color3);
                     if (color3 == 0) {
                         LOGWITH("Failed to create image:", reason, resultAsString(reason));
@@ -352,8 +327,8 @@ namespace onart {
                     }
                     glBindTexture(GL_TEXTURE_2D, color3);
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linear ? GL_LINEAR : GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linear ? GL_LINEAR : GL_NEAREST);
                     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, color3, 0);
                 }
             }
@@ -361,7 +336,7 @@ namespace onart {
         else {
             glDrawBuffer(GL_NONE);
         }
-        if((int)type & 0b1000) {
+        if ((int)type & 0b1000) {
             if (useDepthInput) {
                 glGenTextures(1, &ds);
                 if (ds == 0) {
@@ -375,8 +350,8 @@ namespace onart {
                 }
                 glBindTexture(GL_TEXTURE_2D, ds);
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, width, height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, nullptr);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, sampled == RenderTargetInputOption::SAMPLED_LINEAR ? GL_LINEAR : GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linear ? GL_LINEAR : GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linear ? GL_LINEAR : GL_NEAREST);
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, ds, 0);
             }
             else {
@@ -397,7 +372,7 @@ namespace onart {
         }
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
             LOGWITH("Framebuffer incomplete");
-            if(color1) glDeleteTextures(1, &color1);
+            if (color1) glDeleteTextures(1, &color1);
             if (color2) glDeleteTextures(1, &color2);
             if (color3) glDeleteTextures(1, &color3);
             if (ds) {
@@ -411,55 +386,50 @@ namespace onart {
         glBindTexture(GL_TEXTURE_2D, 0);
         glBindRenderbuffer(GL_RENDERBUFFER, 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        if (name == INT32_MIN) return new RenderTarget(type, width, height, color1, color2, color3, ds, useDepthInput, fb);
-        return singleton->renderTargets[name] = new RenderTarget(type, width, height, color1, color2, color3, ds, useDepthInput, fb);
+        return new RenderTarget(type, width, height, color1, color2, color3, ds, useDepthInput, fb);
     }
 
-    unsigned GLMachine::createShader(const char* spv, size_t size, int32_t name, ShaderType type) {
-        unsigned ret = getShader(name);
-        if(ret) return ret;
-
+    unsigned GLMachine::createShader(int32_t key, const ShaderModuleCreationOptions& opts) {
+        if (unsigned ret = getShader(key)) { return ret; }
         unsigned shType;
-        switch(type){
-            case ShaderType::VERTEX:
-                shType = GL_VERTEX_SHADER;
-                break;
-            case ShaderType::FRAGMENT:
-                shType = GL_FRAGMENT_SHADER;
-                break;
-            case ShaderType::GEOMETRY:
-                shType = GL_GEOMETRY_SHADER;
-                break;
-            case ShaderType::TESS_CTRL:
-                shType = GL_TESS_CONTROL_SHADER;
-                break;
-            case ShaderType::TESS_EVAL:
-                shType = GL_TESS_EVALUATION_SHADER;
-                break;
-            default:
-                LOGWITH("Invalid shader type");
-                return 0;
+        switch (opts.stage) {
+        case ShaderStage::VERTEX:
+            shType = GL_VERTEX_SHADER;
+            break;
+        case ShaderStage::FRAGMENT:
+            shType = GL_FRAGMENT_SHADER;
+            break;
+        case ShaderStage::GEOMETRY:
+            shType = GL_GEOMETRY_SHADER;
+            break;
+        case ShaderStage::TESS_CTRL:
+            shType = GL_TESS_CONTROL_SHADER;
+            break;
+        case ShaderStage::TESS_EVAL:
+            shType = GL_TESS_EVALUATION_SHADER;
+            break;
+        default:
+            LOGWITH("Invalid shader type");
+            return 0;
         }
-
         unsigned prog = glCreateShader(shType);
-        int sz = (int)size;
-        glShaderSource(prog, 1, &spv, &sz);
+        int sz = (int)opts.size;
+        glShaderSource(prog, 1, (const char**)&opts.source, &sz);
         glCompileShader(prog);
         int buf;
-		glGetShaderiv(prog, GL_COMPILE_STATUS, &buf);
-		if (buf != GL_TRUE) {
+        glGetShaderiv(prog, GL_COMPILE_STATUS, &buf);
+        if (buf != GL_TRUE) {
             LOGWITH("Shader compilation error:");
-			glGetShaderiv(prog, GL_INFO_LOG_LENGTH, &buf);
-			if (buf > 0 && buf < 4096) {
-				char log[4096]{};
-				int length;
-				glGetShaderInfoLog(prog, buf, &length, log);
+            glGetShaderiv(prog, GL_INFO_LOG_LENGTH, &buf);
+            if (buf > 0 && buf < 4096) {
+                char log[4096]{};
+                int length;
+                glGetShaderInfoLog(prog, buf, &length, log);
                 LOGWITH(log);
-			}
-			return 0;
-		}
-        if(name == INT32_MIN) return prog;
-		return singleton->shaders[name] = prog;
+            }
+            return 0;
+        }
+        return singleton->shaders[key] = prog;
     }
 
     static ktx_error_code_e tryTranscode(ktxTexture2* texture, uint32_t nChannels, bool srgb, bool hq) {
@@ -492,10 +462,10 @@ namespace onart {
         return KTX_SUCCESS;
     }
 
-    GLMachine::pTexture GLMachine::createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler){
+    GLMachine::pTexture GLMachine::createTexture(void* ktxObj, int32_t key, const TextureCreationOptions& opts) {
         ktxTexture2* texture = reinterpret_cast<ktxTexture2*>(ktxObj);
         if (texture->numLevels == 0) return pTexture();
-        ktx_error_code_e k2result = tryTranscode(texture, nChannels, srgb, hq);
+        ktx_error_code_e k2result = tryTranscode(texture, opts.nChannels, opts.srgb, opts.opts == TextureFormatOptions::IT_PREFER_QUALITY);
         if (k2result != KTX_SUCCESS) {
             LOGWITH("Failed to transcode ktx texture:", k2result);
             ktxTexture_Destroy(ktxTexture(texture));
@@ -512,10 +482,10 @@ namespace onart {
         ktxTexture_Destroy(ktxTexture(texture));
 
         glBindTexture(GL_TEXTURE_2D, tex);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, opts.linearSampled ? GL_LINEAR : GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, opts.linearSampled ? GL_LINEAR : GL_NEAREST);
         glBindTexture(GL_TEXTURE_2D, 0);
-        
+
         struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
         if (key == INT32_MIN) return std::make_shared<txtr>(tex, 0, width, height);
         return textures[key] = std::make_shared<txtr>(tex, 0, width, height);
@@ -553,7 +523,7 @@ namespace onart {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, src);
     }
 
-    static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, GLMachine::ImageTextureFormatOptions& option){
+    static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, GLMachine::TextureFormatOptions option){
         ktxTexture2* texture;
         ktx_error_code_e k2result;
         ktxTextureCreateInfo texInfo{};
@@ -592,7 +562,7 @@ namespace onart {
             ktxTexture_Destroy(ktxTexture(texture));
             return nullptr;
         }
-        if(option == GLMachine::ImageTextureFormatOptions::IT_USE_HQCOMPRESS || option == GLMachine::ImageTextureFormatOptions::IT_USE_COMPRESS){
+        if (option == GLMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
             ktxBasisParams params{};
             params.compressionLevel = KTX_ETC1S_DEFAULT_COMPRESSION_LEVEL;
             params.uastc = KTX_TRUE;
@@ -601,104 +571,113 @@ namespace onart {
 
             k2result = ktxTexture2_CompressBasisEx(texture, &params);
             if(k2result != KTX_SUCCESS){
-                LOGWITH("Compress failed:",k2result);
-                option = GLMachine::ImageTextureFormatOptions::IT_USE_ORIGINAL;
+                LOGWITH("Compress failed:", k2result);
+                ktxTexture_Destroy(ktxTexture(texture));
+                return nullptr;
             }
         }
         return texture;
     }
 
-    GLMachine::pTexture GLMachine::createTextureFromImage(const char* fileName, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler) {
+    GLMachine::pTexture GLMachine::createTextureFromImage(int32_t key, const char* fileName, const TextureCreationOptions& opts) {
         int x, y, nChannels;
-        uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 4);
-        if(!pix) {
-            LOGWITH("Failed to load image:",stbi_failure_reason());
+        uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 0);
+        if (!pix) {
+            LOGWITH("Failed to load image:", stbi_failure_reason());
             return pTexture();
         }
-        ktxTexture2* texture = createKTX2FromImage(pix, x, y, 4, srgb, option);
+        TextureCreationOptions channelOpts = opts;
+        channelOpts.nChannels = nChannels;
+        ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, opts.srgb, opts.opts);
         stbi_image_free(pix);
-        if(!texture) {
+        if (!texture) {
             LOGHERE;
             return pTexture();
         }
-        return singleton->createTexture(texture, key, 4, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS, linearSampler);
+        return singleton->createTexture(texture, key, channelOpts);
     }
 
-    GLMachine::pTexture GLMachine::createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler){
+    GLMachine::pTexture GLMachine::createTextureFromImage(int32_t key, const void* mem, size_t size, const TextureCreationOptions& opts) {
         int x, y, nChannels;
-        uint8_t* pix = stbi_load_from_memory(mem, (int)size, &x, &y, &nChannels, 0);
-        if(!pix) {
-            LOGWITH("Failed to load image:",stbi_failure_reason());
+        uint8_t* pix = stbi_load_from_memory((const uint8_t*)mem, (int)size, &x, &y, &nChannels, 0);
+        if (!pix) {
+            LOGWITH("Failed to load image:", stbi_failure_reason());
             return pTexture();
         }
-        ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, srgb, option);
+        TextureCreationOptions channelOpts = opts;
+        channelOpts.nChannels = nChannels;
+        ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, opts.srgb, opts.opts);
         stbi_image_free(pix);
-        if(!texture) {
+        if (!texture) {
             LOGHERE;
             return pTexture();
         }
-        return singleton->createTexture(texture, key, nChannels, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS, linearSampler);
+        return singleton->createTexture(texture, key, channelOpts);
     }
 
-    GLMachine::pTexture GLMachine::createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler){
-        if(nChannels > 4 || nChannels == 0) {
+    GLMachine::pTexture GLMachine::createTexture(int32_t key, const char* fileName, const TextureCreationOptions& opts) {
+        if (opts.nChannels > 4 || opts.nChannels == 0) {
             LOGWITH("Invalid channel count. nChannels must be 1~4");
             return pTexture();
         }
-        pTexture ret(std::move(getTexture(key)));
-        if(ret) return ret;
+        if (pTexture ret = getTexture(key)) {
+            return ret;
+        }
 
         ktxTexture2* texture;
         ktx_error_code_e k2result;
 
-        if((k2result= ktxTexture2_CreateFromNamedFile(fileName, KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS){
-            LOGWITH("Failed to load ktx texture:",k2result);
+        if ((k2result = ktxTexture2_CreateFromNamedFile(fileName, KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS) {
+            LOGWITH("Failed to load ktx texture:", k2result);
             return pTexture();
         }
-        return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler);
+        return singleton->createTexture(texture, key, opts);
     }
 
-    GLMachine::pTexture GLMachine::createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb, bool hq, bool linearSampler){
-        if(nChannels > 4 || nChannels == 0) {
+    GLMachine::pTexture GLMachine::createTexture(int32_t key, const uint8_t* mem, size_t size, const TextureCreationOptions& opts) {
+        if (opts.nChannels > 4 || opts.nChannels == 0) {
             LOGWITH("Invalid channel count. nChannels must be 1~4");
             return pTexture();
         }
-        pTexture ret(std::move(getTexture(key)));
-        if(ret) return ret;
+        if (pTexture ret = getTexture(key)) { return ret; }
+
         ktxTexture2* texture;
         ktx_error_code_e k2result;
 
-        if((k2result = ktxTexture2_CreateFromMemory(mem, size, KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS){
-            LOGWITH("Failed to load ktx texture:",k2result);
+        if ((k2result = ktxTexture2_CreateFromMemory(mem, size, KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS) {
+            LOGWITH("Failed to load ktx texture:", k2result);
             return pTexture();
         }
-        return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler);
+        return singleton->createTexture(texture, key, opts);
     }
 
-    void GLMachine::asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(variant8)> handler, bool srgb, bool hq, bool linearSampler){
-        if(key == INT32_MIN) {
+    void GLMachine::asyncCreateTexture(int32_t key, const char* fileName, std::function<void(variant8)> handler, const TextureCreationOptions& opts) {
+        if (key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
-        bool already = (bool)getTexture(key, true);
+        if (getTexture(key)) {
+            variant8 _k;
+            _k.bytedata2[0] = key;
+            handler(_k);
+            return;
+        }
         struct __asyncparam {
             ktxTexture2* texture;
             int32_t k2result;
         };
-        singleton->loadThread.post([fileName, nChannels, srgb, hq, already]()->variant8{
-            if(!already){
-                ktxTexture2* texture;
-                ktx_error_code_e k2result;
-                if ((k2result = ktxTexture2_CreateFromNamedFile(fileName, KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS) {
-                    return new __asyncparam{ nullptr, k2result };
-                }
-                if ((k2result = tryTranscode(texture, nChannels, srgb, hq)) != KTX_SUCCESS) {
-                    return new __asyncparam{ nullptr, k2result };
-                }
-                return new __asyncparam{ texture, KTX_SUCCESS };
+        TextureCreationOptions options = opts;
+        singleton->loadThread.post([fileName, options]()->variant8 {
+            ktxTexture2* texture;
+            ktx_error_code_e k2result;
+            if ((k2result = ktxTexture2_CreateFromNamedFile(fileName, KTX_TEXTURE_CREATE_NO_FLAGS, &texture)) != KTX_SUCCESS) {
+                return new __asyncparam{ nullptr, k2result };
             }
-            return nullptr;
-            }, [key, linearSampler, handler](variant8 param) { // upload on GL context thread
+            if ((k2result = tryTranscode(texture, options.nChannels, options.srgb, options.opts == TextureFormatOptions::IT_PREFER_QUALITY)) != KTX_SUCCESS) {
+                return new __asyncparam{ nullptr, k2result };
+            }
+            return new __asyncparam{ texture, KTX_SUCCESS };
+            }, [key, options, handler](variant8 param) { // upload on GL context thread
                 if (!param.vp) {
                     handler((uint64_t)(uint32_t)key);
                 }
@@ -708,7 +687,9 @@ namespace onart {
                     int32_t k2result = ap->k2result;
                     delete ap;
                     if (k2result != KTX_SUCCESS) {
-                        variant8 p = (uint32_t)key | ((size_t)k2result << 32);
+                        variant8 p;
+                        p.bytedata2[0] = key;
+                        p.bytedata2[1] = k2result;
                         handler(p);
                     }
                     else {
@@ -719,8 +700,8 @@ namespace onart {
                             ktxTexture_Destroy(ktxTexture(texture));
                         }
                         glBindTexture(GL_TEXTURE_2D, tex);
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
                         glBindTexture(GL_TEXTURE_2D, 0);
 
                         struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
@@ -730,77 +711,10 @@ namespace onart {
                         handler((uint64_t)(uint32_t)key);
                     }
                 }
-            }, vkm_strand::GENERAL);
+                }, vkm_strand::GENERAL);
     }
 
-    
-
-    void GLMachine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(variant8)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler){
-        if(key == INT32_MIN) {
-            LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
-            return;
-        }
-        struct __asyncparam {
-            ktxTexture2* texture;
-            int32_t k2result;
-        };
-        bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([already, fileName, srgb, option]() -> variant8{
-            if(!already){
-                int x, y, nChannels;
-                uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 4);
-                ImageTextureFormatOptions opt = option;
-                ktx_error_code_e k2result;
-                if (!pix) {
-                    return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
-                }
-                ktxTexture2* texture = createKTX2FromImage(pix, x, y, 4, srgb, opt);
-                stbi_image_free(pix);
-                if (!texture) {
-                    return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
-                }
-                if ((k2result = tryTranscode(texture, nChannels, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS)) != KTX_SUCCESS) {
-                    return new __asyncparam{ nullptr, k2result };
-                }
-                return new __asyncparam{ texture, KTX_SUCCESS };
-            }
-            return nullptr;
-        }, [key, handler, linearSampler](variant8 param) {
-            if (!param.vp) {
-                handler((uint64_t)(uint32_t)key);
-            }
-            else {
-                __asyncparam* ap = reinterpret_cast<__asyncparam*>(param.vp);
-                ktxTexture2* texture = ap->texture;
-                int32_t k2result = ap->k2result;
-                delete ap;
-                if (k2result != KTX_SUCCESS) {
-                    variant8 p = (uint32_t)key | ((size_t)k2result << 32);
-                    handler(p);
-                }
-                else {
-                    unsigned tex = 0, targ, err;
-                    k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
-                    if (k2result != KTX_SUCCESS) {
-                        LOGWITH("Failed to transcode ktx texture:", k2result, err);
-                        ktxTexture_Destroy(ktxTexture(texture));
-                    }
-                    glBindTexture(GL_TEXTURE_2D, tex);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
-                    glBindTexture(GL_TEXTURE_2D, 0);
-
-                    struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
-                    pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
-                    singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
-                    ktxTexture_Destroy(ktxTexture(texture));
-                    handler((uint64_t)(uint32_t)key);
-                }
-            }
-        }, vkm_strand::GENERAL);
-    }
-
-    void GLMachine::asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(variant8)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler){
+    void GLMachine::asyncCreateTextureFromImage(int32_t key, const char* fileName, std::function<void(variant8)> handler, const TextureCreationOptions& opts) {
         if (key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
@@ -809,64 +723,68 @@ namespace onart {
             ktxTexture2* texture;
             int32_t k2result;
         };
-        bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([already, mem, size, srgb, option]()->void* {
-            if (!already) {
-                int x, y, nChannels;
-                uint8_t* pix = stbi_load_from_memory(mem, (int)size, &x, &y, &nChannels, 0);
-                if (!pix) {
-                    return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
-                }
-                ImageTextureFormatOptions opt = option;
-                ktx_error_code_e k2result;
-                ktxTexture2* texture = createKTX2FromImage(pix, x, y, 4, srgb, opt);
-                stbi_image_free(pix);
-                if (!texture) {
-                    return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
-                }
-                if ((k2result = tryTranscode(texture, nChannels, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS)) != KTX_SUCCESS) {
-                    return new __asyncparam{ nullptr, k2result };
-                }
-                return new __asyncparam{ texture, KTX_SUCCESS };
+        if (getTexture(key)) {
+            variant8 _k;
+            _k.bytedata4[0] = key;
+            handler(_k);
+            return;
+        }
+        TextureCreationOptions options = opts;
+        singleton->loadThread.post([fileName, options]()->variant8 {
+            int x, y, nChannels;
+            uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 0);
+            ktx_error_code_e k2result;
+            if (!pix) {
+                return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
             }
-            return nullptr;
-            }, [key, handler, linearSampler](variant8 param) {
-                if (!param.vp) {
-                    handler((uint64_t)(uint32_t)key);
+            ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, options.srgb, options.opts);
+            stbi_image_free(pix);
+            if (!texture) {
+                return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
+            }
+            if ((k2result = tryTranscode(texture, nChannels, options.srgb, options.opts != TextureFormatOptions::IT_PREFER_COMPRESS)) != KTX_SUCCESS) {
+                return new __asyncparam{ nullptr, k2result };
+            }
+            return new __asyncparam{ texture, KTX_SUCCESS };
+            }, [key, handler, options](variant8 param) {
+                __asyncparam* ap = reinterpret_cast<__asyncparam*>(param.vp);
+                ktxTexture2* texture = ap->texture;
+                int32_t k2result = ap->k2result;
+                delete ap;
+                if (k2result != KTX_SUCCESS) {
+                    variant8 p = (uint32_t)key | ((size_t)k2result << 32);
+                    handler(p);
                 }
                 else {
-                    __asyncparam* ap = reinterpret_cast<__asyncparam*>(param.vp);
-                    ktxTexture2* texture = ap->texture;
-                    int32_t k2result = ap->k2result;
-                    delete ap;
+                    unsigned tex = 0, targ, err;
+                    k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
                     if (k2result != KTX_SUCCESS) {
-                        variant8 p = (uint32_t)key | ((size_t)k2result << 32);
-                        handler(p);
-                    }
-                    else {
-                        unsigned tex = 0, targ, err;
-                        k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
-                        if (k2result != KTX_SUCCESS) {
-                            LOGWITH("Failed to transcode ktx texture:", k2result, err);
-                            ktxTexture_Destroy(ktxTexture(texture));
-                        }
-                        glBindTexture(GL_TEXTURE_2D, tex);
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
-                        glBindTexture(GL_TEXTURE_2D, 0);
-
-                        struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
-                        pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
+                        LOGWITH("Failed to upload ktx texture:", k2result, err);
                         ktxTexture_Destroy(ktxTexture(texture));
-                        singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
-                        handler((uint64_t)(uint32_t)key);
+                        variant8 _k;
+                        _k.bytedata2[0] = key;
+                        _k.bytedata2[1] = err;
+                        handler(_k);
+                        return;
                     }
+                    glBindTexture(GL_TEXTURE_2D, tex);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
+                    glBindTexture(GL_TEXTURE_2D, 0);
+
+                    struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
+                    pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
+                    singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
+                    ktxTexture_Destroy(ktxTexture(texture));
+                    variant8 _k;
+                    _k.bytedata2[0] = key;
+                    handler(_k);
                 }
             }, vkm_strand::GENERAL);
     }
 
-    void GLMachine::asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(variant8)> handler, int32_t key, bool srgb, bool hq, bool linearSampler) {
-        if(key == INT32_MIN) {
+    void GLMachine::asyncCreateTextureFromImage(int32_t key, const void* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts) {
+        if (key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
@@ -874,25 +792,30 @@ namespace onart {
             ktxTexture2* texture;
             int32_t k2result;
         };
-        bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([mem, size, nChannels, srgb, hq, already, linearSampler, key]()->variant8 {
-            if (!already) {
-                ktxTexture2* texture;
-                ktx_error_code_e k2result = ktxTexture2_CreateFromMemory(mem, size, KTX_TEXTURE_CREATE_NO_FLAGS, &texture);
-                if (k2result != KTX_SUCCESS) {
-                    return new __asyncparam{ nullptr, k2result };
-                }
-                if ((k2result = tryTranscode(texture, nChannels, srgb, hq)) != KTX_SUCCESS) {
-                    return new __asyncparam{ nullptr, k2result };
-                }
-                return new __asyncparam{ texture, KTX_SUCCESS };
+        if (getTexture(key)) {
+            variant8 _k;
+            _k.bytedata4[0] = key;
+            handler(_k);
+            return;
+        }
+        TextureCreationOptions options = opts;
+        singleton->loadThread.post([mem, size, options]()->variant8 {
+            int x, y, nChannels;
+            uint8_t* pix = stbi_load_from_memory((const uint8_t*)mem, (int)size, &x, &y, &nChannels, 0);
+            if (!pix) {
+                return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
             }
-            return (uint64_t)(uint32_t)key;
-        }, [key, handler, linearSampler](variant8 param) {
-            if (!param.vp) {
-                handler((uint64_t)(uint32_t)key);
+            ktx_error_code_e k2result;
+            ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, options.srgb, options.opts);
+            stbi_image_free(pix);
+            if (!texture) {
+                return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
             }
-            else {
+            if ((k2result = tryTranscode(texture, nChannels, options.srgb, options.opts != TextureFormatOptions::IT_PREFER_COMPRESS)) != KTX_SUCCESS) {
+                return new __asyncparam{ nullptr, k2result };
+            }
+            return new __asyncparam{ texture,k2result };
+            }, [key, handler, options](variant8 param) {
                 __asyncparam* ap = reinterpret_cast<__asyncparam*>(param.vp);
                 ktxTexture2* texture = ap->texture;
                 int32_t k2result = ap->k2result;
@@ -907,10 +830,75 @@ namespace onart {
                     if (k2result != KTX_SUCCESS) {
                         LOGWITH("Failed to transcode ktx texture:", k2result, err);
                         ktxTexture_Destroy(ktxTexture(texture));
+                        variant8 _k;
+                        _k.bytedata2[0] = key;
+                        _k.bytedata2[1] = err;
+                        handler(_k);
+                        return;
                     }
                     glBindTexture(GL_TEXTURE_2D, tex);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
+                    glBindTexture(GL_TEXTURE_2D, 0);
+
+                    struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
+                    pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
+                    ktxTexture_Destroy(ktxTexture(texture));
+                    singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
+                    variant8 _k;
+                    _k.bytedata2[0] = key;
+                    handler(_k);
+                    handler((uint64_t)(uint32_t)key);
+                }
+                }, vkm_strand::GENERAL);
+    }
+
+    void GLMachine::asyncCreateTexture(int32_t key, const uint8_t* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts) {
+        if (key == INT32_MIN) {
+            LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
+            return;
+        }
+        struct __asyncparam {
+            ktxTexture2* texture;
+            int32_t k2result;
+        };
+        if (getTexture(key)) {
+            variant8 _k;
+            _k.bytedata2[0] = key;
+            handler(_k);
+        }
+        TextureCreationOptions options = opts;
+        singleton->loadThread.post([mem, size, options, key]()->variant8 {
+            ktxTexture2* texture;
+            ktx_error_code_e k2result = ktxTexture2_CreateFromMemory(mem, size, KTX_TEXTURE_CREATE_NO_FLAGS, &texture);
+            if (k2result != KTX_SUCCESS) {
+                return new __asyncparam{ nullptr, k2result };
+            }
+            if ((k2result = tryTranscode(texture, options.nChannels, options.srgb, options.opts == TextureFormatOptions::IT_PREFER_QUALITY)) != KTX_SUCCESS) {
+                return new __asyncparam{ nullptr, k2result };
+            }
+            return new __asyncparam{ texture, KTX_SUCCESS };
+            }, [key, handler, options](variant8 param) {
+                __asyncparam* ap = reinterpret_cast<__asyncparam*>(param.vp);
+                ktxTexture2* texture = ap->texture;
+                int32_t k2result = ap->k2result;
+                delete ap;
+                if (k2result != KTX_SUCCESS) {
+                    variant8 p;
+                    p.bytedata2[0] = (uint32_t)key;
+                    p.bytedata2[1] = k2result;
+                    handler(p);
+                }
+                else {
+                    unsigned tex = 0, targ, err;
+                    k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
+                    if (k2result != KTX_SUCCESS) {
+                        LOGWITH("Failed to transcode ktx texture:", k2result, err);
+                        ktxTexture_Destroy(ktxTexture(texture));
+                    }
+                    glBindTexture(GL_TEXTURE_2D, tex);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
                     glBindTexture(GL_TEXTURE_2D, 0);
 
                     struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
@@ -919,8 +907,7 @@ namespace onart {
                     ktxTexture_Destroy(ktxTexture(texture));
                     handler((uint64_t)(uint32_t)key);
                 }
-            }
-        }, vkm_strand::GENERAL);
+                }, vkm_strand::GENERAL);
     }
 
     GLMachine::Texture::Texture(uint32_t txo, uint32_t binding, uint16_t width, uint16_t height) :txo(txo), binding(binding), width(width), height(height) { }
@@ -1094,40 +1081,50 @@ namespace onart {
         return singleton->cubePasses[key] = r;
     }
 
-    GLMachine::RenderPass2Screen* GLMachine::createRenderPass2Screen(RenderTargetType* tgs, uint32_t subpassCount, int32_t name, bool useDepth, bool* useDepthAsInput){
-        RenderPass2Screen* r = getRenderPass2Screen(name);
-        if(r) return r;
+    GLMachine::RenderPass2Screen* GLMachine::createRenderPass2Screen(int32_t key, const RenderPassCreationOptions& opts) {
+        if (RenderPass2Screen* ret = getRenderPass2Screen(key)) { return ret; }
+        if (opts.subpassCount == 0) { return nullptr; }
 
-        if(subpassCount == 0) return nullptr;
-        std::vector<RenderTarget*> targets(subpassCount);
-        for(uint32_t i = 0; i < subpassCount - 1; i++){
-            targets[i] = createRenderTarget2D(singleton->surfaceWidth, singleton->surfaceHeight, INT32_MIN, tgs[i], RenderTargetInputOption::SAMPLED_LINEAR, useDepthAsInput ? useDepthAsInput[i] : false);
-            if(!targets[i]){
+        std::vector<RenderTarget*> targets(opts.subpassCount);
+        for (uint32_t i = 0; i < opts.subpassCount - 1; i++) {
+            targets[i] = createRenderTarget2D(singleton->surfaceWidth, singleton->surfaceHeight, opts.targets[i], opts.depthInput, opts.linearSampled);
+            if (!targets[i]) {
                 LOGHERE;
-                for(RenderTarget* t:targets) delete t;
+                for (RenderTarget* t : targets) delete t;
                 return nullptr;
             }
         }
 
-        RenderPass* ret = new RenderPass(targets.data(), subpassCount);
+        RenderPass* ret = new RenderPass(opts.subpassCount);
         ret->targets = std::move(targets);
         ret->setViewport((float)singleton->surfaceWidth, (float)singleton->surfaceHeight, 0.0f, 0.0f);
         ret->setScissor(singleton->surfaceWidth, singleton->surfaceHeight, 0, 0);
-        if (name == INT32_MIN) return ret;
-        return singleton->finalPasses[name] = ret;
+        return singleton->finalPasses[key] = ret;
     }
 
-    GLMachine::RenderPass* GLMachine::createRenderPass(RenderTarget** targets, uint32_t subpassCount, int32_t name){
-        RenderPass* r = getRenderPass(name);
-        if(r) return r;
-        if(subpassCount == 0) return nullptr;
+    GLMachine::RenderPass* GLMachine::createRenderPass(int32_t key, const RenderPassCreationOptions& opts) {
+        if (RenderPass* r = getRenderPass(key)) { return r; }
+        if (opts.subpassCount == 0) { 
+            return nullptr;
+        }
 
-        RenderPass* ret = new RenderPass(targets, subpassCount);
-        std::memcpy(ret->targets.data(), targets, sizeof(RenderTarget*) * subpassCount);
-        ret->setViewport((float)targets[0]->width, (float)targets[0]->height, 0.0f, 0.0f);
-        ret->setScissor(targets[0]->width, targets[0]->height, 0, 0);
-        if(name == INT32_MIN) return ret;
-        return singleton->renderPasses[name] = ret;
+        std::vector<RenderTarget*> targets(opts.subpassCount);
+        for (uint32_t i = 0; i < opts.subpassCount; i++) {
+            targets[i] = createRenderTarget2D(opts.width, opts.height, opts.targets ? opts.targets[i] : RenderTargetType::COLOR1, opts.depthInput, opts.linearSampled);
+            if (!targets[i]) {
+                LOGHERE;
+                for (uint32_t j = 0; j < i; j++) {
+                    delete targets[j];
+                }
+                return {};
+            }
+        }
+
+        RenderPass* ret = new RenderPass(opts.subpassCount);
+        ret->targets = std::move(targets);
+        ret->setViewport(opts.width, opts.height, 0.0f, 0.0f);
+        ret->setScissor(opts.width, opts.height, 0, 0);
+        return singleton->renderPasses[key] = ret;
     }
 
     GLMachine::Pipeline* GLMachine::createPipeline(PipelineInputVertexSpec* vinfo, uint32_t vsize, uint32_t vattr, PipelineInputVertexSpec* iinfo, uint32_t isize, uint32_t iattr, unsigned vs, unsigned fs, int32_t name, unsigned tc, unsigned te, unsigned gs){
@@ -1240,13 +1237,11 @@ namespace onart {
         singleton->meshes.erase(name);
     }
 
-    GLMachine::RenderPass::RenderPass(RenderTarget** fb, uint16_t stageCount): stageCount(stageCount), pipelines(stageCount), targets(stageCount){}
+    GLMachine::RenderPass::RenderPass(uint16_t stageCount): stageCount(stageCount), pipelines(stageCount), targets(stageCount){}
 
     GLMachine::RenderPass::~RenderPass(){
-        if (targets[stageCount - 1] == nullptr) { // renderpass to screen이므로 타겟을 자체 생성해서 보유
-            for (RenderTarget* targ : targets) {
-                delete targ;
-            }
+        for (RenderTarget* targ : targets) {
+            delete targ;
         }
     }
 
@@ -1298,35 +1293,66 @@ namespace onart {
         glBindTexture(GL_TEXTURE_2D, tx->txo);
     }
 
-    void GLMachine::RenderPass::bind(uint32_t pos, RenderTarget* target, uint32_t index){
-        if(currentPass == -1){
+    void GLMachine::RenderPass::bind(uint32_t pos, const pStreamTexture& tx) {
+        if (currentPass == -1) {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        unsigned dset;
-        switch(index){
-            case 0:
-                dset = target->color1;
-                break;
-            case 1:
-                dset = target->color2;
-                break;
-            case 2:
-                dset = target->color3;
-                break;
-            case 3:
-                dset = target->depthStencil;
-                break;
-            default:
-                LOGWITH("Invalid render target index");
-                return;
-        }
-        if(!dset) {
-            LOGWITH("Invalid render target index");
+        glActiveTexture(GL_TEXTURE0 + pos);
+        glBindTexture(GL_TEXTURE_2D, tx->txo);
+    }
+
+    void GLMachine::RenderPass::bind(uint32_t pos, RenderPass2Cube* prev) {
+        if (currentPass == -1) {
+            LOGWITH("Invalid call: render pass not begun");
             return;
         }
         glActiveTexture(GL_TEXTURE0 + pos);
-        glBindTexture(GL_TEXTURE_2D, dset);
+        if (prev->targetCubeC) {
+            glBindTexture(GL_TEXTURE_CUBE_MAP, prev->targetCubeC);
+        }
+        else if (prev->targetCubeD) {
+            glBindTexture(GL_TEXTURE_CUBE_MAP, prev->targetCubeC);
+        }
+        else {
+            LOGWITH("given renderpass2cube does not seem to be normal");
+            return;
+        }
+    }
+
+    void GLMachine::RenderPass::bind(uint32_t pos, RenderPass* prev) {
+        if (prev == this) {
+            LOGWITH("Invalid call: input and output renderpass cannot be same");
+            return;
+        }
+        if (currentPass == -1) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        RenderTarget* lastOne = prev->targets.back();
+        if (!lastOne) {
+            LOGWITH("Invalid call: renderpass2screen cannot be an input");
+            return;
+        }
+        if (lastOne->color1) {
+            glActiveTexture(GL_TEXTURE0 + pos);
+            glBindTexture(GL_TEXTURE_2D, lastOne->color1);
+            pos++;
+            if (lastOne->color2) {
+                glActiveTexture(GL_TEXTURE0 + pos);
+                glBindTexture(GL_TEXTURE_2D, lastOne->color2);
+                pos++;
+                if (lastOne->color3) {
+                    glActiveTexture(GL_TEXTURE0 + pos);
+                    glBindTexture(GL_TEXTURE_2D, lastOne->color2);
+                    pos++;
+                }
+            }
+        }
+        if (lastOne->depthStencil && lastOne->dsTexture) {
+            glActiveTexture(GL_TEXTURE0 + pos);
+            glBindTexture(GL_TEXTURE_2D, lastOne->depthStencil);
+        }
     }
 
     void GLMachine::RenderPass::push(void* input, uint32_t start, uint32_t end){
@@ -1463,6 +1489,30 @@ namespace onart {
         return true;
     }
 
+    void GLMachine::RenderPass::resize(int width, int height, bool linear) {
+        if (targets[0] && targets[0]->width == width && targets[0]->height == height) { // equal size
+            return;
+        }
+        for (uint32_t i = 0; i < stageCount; i++) {
+            RenderTarget* t = targets[i];
+            if (t) {
+                targets[i] = createRenderTarget2D(width, height, t->type, t->dsTexture, false);
+                delete t;
+                if (!targets[i]) {
+                    LOGHERE;
+                    for (RenderTarget*& tg : targets) {
+                        delete tg;
+                        tg = nullptr;
+                    }
+                    return;
+                }
+            }
+        }
+
+        setViewport(width, height, 0.0f, 0.0f);
+        setScissor(width, height, 0, 0);
+    }
+
     void GLMachine::RenderPass::start(uint32_t pos){
         if(currentPass == stageCount - 1) {
             LOGWITH("Invalid call. The last subpass already started");
@@ -1488,10 +1538,29 @@ namespace onart {
 
         if (currentPass > 0) {
             RenderTarget* prev = targets[currentPass - 1];
-            if (prev->color1) bind(0, prev, 0);
-            if (prev->color2) bind(1, prev, 1);
-            if (prev->color3) bind(2, prev, 2);
-            if (prev->depthStencil) bind(3, prev, 3);
+            if (!prev) {
+                LOGWITH("Invalid call: renderpass2screen cannot be an input");
+                return;
+            }
+            if (prev->color1) {
+                glActiveTexture(GL_TEXTURE0 + pos);
+                glBindTexture(GL_TEXTURE_2D, prev->color1);
+                pos++;
+                if (prev->color2) {
+                    glActiveTexture(GL_TEXTURE0 + pos);
+                    glBindTexture(GL_TEXTURE_2D, prev->color2);
+                    pos++;
+                    if (prev->color3) {
+                        glActiveTexture(GL_TEXTURE0 + pos);
+                        glBindTexture(GL_TEXTURE_2D, prev->color2);
+                        pos++;
+                    }
+                }
+            }
+            if (prev->depthStencil && prev->dsTexture) {
+                glActiveTexture(GL_TEXTURE0 + pos);
+                glBindTexture(GL_TEXTURE_2D, prev->depthStencil);
+            }
         }
 
         glUseProgram(pipelines[currentPass]->program);
@@ -1531,35 +1600,44 @@ namespace onart {
         glBindTexture(GL_TEXTURE_2D, tx->txo);
     }
 
-    void GLMachine::RenderPass2Cube::bind(uint32_t pos, RenderTarget* target, uint32_t index){
+    void GLMachine::RenderPass2Cube::bind(uint32_t pos, const pStreamTexture& tx) {
+        if (!recording) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        glActiveTexture(GL_TEXTURE0 + pos);
+        glBindTexture(GL_TEXTURE_2D, tx->txo);
+    }
+
+    void GLMachine::RenderPass2Cube::bind(uint32_t pos, RenderPass* prev){
         if(!recording){
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        unsigned dset;
-        switch (index) {
-        case 0:
-            dset = target->color1;
-            break;
-        case 1:
-            dset = target->color2;
-            break;
-        case 2:
-            dset = target->color3;
-            break;
-        case 3:
-            dset = target->depthStencil;
-            break;
-        default:
-            LOGWITH("Invalid render target index");
+        RenderTarget* lastOne = prev->targets.back();
+        if (!lastOne) {
+            LOGWITH("Invalid call: renderpass2screen cannot be an input");
             return;
         }
-        if (!dset) {
-            LOGWITH("Invalid render target index");
-            return;
+        if (lastOne->color1) {
+            glActiveTexture(GL_TEXTURE0 + pos);
+            glBindTexture(GL_TEXTURE_2D, lastOne->color1);
+            pos++;
+            if (lastOne->color2) {
+                glActiveTexture(GL_TEXTURE0 + pos);
+                glBindTexture(GL_TEXTURE_2D, lastOne->color2);
+                pos++;
+                if (lastOne->color3) {
+                    glActiveTexture(GL_TEXTURE0 + pos);
+                    glBindTexture(GL_TEXTURE_2D, lastOne->color2);
+                    pos++;
+                }
+            }
         }
-        glActiveTexture(GL_TEXTURE0 + pos);
-        glBindTexture(GL_TEXTURE_2D, dset);
+        if (lastOne->depthStencil && lastOne->dsTexture) {
+            glActiveTexture(GL_TEXTURE0 + pos);
+            glBindTexture(GL_TEXTURE_2D, lastOne->depthStencil);
+        }
     }
     
     void GLMachine::RenderPass2Cube::usePipeline(unsigned pipeline){

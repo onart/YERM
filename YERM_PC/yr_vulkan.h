@@ -103,18 +103,7 @@ namespace onart {
                 /// @brief 스텐실 버퍼를 보유합니다.
                 STENCIL = 0b10000,
             };
-            /// @brief 렌더타겟을 텍스처, 입력 첨부물 중 어떤 것으로 사용할지 결정합니다.
-            enum class RenderTargetInputOption {
-                INPUT_ATTACHMENT = 0,
-                SAMPLED_LINEAR = 1,
-                SAMPLED_NEAREST = 2
-            };
-            /// @brief 파이프라인 생성 시 줄 수 있는 옵션입니다. 여기의 성분들을 비트 or하여 생성 함수에 전달합니다.
-            enum PipelineOptions: uint32_t {
-                USE_DEPTH = 0b1,
-                USE_STENCIL = 0b10,
-                CULL_BACK = 0b100,
-            };
+
             /// @brief 이미지 파일로부터 텍스처를 생성할 때 줄 수 있는 옵션입니다. 비트 OR로 여러 조건을 조합할 수 있습니다.
             enum TextureFormatOptions {
                 /// @brief 원본이 BasisU인 경우: 품질을 우선으로 트랜스코드합니다. 그 외: 그대로 사용합니다.
@@ -146,7 +135,7 @@ namespace onart {
                 size_t size;
                 /// @brief 유니폼 버퍼에 접근할 수 있는 셰이더 단계입니다. @ref ShaderStage 기본값 GRAPHICS_ALL
                 uint32_t accessibleStages = ShaderStage::GRAPHICS_ALL;
-                /// @brief 바인딩 번호입니다. 기본값 0
+                /// @brief Vulkan에서는 사용되지 않습니다.
                 uint32_t binding = 0;
                 /// @brief 동적 유니폼 버퍼의 항목 수입니다. 1을 주면 동적 유니폼 버퍼로 만들어지지 않습니다. 기본값 1
                 uint32_t count = 1;
@@ -274,15 +263,15 @@ namespace onart {
             /// @brief 스왑체인 회전 변동 관련 최적의 처리를 위해 응용단에서 추가로 가해야 할 회전입니다. PC 버전에서는 반드시 단위행렬이 리턴됩니다.
             static mat4 preTransform();
             /// @brief 보통 이미지 파일을 불러와 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
-            /// @param fileName 파일 이름
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
+            /// @param fileName 파일 이름
             /// @param opts @ref TextureCreationOptions
             /// @return 만들어진 텍스처 혹은 이미 있던 해당 key의 텍스처
             static pTexture createTextureFromImage(int32_t key, const char* fileName, const TextureCreationOptions& opts = {});
             /// @brief 메모리 내의 이미지 파일을 통해 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
+            /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param mem 데이터 위치
             /// @param size 데이터 길이
-            /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param opts @ref TextureCreationOptions
             /// @return 만들어진 텍스처 혹은 이미 있던 해당 key의 텍스처
             static pTexture createTextureFromImage(int32_t key, const void* mem, size_t size, const TextureCreationOptions& opts = {});
@@ -290,23 +279,21 @@ namespace onart {
             static void asyncCreateTextureFromImage(int32_t key, const char* fileName, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
             /// @brief @ref createTextureFromImage를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아닌 그냥 key). 매개변수 설명은 createTextureFromImage를 참고하세요.
             static void asyncCreateTextureFromImage(int32_t key, const void* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
-            /// @brief ktx2, BasisU 파일을 불러와 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
-            /// @param fileName 파일 이름
+            /// @brief ktx2 파일을 불러와 텍스처를 생성합니다. @ref 
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
-            /// @param nChannels 채널 수(색상)
-            /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
-            /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
+            /// @param fileName 파일 이름
+            /// @param opts @ref TextureCreationOptions
+            /// @return 만들어진 텍스처 혹은 이미 있던 해당 key의 텍스처
             static pTexture createTexture(int32_t key, const char* fileName, const TextureCreationOptions& opts = {});
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
             static void asyncCreateTexture(int32_t key, const char* fileName, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
             /// @brief 메모리 상의 ktx2 파일을 통해 텍스처를 생성합니다. (KTX2 파일이라도 BasisU가 아니면 실패할 가능성이 있습니다.) 여기에도 libktx로 그 형식을 만드는 별도의 도구가 있으니 필요하면 사용할 수 있습니다.
+            /// @param key 프로그램 내부에서 사용할 이름입니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param mem 이미지 시작 주소
             /// @param size mem 배열의 길이(바이트)
-            /// @param nChannels 채널 수(색상)
-            /// @param key 프로그램 내부에서 사용할 이름입니다. 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
-            /// @param srgb true면 텍스처 원본의 색을 srgb 공간에 있는 것으로 취급합니다.
-            /// @param hq 원본이 최대한 섬세하게 남아 있어야 한다면 true를 줍니다. false를 주면 메모리를 크게 절약할 수도 있지만 품질이 낮아질 수 있습니다.
-            static pTexture createTexture(int32_t key, const uint8_t* mem, size_t size, const TextureCreationOptions& opts);
+            /// @param opts @ref TextureCreationOptions
+            /// @return 만들어진 텍스처 혹은 이미 있던 해당 key의 텍스처
+            static pTexture createTexture(int32_t key, const uint8_t* mem, size_t size, const TextureCreationOptions& opts = {});
             /// @brief 빈 텍스처를 만듭니다. 메모리 맵으로 데이터를 올릴 수 있습니다. 올리는 데이터의 기본 형태는 BGRA 순서이며, 필요한 경우 셰이더에서 직접 스위즐링하여 사용합니다.
             static pStreamTexture createStreamTexture(int32_t key, uint32_t width, uint32_t height, bool linearSampler = true);
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
@@ -314,9 +301,8 @@ namespace onart {
             /// @brief 여러 개의 텍스처를 한 set으로 바인드하는 집합을 생성합니다.
             static pTextureSet createTextureSet(int32_t key, const pTexture& binding0, const pTexture& binding1, const pTexture& binding2 = {}, const pTexture& binding3 = {});
             /// @brief SPIR-V 컴파일된 셰이더를 VkShaderModule 형태로 저장하고 가져옵니다.
-            /// @param spv SPIR-V 코드
-            /// @param size 주어진 SPIR-V 코드의 길이(바이트)
             /// @param key 이후 별도로 접근할 수 있는 이름을 지정합니다. 중복된 이름을 입력하는 경우 새로 생성되지 않고 기존의 것이 리턴됩니다.
+            /// @param opts @ref ShaderModuleCreationOptions
             static VkShaderModule createShader(int32_t key, const ShaderModuleCreationOptions& opts);
             /// @brief 셰이더에서 사용할 수 있는 uniform 버퍼를 생성하여 리턴합니다. 이것을 해제하는 방법은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
             /// @param length 이 값이 1이면 버퍼 하나를 생성하며, 2 이상이면 동적 공유 버퍼를 생성합니다. 동적 공유 버퍼는 렌더 패스 진행 중 바인드할 영역을 바꿀 수 있습니다.
