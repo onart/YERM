@@ -486,9 +486,29 @@ namespace onart {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, opts.linearSampled ? GL_LINEAR : GL_NEAREST);
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
-        if (key == INT32_MIN) return std::make_shared<txtr>(tex, 0, width, height);
-        return textures[key] = std::make_shared<txtr>(tex, 0, width, height);
+        struct txtr :public Texture { inline txtr(uint32_t _1, uint16_t _2, uint16_t _3) :Texture(_1, _2, _3) {} };
+        if (key == INT32_MIN) return std::make_shared<txtr>(tex, width, height);
+        return textures[key] = std::make_shared<txtr>(tex, width, height);
+    }
+
+    GLMachine::pTextureSet GLMachine::createTextureSet(int32_t key, const pTexture& binding0, const pTexture& binding1, const pTexture& binding2, const pTexture& binding3) {
+        if (!binding0 || !binding1) {
+            LOGWITH("At least 2 textures must be given");
+            return {};
+        }
+        int length = binding2 ? (binding3 ? 4 : 3) : 2;
+
+        pTexture textures[4] = { binding0, binding1, binding2, binding3 };
+
+        struct __tset :public TextureSet {};
+        pTextureSet ret = std::make_shared<__tset>();
+        ret->textureCount = length;
+        ret->textures[0] = textures[0];
+        ret->textures[1] = textures[1];
+        ret->textures[2] = textures[2];
+        ret->textures[3] = textures[3];
+        if (key == INT32_MIN) return ret;
+        return singleton->textureSets[key] = std::move(ret);
     }
 
     GLMachine::pStreamTexture GLMachine::createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler) {
@@ -506,12 +526,12 @@ namespace onart {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
         
 
-        struct txtr :public StreamTexture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :StreamTexture(_1, _2, _3, _4) {} };
-        if (key == INT32_MIN) return std::make_shared<txtr>(tex, 0, width, height);
-        return singleton->streamTextures[key] = std::make_shared<txtr>(tex, 0, width, height);
+        struct txtr :public StreamTexture { inline txtr(uint32_t _1, uint16_t _2, uint16_t _3) :StreamTexture(_1, _2, _3) {} };
+        if (key == INT32_MIN) return std::make_shared<txtr>(tex, width, height);
+        return singleton->streamTextures[key] = std::make_shared<txtr>(tex, width, height);
     }
 
-    GLMachine::StreamTexture::StreamTexture(uint32_t txo, uint32_t binding, uint16_t width, uint16_t height) :width(width), height(height), txo(txo), binding(binding) {
+    GLMachine::StreamTexture::StreamTexture(uint32_t txo, uint16_t width, uint16_t height) :width(width), height(height), txo(txo) {
         
     }
 
@@ -704,8 +724,8 @@ namespace onart {
                         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
                         glBindTexture(GL_TEXTURE_2D, 0);
 
-                        struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
-                        pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
+                        struct txtr :public Texture { inline txtr(uint32_t _1, uint16_t _2, uint16_t _3) :Texture(_1, _2, _3) {} };
+                        pTexture ret = std::make_shared<txtr>(tex, texture->baseWidth, texture->baseHeight);
                         singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
                         ktxTexture_Destroy(ktxTexture(texture));
                         handler((uint64_t)(uint32_t)key);
@@ -772,8 +792,8 @@ namespace onart {
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
                     glBindTexture(GL_TEXTURE_2D, 0);
 
-                    struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
-                    pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
+                    struct txtr :public Texture { inline txtr(uint32_t _1, uint16_t _2, uint16_t _3) :Texture(_1, _2, _3) {} };
+                    pTexture ret = std::make_shared<txtr>(tex, texture->baseWidth, texture->baseHeight);
                     singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
                     ktxTexture_Destroy(ktxTexture(texture));
                     variant8 _k;
@@ -841,8 +861,8 @@ namespace onart {
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
                     glBindTexture(GL_TEXTURE_2D, 0);
 
-                    struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
-                    pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
+                    struct txtr :public Texture { inline txtr(uint32_t _1, uint16_t _2, uint16_t _3) :Texture(_1, _2, _3) {} };
+                    pTexture ret = std::make_shared<txtr>(tex, texture->baseWidth, texture->baseHeight);
                     ktxTexture_Destroy(ktxTexture(texture));
                     singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
                     variant8 _k;
@@ -901,8 +921,8 @@ namespace onart {
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
                     glBindTexture(GL_TEXTURE_2D, 0);
 
-                    struct txtr :public Texture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :Texture(_1, _2, _3, _4) {} };
-                    pTexture ret = std::make_shared<txtr>(tex, 0, texture->baseWidth, texture->baseHeight);
+                    struct txtr :public Texture { inline txtr(uint32_t _1, uint16_t _2, uint16_t _3) :Texture(_1, _2, _3) {} };
+                    pTexture ret = std::make_shared<txtr>(tex, texture->baseWidth, texture->baseHeight);
                     singleton->textures[key] = std::move(ret); // 메인 스레드라서 락 안함
                     ktxTexture_Destroy(ktxTexture(texture));
                     handler((uint64_t)(uint32_t)key);
@@ -910,7 +930,7 @@ namespace onart {
                 }, vkm_strand::GENERAL);
     }
 
-    GLMachine::Texture::Texture(uint32_t txo, uint32_t binding, uint16_t width, uint16_t height) :txo(txo), binding(binding), width(width), height(height) { }
+    GLMachine::Texture::Texture(uint32_t txo, uint16_t width, uint16_t height) :txo(txo), width(width), height(height) { }
     GLMachine::Texture::~Texture(){
         glDeleteTextures(1, &txo);
     }
@@ -1189,10 +1209,6 @@ namespace onart {
         return ret;
     }
 
-    unsigned GLMachine::createPipelineLayout(...){
-        return 0;
-    }
-
     GLMachine::Pipeline::Pipeline(unsigned program, vec4 clearColor, unsigned vstr, unsigned istr) :program(program), clearColor(clearColor), vertexSize(vstr), instanceAttrStride(istr) {}
     GLMachine::Pipeline::~Pipeline() {
         glDeleteProgram(program);
@@ -1293,6 +1309,17 @@ namespace onart {
         glBindTexture(GL_TEXTURE_2D, tx->txo);
     }
 
+    void GLMachine::RenderPass::bind(uint32_t pos, const pTextureSet& tx) {
+        if (currentPass == -1) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        for (int i = 0; i < tx->textureCount; i++) {
+            glActiveTexture(GL_TEXTURE0 + pos + i);
+            glBindTexture(GL_TEXTURE_2D, tx->textures[i]->txo);
+        }
+    }
+
     void GLMachine::RenderPass::bind(uint32_t pos, const pStreamTexture& tx) {
         if (currentPass == -1) {
             LOGWITH("Invalid call: render pass not begun");
@@ -1312,7 +1339,7 @@ namespace onart {
             glBindTexture(GL_TEXTURE_CUBE_MAP, prev->targetCubeC);
         }
         else if (prev->targetCubeD) {
-            glBindTexture(GL_TEXTURE_CUBE_MAP, prev->targetCubeC);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, prev->targetCubeD);
         }
         else {
             LOGWITH("given renderpass2cube does not seem to be normal");

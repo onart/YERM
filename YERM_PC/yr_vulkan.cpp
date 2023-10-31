@@ -1527,6 +1527,12 @@ namespace onart {
         vkUpdateDescriptorSets(singleton->device, length, wr, 0, nullptr);
         struct __tset:public TextureSet {};
         pTextureSet ret = std::make_shared<__tset>();
+        ret->dset = dset;
+        ret->textureCount = length;
+        ret->textures[0] = textures[0];
+        ret->textures[1] = textures[1];
+        ret->textures[2] = textures[2];
+        ret->textures[3] = textures[3];
         if (key == INT32_MIN) return ret;
         return singleton->textureSets[key] = std::move(ret);
     }

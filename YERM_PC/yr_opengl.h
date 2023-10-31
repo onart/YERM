@@ -219,6 +219,8 @@ namespace onart {
             static pTexture createTexture(int32_t key, const uint8_t* mem, size_t size, const TextureCreationOptions& opts);
             /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
             static void asyncCreateTexture(int32_t key, const uint8_t* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
+            /// @brief 여러 개의 텍스처를 연속된 넘버으로 바인드하는 집합을 생성합니다.
+            static pTextureSet createTextureSet(int32_t key, const pTexture& binding0, const pTexture& binding1, const pTexture& binding2 = {}, const pTexture& binding3 = {});
             /// @brief 빈 텍스처를 만듭니다. 메모리 맵으로 데이터를 올릴 수 있습니다. 올리는 데이터의 기본 형태는 BGRA 순서이며, 필요한 경우 셰이더에서 직접 스위즐링하여 사용합니다.
             static pStreamTexture createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler = true);
             /// @brief GLSL 셰이더를 컴파일하여 보관하고 가져옵니다.
@@ -244,15 +246,7 @@ namespace onart {
             /// @param useDepth true인 경우 깊이 버퍼를 이미지에 사용합니다. useDepth와 useColor가 모두 true인 경우 샘플링은 색 버퍼에 대해서만 가능합니다.
             static RenderPass2Cube* createRenderPass2Cube(uint32_t width, uint32_t height, int32_t key, bool useColor, bool useDepth);
             /// @brief 화면으로 이어지는 렌더패스를 생성합니다. 각 패스의 타겟들은 현재 창의 해상도와 동일하게 맞춰집니다.
-            /// @param targets 생성할 렌더 타겟들의 타입 배열입니다. 서브패스의 마지막은 이것을 제외한 스왑체인 이미지입니다.
-            /// @param subpassCount 최종 서브패스의 수입니다. 즉 targets 배열 길이 + 1을 입력해야 합니다.
-            /// @param key 이름입니다. (RenderPass 객체와 같은 집합을 공유하지 않음) 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. INT32_MIN, 즉 -2147483648은 예약된 값이기 때문에 사용할 수 없습니다.
-            /// @param useDepth subpassCount가 1이고 이 값이 true인 경우 최종 패스에서 깊이/스텐실 이미지를 사용하게 됩니다. subpassCount가 1이 아니면 무시됩니다.
-            /// @param useDepthAsInput targets와 일대일 대응하며, 대응하는 성분의 깊이 성분을 다음 서브패스의 입력으로 사용하려면 true를 줍니다. nullptr를 주는 경우 일괄 false로 취급됩니다. 즉 nullptr가 아니라면 반드시 subpassCount - 1 길이의 배열이 주어져야 합니다.
-            static RenderPass2Screen* createRenderPass2Screen(RenderTargetType* targets, uint32_t subpassCount, int32_t key, bool useDepth = true, bool* useDepthAsInput = nullptr);
             static RenderPass2Screen* createRenderPass2Screen(int32_t key, const RenderPassCreationOptions& opts);
-            /// @brief 아무 동작도 하지 않습니다.
-            static unsigned createPipelineLayout(...);
             /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 사용할 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
             /// @param vs 정점 셰이더 모듈입니다.
             /// @param fs 조각 셰이더 모듈입니다.
@@ -295,10 +289,6 @@ namespace onart {
             static pMesh getMesh(int32_t key);
             /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
             inline static bool isSurfaceSRGB() { return false; }
-            /// @brief 아무 것도 하지 않습니다.
-            inline static int getTextureLayout(uint32_t binding) { return 0; }
-            /// @brief 아무 것도 하지 않습니다.
-            inline static int getInputAttachmentLayout(uint32_t binding) { return 0; }
         private:
             /// @brief 기본 OpenGL 컨텍스트를 생성합니다.
             GLMachine(Window*);
@@ -328,6 +318,7 @@ namespace onart {
             std::map<int32_t, pMesh> meshes;
             std::map<int32_t, pTexture> textures;
             std::map<int32_t, pStreamTexture> streamTextures;
+            std::map<int32_t, pTextureSet> textureSets;
 
             std::mutex textureGuard;
             uint32_t surfaceWidth{}, surfaceHeight{};
@@ -387,6 +378,10 @@ namespace onart {
             /// @param pos 바인드할 set 번호
             /// @param tx 바인드할 텍스처
             void bind(uint32_t pos, const pTexture& tx);
+            /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+            /// @param pos 바인드할 set 번호
+            /// @param tx 바인드할 텍스처
+            void bind(uint32_t pos, const pTextureSet& tx);
             /// @brief 주어진 렌더 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다. 이 패스의 프레임버퍼에서 사용 중인 렌더타겟은 사용할 수 없습니다.
             /// @param pos 바인드할 set 번호
             /// @param target 바인드할 타겟
@@ -528,6 +523,7 @@ namespace onart {
     class GLMachine::Texture{
         friend class GLMachine;
         friend class RenderPass;
+        friend class TextureSet;
         public:
             /// @brief 사용하지 않는 텍스처 데이터를 정리합니다.
             /// @param removeUsing 사용하는 텍스처 데이터도 사용이 끝나는 즉시 해제되게 합니다. (이 호출 이후로는 getTexture로 찾을 수 없습니다.)
@@ -536,16 +532,19 @@ namespace onart {
             static void drop(int32_t name);
             const uint16_t width, height;
         protected:
-            Texture(uint32_t txo, uint32_t binding, uint16_t width, uint16_t height);
+            Texture(uint32_t txo, uint16_t width, uint16_t height);
             ~Texture();
         private:
             unsigned txo;
-            uint32_t binding;
     };
 
     class GLMachine::TextureSet {
         friend class GLMachine;
         friend class RenderPass;
+        friend class RenderPass2Cube;
+    private:
+        pTexture textures[4]{};
+        int textureCount;
     };
 
     class GLMachine::StreamTexture {
@@ -561,11 +560,10 @@ namespace onart {
             void update(void* img);
             const uint16_t width, height;
         protected:
-            StreamTexture(uint32_t txo, uint32_t binding, uint16_t width, uint16_t height);
+            StreamTexture(uint32_t txo, uint16_t width, uint16_t height);
             ~StreamTexture();
         private:
             unsigned txo;
-            uint32_t binding;
     };
 
     struct GLMachine::PipelineInputVertexSpec {
