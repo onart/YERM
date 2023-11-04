@@ -135,8 +135,6 @@ namespace onart {
                 size_t size;
                 /// @brief 유니폼 버퍼에 접근할 수 있는 셰이더 단계입니다. @ref ShaderStage 기본값 GRAPHICS_ALL
                 uint32_t accessibleStages = ShaderStage::GRAPHICS_ALL;
-                /// @brief Vulkan에서는 사용되지 않습니다.
-                uint32_t binding = 0;
                 /// @brief 동적 유니폼 버퍼의 항목 수입니다. 1을 주면 동적 유니폼 버퍼로 만들어지지 않습니다. 기본값 1
                 uint32_t count = 1;
             };
@@ -257,6 +255,8 @@ namespace onart {
                 VkShaderModule tessellationEvaluationShader = nullptr;
                 PipelineLayoutOptions shaderResources;
                 DepthStencilTesting depthStencil;
+                void* vsByteCode = nullptr;
+                size_t vsByteCodeSize = 0;
             };
             /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
             static void handle();

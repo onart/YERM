@@ -139,7 +139,6 @@ namespace onart {
         singleton = this;
 
         UniformBufferCreationOptions uopts;
-        uopts.binding = 11;
         uopts.size = 128;
 
         UniformBuffer* push = createUniformBuffer(INT32_MIN + 1, uopts);
@@ -602,7 +601,7 @@ namespace onart {
 
     GLMachine::pTexture GLMachine::createTextureFromImage(int32_t key, const char* fileName, const TextureCreationOptions& opts) {
         int x, y, nChannels;
-        uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 0);
+        uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 4);
         if (!pix) {
             LOGWITH("Failed to load image:", stbi_failure_reason());
             return pTexture();
@@ -620,7 +619,7 @@ namespace onart {
 
     GLMachine::pTexture GLMachine::createTextureFromImage(int32_t key, const void* mem, size_t size, const TextureCreationOptions& opts) {
         int x, y, nChannels;
-        uint8_t* pix = stbi_load_from_memory((const uint8_t*)mem, (int)size, &x, &y, &nChannels, 0);
+        uint8_t* pix = stbi_load_from_memory((const uint8_t*)mem, (int)size, &x, &y, &nChannels, 4);
         if (!pix) {
             LOGWITH("Failed to load image:", stbi_failure_reason());
             return pTexture();
@@ -753,7 +752,7 @@ namespace onart {
         TextureCreationOptions options = opts;
         singleton->loadThread.post([fileName, options]()->variant8 {
             int x, y, nChannels;
-            uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 0);
+            uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 4);
             ktx_error_code_e k2result;
             if (!pix) {
                 return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
@@ -822,7 +821,7 @@ namespace onart {
         TextureCreationOptions options = opts;
         singleton->loadThread.post([mem, size, options]()->variant8 {
             int x, y, nChannels;
-            uint8_t* pix = stbi_load_from_memory((const uint8_t*)mem, (int)size, &x, &y, &nChannels, 0);
+            uint8_t* pix = stbi_load_from_memory((const uint8_t*)mem, (int)size, &x, &y, &nChannels, 4);
             if (!pix) {
                 return new __asyncparam{ nullptr, ktx_error_code_e::KTX_FILE_READ_ERROR };
             }
@@ -989,7 +988,7 @@ namespace onart {
         glBufferData(GL_UNIFORM_BUFFER, opts.size, nullptr, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-        return singleton->uniformBuffers[key] = new UniformBuffer(opts.size, ubo, opts.binding);
+        return singleton->uniformBuffers[key] = new UniformBuffer(opts.size, ubo);
     }
 
     GLMachine::RenderTarget::~RenderTarget(){
@@ -1289,7 +1288,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        glBindBufferRange(GL_UNIFORM_BUFFER, ub->binding, ub->ubo, 0, ub->length);
+        glBindBufferRange(GL_UNIFORM_BUFFER, pos, ub->ubo, 0, ub->length);
     }
 
     void GLMachine::RenderPass::bind(uint32_t pos, const pTexture& tx) {
@@ -1601,7 +1600,7 @@ namespace onart {
             return;
         }
         if (pass >= 6) {
-            glBindBufferRange(GL_UNIFORM_BUFFER, ub->binding, ub->ubo, 0, ub->length);
+            glBindBufferRange(GL_UNIFORM_BUFFER, pos, ub->ubo, 0, ub->length);
         }
         else {
             facewise[pass].ub = ub;
@@ -1698,7 +1697,7 @@ namespace onart {
                  if(targetCubeD) glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, targetCubeD, 0);
                  auto& fwi = facewise[i];
                  if (fwi.ub) {
-                     glBindBufferRange(GL_UNIFORM_BUFFER, fwi.ub->binding, fwi.ub->ubo, 0, fwi.ub->length);
+                     glBindBufferRange(GL_UNIFORM_BUFFER, i, fwi.ub->ubo, 0, fwi.ub->length);
                  }
                  glDrawElements(GL_TRIANGLES, count, mesh->idxType, mesh->idxType == GL_UNSIGNED_INT ? (void*)((uint32_t*)0 + start) : (void*)((uint16_t*)0 + start));
              }
@@ -1717,7 +1716,7 @@ namespace onart {
                  if (targetCubeD) glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, targetCubeD, 0);
                  auto& fwi = facewise[i];
                  if (fwi.ub) {
-                     glBindBufferRange(GL_UNIFORM_BUFFER, fwi.ub->binding, fwi.ub->ubo, 0, fwi.ub->length);
+                     glBindBufferRange(GL_UNIFORM_BUFFER, i, fwi.ub->ubo, 0, fwi.ub->length);
                  }
                  glDrawArrays(GL_TRIANGLES, start, count);
              }
@@ -1747,7 +1746,7 @@ namespace onart {
                  if (targetCubeD) glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, targetCubeD, 0);
                  auto& fwi = facewise[i];
                  if (fwi.ub) {
-                     glBindBufferRange(GL_UNIFORM_BUFFER, fwi.ub->binding, fwi.ub->ubo, 0, fwi.ub->length);
+                     glBindBufferRange(GL_UNIFORM_BUFFER, i, fwi.ub->ubo, 0, fwi.ub->length);
                  }
                  glDrawElementsInstanced(GL_TRIANGLES, mesh->icount, mesh->idxType, mesh->idxType == GL_UNSIGNED_INT ? (void*)((uint32_t*)0 + start) : (void*)((uint16_t*)0 + start), instanceCount);
              }
@@ -1766,7 +1765,7 @@ namespace onart {
                  if (targetCubeD) glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, targetCubeD, 0);
                  auto& fwi = facewise[i];
                  if (fwi.ub) {
-                     glBindBufferRange(GL_UNIFORM_BUFFER, fwi.ub->binding, fwi.ub->ubo, 0, fwi.ub->length);
+                     glBindBufferRange(GL_UNIFORM_BUFFER, i, fwi.ub->ubo, 0, fwi.ub->length);
                  }
                  glDrawArraysInstanced(GL_TRIANGLES, start, count, instanceCount);
              }
@@ -1816,7 +1815,7 @@ namespace onart {
 
     void GLMachine::UniformBuffer::resize(uint32_t size) {    }
 
-    GLMachine::UniformBuffer::UniformBuffer(uint32_t length, unsigned ubo, uint32_t binding) :length(length), ubo(ubo), binding(binding) {}
+    GLMachine::UniformBuffer::UniformBuffer(uint32_t length, unsigned ubo) :length(length), ubo(ubo) {}
 
     GLMachine::UniformBuffer::~UniformBuffer(){
         glDeleteBuffers(1, &ubo);

@@ -134,8 +134,6 @@ namespace onart {
                 size_t size;
                 /// @brief 유니폼 버퍼에 접근할 수 있는 셰이더 단계입니다. @ref ShaderStage 기본값 GRAPHICS_ALL
                 uint32_t accessibleStages = ShaderStage::GRAPHICS_ALL;
-                /// @brief 바인딩 번호입니다. 기본값 0
-                uint32_t binding = 0;
                 /// @brief OpenGL 기반에서는 사용되지 않습니다.
                 uint32_t count = 1;
             };
@@ -259,6 +257,8 @@ namespace onart {
                 unsigned tessellationEvaluationShader = 0;
                 PipelineLayoutOptions shaderResources;
                 DepthStencilTesting depthStencil;
+                void* vsByteCode = nullptr;
+                size_t vsByteCodeSize = 0;
             };
 
             /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
@@ -693,11 +693,10 @@ namespace onart {
             /// @brief 128바이트 크기의 고정 유니폼버퍼를 업데이트합니다. 이것은 모든 파이프라인이 공유하며, 셰이더의 바인딩 11번으로 접근할 수 있습니다.
             static void updatePush(const void* input, uint32_t offset, uint32_t size);
         private:
-            UniformBuffer(uint32_t length, unsigned ubo, uint32_t binding);
+            UniformBuffer(uint32_t length, unsigned ubo);
             ~UniformBuffer();
             unsigned ubo;
             bool shouldSync = false;
-            uint32_t binding;
             uint32_t length;
     };
 

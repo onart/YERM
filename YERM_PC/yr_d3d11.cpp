@@ -15,25 +15,25 @@
 #pragma comment(lib, "dxgi.lib")
 
 namespace onart {
-	D3D11Machine* D3D11Machine::singleton = nullptr;
+    D3D11Machine* D3D11Machine::singleton = nullptr;
     uint64_t D3D11Machine::currentRenderPass = 0;
     const D3D11Machine::Mesh* D3D11Machine::RenderPass::bound = nullptr;
 
-	thread_local HRESULT D3D11Machine::reason = 0;
+    thread_local HRESULT D3D11Machine::reason = 0;
 
     constexpr uint64_t BC7_SCORE = 1LL << 53;
 
     static uint64_t assessAdapter(IDXGIAdapter*);
-    static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, D3D11Machine::ImageTextureFormatOptions& option);
-    static ktx_error_code_e tryTranscode(ktxTexture2* texture, ID3D11Device* device, uint32_t nChannels, bool srgb, bool hq);
-    static DXGI_FORMAT textureFormatFallback(ID3D11Device* device, uint32_t nChannels, bool srgb, bool hq, UINT flags);
+    static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, D3D11Machine::TextureFormatOptions option);
+    static ktx_error_code_e tryTranscode(ktxTexture2* texture, ID3D11Device* device, uint32_t nChannels, bool srgb, D3D11Machine::TextureFormatOptions hq);
+    static DXGI_FORMAT textureFormatFallback(ID3D11Device* device, uint32_t nChannels, bool srgb, D3D11Machine::TextureFormatOptions hq, UINT flags);
 
     D3D11Machine::D3D11Machine(Window* window) {
         if (singleton) {
             LOGWITH("Tried to create multiple D3D11Machine objects");
             return;
         }
-        
+
         constexpr D3D_FEATURE_LEVEL FEATURE_LEVELS[] = { D3D_FEATURE_LEVEL_11_0 };
         D3D_FEATURE_LEVEL lv = D3D_FEATURE_LEVEL::D3D_FEATURE_LEVEL_1_0_CORE;
 
@@ -43,7 +43,7 @@ namespace onart {
         IDXGIAdapter* currentAdapter{};
         uint64_t score = 0;
 
-        for (UINT i = 0; factory->EnumAdapters(i,&currentAdapter) != DXGI_ERROR_NOT_FOUND; i++) {
+        for (UINT i = 0; factory->EnumAdapters(i, &currentAdapter) != DXGI_ERROR_NOT_FOUND; i++) {
             uint64_t thisScore = assessAdapter(currentAdapter);
             if (thisScore > score) {
                 if (selectedAdapter) {
@@ -56,7 +56,7 @@ namespace onart {
                 currentAdapter->Release();
             }
         }
-        
+
         HRESULT result = D3D11CreateDevice(
             selectedAdapter,
             D3D_DRIVER_TYPE_HARDWARE,
@@ -69,7 +69,7 @@ namespace onart {
             &lv,
             &context
         );
-        
+
         if (score & BC7_SCORE) {
             canUseBC7 = true;
         }
@@ -121,7 +121,9 @@ namespace onart {
         samplerInfo.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
         device->CreateSamplerState(&samplerInfo, &nearestBorderSampler);
         singleton = this;
-        if (auto push = createUniformBuffer(1, 128, 0, INT32_MIN + 1)) {
+        UniformBufferCreationOptions opts;
+        opts.size = 128;
+        if (auto push = createUniformBuffer(INT32_MIN + 1, opts)) {
             context->VSSetConstantBuffers(13, 1, &push->ubo);
             context->PSSetConstantBuffers(13, 1, &push->ubo);
             context->GSSetConstantBuffers(13, 1, &push->ubo);
@@ -156,8 +158,8 @@ namespace onart {
                 return;
             }
             for (auto& renderPass : finalPasses) {
-                renderPass.second->setViewport((float)width, (float)height, 0, 0, true); // ÀÌÈÄ ¼öÁ¤ ÇÊ¿ä: ±âÁ¸°ú µ¿µîÇÑ ºñÁß
-                renderPass.second->setScissor(width, height, 0, 0, true); // ÀÌÈÄ ¼öÁ¤ ÇÊ¿ä: ±âÁ¸°ú µ¿µîÇÑ ºñÁß
+                renderPass.second->setViewport((float)width, (float)height, 0, 0, true); // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ê¿ï¿½: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+                renderPass.second->setScissor(width, height, 0, 0, true); // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½Ê¿ï¿½: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
             }
             return;
         }
@@ -167,7 +169,7 @@ namespace onart {
         IDXGIDevice* dxgiDevice{};
         IDXGIAdapter* dxgiAdapter{};
         IDXGIFactory* dxgiFactory{};
-        
+
         result = device->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDevice);
         if (!dxgiDevice) {
             _com_error err(result);
@@ -197,16 +199,16 @@ namespace onart {
         swapchainInfo.SampleDesc.Count = 1;
         swapchainInfo.SampleDesc.Quality = 0;
         swapchainInfo.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        swapchainInfo.BufferCount = 1; // TODO: Æ®¸®ÇÃ¹öÆÛ¸µ ÇÏ·Á¸é seqencial_flipÀ¸·Î ÇÏ°í ¿©±â 2·Î Á¶Àý, ½º·¹µå µû·Î
-        swapchainInfo.SwapEffect = DXGI_SWAP_EFFECT_DISCARD; // TODO: Æ®¸®ÇÃ¹öÆÛ¸µ ÇÏ·Á¸é seqencial_flipÀ¸·Î ÇÏ°í ±âÅ¸ Á¶Àý
+        swapchainInfo.BufferCount = 1; // TODO: Æ®ï¿½ï¿½ï¿½Ã¹ï¿½ï¿½Û¸ï¿½ ï¿½Ï·ï¿½ï¿½ï¿½ seqencial_flipï¿½ï¿½ï¿½ï¿½ ï¿½Ï°ï¿½ ï¿½ï¿½ï¿½ï¿½ 2ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½, ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+        swapchainInfo.SwapEffect = DXGI_SWAP_EFFECT_DISCARD; // TODO: Æ®ï¿½ï¿½ï¿½Ã¹ï¿½ï¿½Û¸ï¿½ ï¿½Ï·ï¿½ï¿½ï¿½ seqencial_flipï¿½ï¿½ï¿½ï¿½ ï¿½Ï°ï¿½ ï¿½ï¿½Å¸ ï¿½ï¿½ï¿½ï¿½
         swapchainInfo.OutputWindow = (HWND)window->getWin32Handle();
         //swapchainInfo.BufferDesc.ScanlineOrdering = 0;
 
-        // HW Á¶»ç ÇÊ¿ä
+        // HW ï¿½ï¿½ï¿½ï¿½ ï¿½Ê¿ï¿½
         swapchainInfo.BufferDesc.RefreshRate.Numerator = window->getMonitorRefreshRate();;
         swapchainInfo.BufferDesc.RefreshRate.Denominator = 1;
         swapchainInfo.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        
+
         result = dxgiFactory->CreateSwapChain(device, &swapchainInfo, &swapchain.handle);
         if (!swapchain.handle) {
             _com_error err(result);
@@ -217,7 +219,7 @@ namespace onart {
             dxgiDevice->Release();
             return;
         }
-        
+
         dxgiFactory->Release();
         dxgiAdapter->Release();
         dxgiDevice->Release();
@@ -251,7 +253,7 @@ namespace onart {
             dsTex->Release();
             return;
         }
-        
+
         dsTex->Release();
         swapchain.width = width;
         swapchain.height = height;
@@ -393,14 +395,6 @@ namespace onart {
             return it->second;
         }
         return {};
-    }    
-
-    D3D11Machine::RenderTarget* D3D11Machine::getRenderTarget(int32_t key) {
-        auto it = singleton->renderTargets.find(key);
-        if (it != singleton->renderTargets.end()) {
-            return it->second;
-        }
-        return {};
     }
 
     D3D11Machine::RenderPass* D3D11Machine::getRenderPass(int32_t key) {
@@ -419,13 +413,13 @@ namespace onart {
         return {};
     }
 
-    D3D11Machine::pMesh D3D11Machine::createNullMesh(size_t vcount, int32_t key) {
+    D3D11Machine::pMesh D3D11Machine::createNullMesh(int32_t key, size_t vcount) {
         pMesh ret = getMesh(key);
         if (ret) {
             return ret;
         }
         D3D11_BUFFER_DESC bufferInfo{};
-        bufferInfo.ByteWidth = vcount*4;
+        bufferInfo.ByteWidth = vcount * 4;
         bufferInfo.Usage = D3D11_USAGE_DEFAULT;
         bufferInfo.BindFlags = D3D11_BIND_VERTEX_BUFFER;
         bufferInfo.CPUAccessFlags = 0;
@@ -445,43 +439,43 @@ namespace onart {
         return singleton->meshes[key] = ret;
     }
 
-    D3D11Machine::pMesh D3D11Machine::createMesh(void* vdata, size_t vsize, size_t vcount, void* idata, size_t isize, size_t icount, int32_t key, bool stage) {
+    D3D11Machine::pMesh D3D11Machine::createMesh(int32_t key, const MeshCreationOptions& opts) {
         pMesh ret = getMesh(key);
         if (ret) {
             return ret;
         }
         D3D11_BUFFER_DESC bufferInfo{};
-        bufferInfo.ByteWidth = vsize * vcount;
-        bufferInfo.Usage = stage ? D3D11_USAGE_IMMUTABLE : D3D11_USAGE_DYNAMIC;
+        bufferInfo.ByteWidth = opts.singleVertexSize * opts.vertexCount;
+        bufferInfo.Usage = opts.fixed ? D3D11_USAGE_IMMUTABLE : D3D11_USAGE_DYNAMIC;
         bufferInfo.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-        bufferInfo.CPUAccessFlags = stage ? 0 : D3D11_CPU_ACCESS_WRITE;
+        bufferInfo.CPUAccessFlags = opts.fixed ? 0 : D3D11_CPU_ACCESS_WRITE;
 
         D3D11_SUBRESOURCE_DATA vertexData{};
-        vertexData.pSysMem = vdata;
+        vertexData.pSysMem = opts.vertices;
 
-        ID3D11Buffer* vb{}, *ib{};
+        ID3D11Buffer* vb{}, * ib{};
         DXGI_FORMAT iFormat{};
-        HRESULT result = singleton->device->CreateBuffer(&bufferInfo, stage ? &vertexData : nullptr, &vb);
+        HRESULT result = singleton->device->CreateBuffer(&bufferInfo, opts.vertices ? &vertexData : nullptr, &vb);
         if (result != S_OK) {
             LOGWITH("Failed to create vertex buffer:", result);
             reason = result;
             return {};
         }
 
-        if (idata) {
-            bufferInfo.ByteWidth = isize * icount;
+        if (opts.indices) {
+            bufferInfo.ByteWidth = opts.singleIndexSize * opts.indexCount;
             bufferInfo.BindFlags = D3D11_BIND_INDEX_BUFFER;
-            if (isize == 2) {
+            if (opts.singleIndexSize == 2) {
                 iFormat = DXGI_FORMAT_R16_UINT;
             }
-            else if (isize == 4) {
+            else if (opts.singleIndexSize == 4) {
                 iFormat = DXGI_FORMAT_R32_UINT;
             }
             else {
                 LOGWITH("Warning: index buffer size is not 2 nor 4");
             }
             D3D11_SUBRESOURCE_DATA indexData{};
-            indexData.pSysMem = idata;
+            indexData.pSysMem = opts.indices;
             HRESULT result = singleton->device->CreateBuffer(&bufferInfo, &indexData, &ib);
             if (result != S_OK) {
                 LOGWITH("Failed to create index buffer:", result);
@@ -491,8 +485,9 @@ namespace onart {
             }
         }
 
-        struct publicmesh :public Mesh { publicmesh(ID3D11Buffer* _1, ID3D11Buffer* _2, DXGI_FORMAT _3, size_t _4, size_t _5, UINT _6) :Mesh(_1,_2,_3,_4,_5,_6) {} };
-        ret = std::make_shared<publicmesh>(vb, ib, iFormat, vcount, icount, vsize);
+        struct publicmesh :public Mesh { publicmesh(ID3D11Buffer* _1, ID3D11Buffer* _2, DXGI_FORMAT _3, size_t _4, size_t _5, UINT _6) :Mesh(_1, _2, _3, _4, _5, _6) {} };
+        ret = std::make_shared<publicmesh>(vb, ib, iFormat, opts.vertexCount, opts.indexCount, opts.singleVertexSize);
+        if (key == INT32_MIN) return ret;
         return singleton->meshes[key] = ret;
     }
 
@@ -517,39 +512,39 @@ namespace onart {
         return {};
     }
 
-    ID3D11DeviceChild* D3D11Machine::createShader(void* code, size_t size, int32_t key, ShaderType type) {
+    ID3D11DeviceChild* D3D11Machine::createShader(int32_t key, const ShaderModuleCreationOptions& opts) {
         if (auto sh = getShader(key)) return sh;
         HRESULT result{};
         ID3D11DeviceChild* ret{};
-        switch (type)
+        switch (opts.stage)
         {
-        case onart::D3D11Machine::ShaderType::VERTEX:
-            result = singleton->device->CreateVertexShader(code, size, nullptr, (ID3D11VertexShader**)&ret);
+        case onart::D3D11Machine::ShaderStage::VERTEX:
+            result = singleton->device->CreateVertexShader(opts.source, opts.size, nullptr, (ID3D11VertexShader**)&ret);
             break;
-        case onart::D3D11Machine::ShaderType::FRAGMENT:
-            result = singleton->device->CreatePixelShader(code, size, nullptr, (ID3D11PixelShader**)&ret);
+        case onart::D3D11Machine::ShaderStage::FRAGMENT:
+            result = singleton->device->CreatePixelShader(opts.source, opts.size, nullptr, (ID3D11PixelShader**)&ret);
             break;
-        case onart::D3D11Machine::ShaderType::GEOMETRY:
-            result = singleton->device->CreateGeometryShader(code, size, nullptr, (ID3D11GeometryShader**)&ret);
+        case onart::D3D11Machine::ShaderStage::GEOMETRY:
+            result = singleton->device->CreateGeometryShader(opts.source, opts.size, nullptr, (ID3D11GeometryShader**)&ret);
             break;
-        case onart::D3D11Machine::ShaderType::TESS_CTRL:
-            result = singleton->device->CreateHullShader(code, size, nullptr, (ID3D11HullShader**)&ret);
+        case onart::D3D11Machine::ShaderStage::TESS_CTRL:
+            result = singleton->device->CreateHullShader(opts.source, opts.size, nullptr, (ID3D11HullShader**)&ret);
             break;
-        case onart::D3D11Machine::ShaderType::TESS_EVAL:
-            result = singleton->device->CreateDomainShader(code, size, nullptr, (ID3D11DomainShader**)&ret);
+        case onart::D3D11Machine::ShaderStage::TESS_EVAL:
+            result = singleton->device->CreateDomainShader(opts.source, opts.size, nullptr, (ID3D11DomainShader**)&ret);
             break;
         default:
             return {};
         }
         if (result != S_OK) {
-            LOGWITH("Failed to create shader instance:",result);
+            LOGWITH("Failed to create shader instance:", result);
             reason = result;
             return {};
         }
         return singleton->shaders[key] = ret;
     }
 
-    ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, D3D11Machine::ImageTextureFormatOptions& option) {
+    ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, D3D11Machine::TextureFormatOptions option) {
         ktxTexture2* texture;
         ktx_error_code_e k2result;
         ktxTextureCreateInfo texInfo{};
@@ -587,7 +582,7 @@ namespace onart {
             ktxTexture_Destroy(ktxTexture(texture));
             return nullptr;
         }
-        if (option == D3D11Machine::ImageTextureFormatOptions::IT_USE_HQCOMPRESS || option == D3D11Machine::ImageTextureFormatOptions::IT_USE_COMPRESS) {
+        if (option == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
             ktxBasisParams params{};
             params.compressionLevel = KTX_ETC1S_DEFAULT_COMPRESSION_LEVEL;
             params.uastc = KTX_TRUE;
@@ -597,16 +592,16 @@ namespace onart {
             k2result = ktxTexture2_CompressBasisEx(texture, &params);
             if (k2result != KTX_SUCCESS) {
                 LOGWITH("Compress failed:", k2result);
-                option = D3D11Machine::ImageTextureFormatOptions::IT_USE_ORIGINAL;
+                return nullptr;
             }
         }
         return texture;
     }
 
-    ktx_error_code_e tryTranscode(ktxTexture2* texture, ID3D11Device* device, uint32_t nChannels, bool srgb, bool hq) {
+    ktx_error_code_e tryTranscode(ktxTexture2* texture, ID3D11Device* device, uint32_t nChannels, bool srgb, D3D11Machine::TextureFormatOptions hq) {
         if (ktxTexture2_NeedsTranscoding(texture)) {
             ktx_transcode_fmt_e tf;
-            switch (textureFormatFallback(device, nChannels, srgb, hq, texture->isCubemap ? D3D11_FORMAT_SUPPORT_TEXTURECUBE : D3D11_FORMAT_SUPPORT_TEXTURE2D ))
+            switch (textureFormatFallback(device, nChannels, srgb, hq, texture->isCubemap ? D3D11_FORMAT_SUPPORT_TEXTURECUBE : D3D11_FORMAT_SUPPORT_TEXTURE2D))
             {
             case DXGI_FORMAT_BC7_UNORM_SRGB:
             case DXGI_FORMAT_BC7_UNORM:
@@ -635,122 +630,150 @@ namespace onart {
         return KTX_SUCCESS;
     }
 
-    D3D11Machine::pTexture D3D11Machine::getTexture(int32_t key, bool lock) {
-        if (lock) {
-            std::unique_lock<std::mutex> _(singleton->textureGuard);
-            auto it = singleton->textures.find(key);
-            if (it != singleton->textures.end()) return it->second;
-            else return pTexture();
-        }
-        else {
-            auto it = singleton->textures.find(key);
-            if (it != singleton->textures.end()) return it->second;
-            else return pTexture();
-        }
+    D3D11Machine::pTexture D3D11Machine::getTexture(int32_t key) {
+        std::unique_lock<std::mutex> _(singleton->textureGuard);
+        auto it = singleton->textures.find(key);
+        if (it != singleton->textures.end()) return it->second;
+        else return pTexture();
     }
 
-    void D3D11Machine::asyncCreateTexture(const uint8_t* mem, size_t size, uint32_t nChannels, std::function<void(variant8)> handler, int32_t key, bool srgb, bool hq, bool linearSampler) {
+    void D3D11Machine::asyncCreateTexture(int32_t key, const uint8_t* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts) {
         if (key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
-        bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([mem, size, key, nChannels, handler, srgb, hq, already, linearSampler]() {
-            if (!already) {
-                pTexture ret = singleton->createTexture(mem, size, nChannels, INT32_MIN, srgb, hq, linearSampler);
-                if (!ret) {
-                    variant8 _k = (uint32_t)key | ((uint64_t)D3D11Machine::reason << 32);
-                    return _k;
-                }
-                singleton->textureGuard.lock();
-                singleton->textures[key] = std::move(ret);
-                singleton->textureGuard.unlock();
+        if (getTexture(key)) {
+            variant8 _k;
+            _k.bytedata2[0] = key;
+            handler(_k);
+            return;
+        }
+        TextureCreationOptions options = opts;
+        singleton->loadThread.post([mem, size, key, options]() {
+            pTexture ret = singleton->createTexture(INT32_MIN, mem, size, options);
+            if (!ret) {
+                variant8 _k;
+                _k.bytedata2[0] = key;
+                _k.bytedata2[1] = D3D11Machine::reason;
+                return _k;
             }
-            return variant8((uint64_t)(uint32_t)key);
+            singleton->textureGuard.lock();
+            singleton->textures[key] = std::move(ret);
+            singleton->textureGuard.unlock();
+            variant8 _k;
+            _k.bytedata2[0] = key;
+            return _k;
             }, handler, vkm_strand::GENERAL);
     }
 
-    void D3D11Machine::asyncCreateTextureFromImage(const char* fileName, int32_t key, std::function<void(variant8)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler) {
+    void D3D11Machine::asyncCreateTextureFromImage(int32_t key, const char* fileName, std::function<void(variant8)> handler, const TextureCreationOptions& opts) {
         if (key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
-        bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([already, fileName, key, handler, srgb, option, linearSampler]() {
-            if (!already) {
-                pTexture ret = singleton->createTextureFromImage(fileName, INT32_MIN, srgb, option, linearSampler);
-                if (!ret) {
-                    variant8 _k = (uint32_t)key | ((uint64_t)D3D11Machine::reason << 32);
-                    return _k;
-                }
-                singleton->textureGuard.lock();
-                singleton->textures[key] = std::move(ret);
-                singleton->textureGuard.unlock();
+        if (getTexture(key)) {
+            variant8 _k;
+            _k.bytedata2[0] = key;
+            handler(_k);
+            return;
+        }
+        TextureCreationOptions options;
+        singleton->loadThread.post([fileName, key, options]() {
+            pTexture ret = singleton->createTextureFromImage(INT32_MIN, fileName, options);
+            if (!ret) {
+                variant8 _k;
+                _k.bytedata2[0] = key;
+                _k.bytedata2[1] = D3D11Machine::reason;
+                return _k;
             }
-            return variant8((uint64_t)(uint32_t)key);
+            singleton->textureGuard.lock();
+            singleton->textures[key] = std::move(ret);
+            singleton->textureGuard.unlock();
+            variant8 _k;
+            _k.bytedata2[0] = key;
+            return _k;
             }, handler, vkm_strand::GENERAL);
     }
 
-    void D3D11Machine::asyncCreateTextureFromImage(const uint8_t* mem, size_t size, int32_t key, std::function<void(variant8)> handler, bool srgb, ImageTextureFormatOptions option, bool linearSampler) {
+    void D3D11Machine::asyncCreateTextureFromImage(int32_t key, const void* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts) {
         if (key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
-        bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([already, mem, size, key, handler, srgb, option, linearSampler]() {
-            if (!already) {
-                pTexture ret = singleton->createTextureFromImage(mem, size, INT32_MIN, srgb, option, linearSampler);
-                if (!ret) {
-                    variant8 _k = (uint32_t)key | ((uint64_t)D3D11Machine::reason << 32);
-                    return _k;
-                }
-                singleton->textureGuard.lock();
-                singleton->textures[key] = std::move(ret);
-                singleton->textureGuard.unlock();
+        if (getTexture(key)) {
+            variant8 _k;
+            _k.bytedata2[0] = key;
+            handler(_k);
+            return;
+        }
+        TextureCreationOptions options = opts;
+        singleton->loadThread.post([mem, size, key, options]() {
+            pTexture ret = singleton->createTextureFromImage(INT32_MIN, mem, size, options);
+            if (!ret) {
+                variant8 _k;
+                _k.bytedata2[0] = key;
+                _k.bytedata2[1] = D3D11Machine::reason;
+                return _k;
             }
-            return variant8((uint64_t)(uint32_t)key);
+            singleton->textureGuard.lock();
+            singleton->textures[key] = std::move(ret);
+            singleton->textureGuard.unlock();
+            variant8 _k;
+            _k.bytedata2[0] = key;
+            return _k;
             }, handler, vkm_strand::GENERAL);
     }
 
-    void D3D11Machine::asyncCreateTexture(const char* fileName, int32_t key, uint32_t nChannels, std::function<void(variant8)> handler, bool srgb, bool hq, bool linearSampler) {
+    void D3D11Machine::asyncCreateTexture(int32_t key, const char* fileName, std::function<void(variant8)> handler, const TextureCreationOptions& opts) {
         if (key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
         }
-        bool already = (bool)getTexture(key, true);
-        singleton->loadThread.post([fileName, key, nChannels, handler, srgb, hq, already, linearSampler]() {
-            if (!already) {
-                pTexture ret = singleton->createTexture(fileName, INT32_MIN, nChannels, srgb, hq, linearSampler);
-                if (!ret) {
-                    variant8 _k = (uint32_t)key | ((uint64_t)D3D11Machine::reason << 32);
-                    return _k;
-                }
-                singleton->textureGuard.lock();
-                singleton->textures[key] = std::move(ret);
-                singleton->textureGuard.unlock();
+        if (getTexture(key)) {
+            variant8 _k;
+            _k.bytedata2[0] = key;
+            handler(_k);
+            return;
+        }
+        TextureCreationOptions options = opts;
+        singleton->loadThread.post([fileName, key, options]() {
+            pTexture ret = singleton->createTexture(INT32_MIN, fileName, options);
+            if (!ret) {
+                variant8 _k;
+                _k.bytedata2[0] = key;
+                _k.bytedata2[1] = D3D11Machine::reason;
+                return _k;
             }
-            return variant8((uint64_t)(uint32_t)key);
+            singleton->textureGuard.lock();
+            singleton->textures[key] = std::move(ret);
+            singleton->textureGuard.unlock();
+            variant8 _k;
+            _k.bytedata2[0] = key;
+            return _k;
             }, handler, vkm_strand::GENERAL);
     }
 
-    D3D11Machine::pTexture D3D11Machine::createTextureFromImage(const uint8_t* mem, size_t size, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler) {
+    D3D11Machine::pTexture D3D11Machine::createTextureFromImage(int32_t key, const void* mem, size_t size, const TextureCreationOptions& opts) {
         if (auto ret = getTexture(key)) { return ret; }
         int x, y, nChannels;
-        uint8_t* pix = stbi_load_from_memory(mem, size, &x, &y, &nChannels, 4);
+        uint8_t* pix = stbi_load_from_memory((uint8_t*)mem, size, &x, &y, &nChannels, 4);
         if (!pix) {
             LOGWITH("Failed to load image:", stbi_failure_reason());
             return pTexture();
         }
-        ktxTexture2* texture = createKTX2FromImage(pix, x, y, 4, srgb, option);
+        TextureCreationOptions options = opts;
+        options.nChannels = nChannels;
+        ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, opts.srgb, opts.opts);
         stbi_image_free(pix);
         if (!texture) {
             LOGHERE;
             return pTexture();
         }
-        return singleton->createTexture(texture, key, 4, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS, linearSampler);
+
+        return singleton->createTexture(texture, key, options);
     }
 
-    D3D11Machine::pTexture D3D11Machine::createTextureFromImage(const char* fileName, int32_t key, bool srgb, ImageTextureFormatOptions option, bool linearSampler) {
+    D3D11Machine::pTexture D3D11Machine::createTextureFromImage(int32_t key, const char* fileName, const TextureCreationOptions& opts) {
         if (auto ret = getTexture(key)) { return ret; }
         int x, y, nChannels;
         uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 4);
@@ -758,18 +781,20 @@ namespace onart {
             LOGWITH("Failed to load image:", stbi_failure_reason());
             return pTexture();
         }
-        ktxTexture2* texture = createKTX2FromImage(pix, x, y, 4, srgb, option);
+        TextureCreationOptions options = opts;
+        options.nChannels = nChannels;
+        ktxTexture2* texture = createKTX2FromImage(pix, x, y, nChannels, opts.srgb, opts.opts);
         stbi_image_free(pix);
         if (!texture) {
             LOGHERE;
             return pTexture();
         }
-        return singleton->createTexture(texture, key, 4, srgb, option != ImageTextureFormatOptions::IT_USE_COMPRESS, linearSampler);
+        return singleton->createTexture(texture, key, options);
     }
 
-    D3D11Machine::pTexture D3D11Machine::createTexture(const char* fileName, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler) {
+    D3D11Machine::pTexture D3D11Machine::createTexture(int32_t key, const char* fileName, const TextureCreationOptions& opts) {
         if (auto ret = getTexture(key)) { return ret; }
-        if (nChannels > 4 || nChannels == 0) {
+        if (opts.nChannels > 4 || opts.nChannels == 0) {
             LOGWITH("Invalid channel count. nChannels must be 1~4");
             return pTexture();
         }
@@ -781,12 +806,12 @@ namespace onart {
             LOGWITH("Failed to load ktx texture:", k2result);
             return pTexture();
         }
-        return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler);
+        return singleton->createTexture(texture, key, opts);
     }
 
-    D3D11Machine::pTexture D3D11Machine::createTexture(const uint8_t* mem, size_t size, uint32_t nChannels, int32_t key, bool srgb, bool hq, bool linearSampler) {
+    D3D11Machine::pTexture D3D11Machine::createTexture(int32_t key, const uint8_t* mem, size_t size, const TextureCreationOptions& opts) {
         if (auto ret = getTexture(key)) { return ret; }
-        if (nChannels > 4 || nChannels == 0) {
+        if (opts.nChannels > 4 || opts.nChannels == 0) {
             LOGWITH("Invalid channel count. nChannels must be 1~4");
             return pTexture();
         }
@@ -797,13 +822,13 @@ namespace onart {
             LOGWITH("Failed to load ktx texture:", k2result);
             return pTexture();
         }
-        return singleton->createTexture(texture, key, nChannels, srgb, hq, linearSampler);
+        return singleton->createTexture(texture, key, opts);
     }
 
-    D3D11Machine::pTexture D3D11Machine::createTexture(void* ktxObj, int32_t key, uint32_t nChannels, bool srgb, bool hq, bool linearSampler) {
+    D3D11Machine::pTexture D3D11Machine::createTexture(void* ktxObj, int32_t key, const TextureCreationOptions& opts) {
         ktxTexture2* texture = reinterpret_cast<ktxTexture2*>(ktxObj);
         if (texture->numLevels == 0) return pTexture();
-        ktx_error_code_e k2result = tryTranscode(texture, device, nChannels, srgb, hq);
+        ktx_error_code_e k2result = tryTranscode(texture, device, opts.nChannels, opts.srgb, opts.opts);
         if (k2result != KTX_SUCCESS) {
             LOGWITH("Failed to transcode ktx texture:", k2result);
             ktxTexture_Destroy(ktxTexture(texture));
@@ -815,7 +840,7 @@ namespace onart {
         info.Height = texture->baseHeight;
         info.MipLevels = texture->numLevels;
         info.ArraySize = texture->numFaces * texture->numLayers;
-        info.Format = textureFormatFallback(device, nChannels, srgb, hq, texture->isCubemap ? D3D11_FORMAT_SUPPORT_TEXTURECUBE : D3D11_FORMAT_SUPPORT_TEXTURE2D);
+        info.Format = textureFormatFallback(device, opts.nChannels, opts.srgb, opts.opts, texture->isCubemap ? D3D11_FORMAT_SUPPORT_TEXTURECUBE : D3D11_FORMAT_SUPPORT_TEXTURE2D);
         info.Usage = D3D11_USAGE_IMMUTABLE;
         info.BindFlags = D3D11_BIND_SHADER_RESOURCE;
         info.SampleDesc.Count = 1;
@@ -840,7 +865,7 @@ namespace onart {
 
         D3D11_SHADER_RESOURCE_VIEW_DESC descInfo{};
         descInfo.Format = info.Format;
-        descInfo.ViewDimension = texture->isCubemap ? D3D11_SRV_DIMENSION_TEXTURECUBE : D3D11_SRV_DIMENSION_TEXTURE2D;
+        descInfo.ViewDimension = (info.MiscFlags == D3D11_RESOURCE_MISC_FLAG::D3D11_RESOURCE_MISC_TEXTURECUBE) ? D3D11_SRV_DIMENSION_TEXTURECUBE : D3D11_SRV_DIMENSION_TEXTURE2D;
         descInfo.Texture2D.MipLevels = info.MipLevels;
         result = singleton->device->CreateShaderResourceView(newTex, &descInfo, &srv);
         if (result != S_OK) {
@@ -851,11 +876,11 @@ namespace onart {
         }
         
         struct txtr :public Texture { inline txtr(ID3D11Resource* _1, ID3D11ShaderResourceView* _2, uint16_t _3, uint16_t _4, bool _5, bool _6) :Texture(_1, _2, _3, _4, _5, _6) {} };
-        if (key == INT32_MIN) return std::make_shared<txtr>(newTex, srv, width, height, texture->isCubemap, linearSampler);
-        return textures[key] = std::make_shared<txtr>(newTex, srv, width, height, texture->isCubemap, linearSampler);
+        if (key == INT32_MIN) return std::make_shared<txtr>(newTex, srv, width, height, texture->isCubemap, opts.linearSampled);
+        return textures[key] = std::make_shared<txtr>(newTex, srv, width, height, texture->isCubemap, opts.linearSampled);
     }
 
-    D3D11Machine::pStreamTexture D3D11Machine::createStreamTexture(uint32_t width, uint32_t height, int32_t key, bool linearSampler) {
+    D3D11Machine::pStreamTexture D3D11Machine::createStreamTexture(int32_t key, uint32_t width, uint32_t height, bool linearSampler) {
         D3D11_TEXTURE2D_DESC info{};
         info.Width = width;
         info.Height = height;
@@ -893,13 +918,13 @@ namespace onart {
         if (tex) { tex->Release(); }
     }
 
-    D3D11Machine::RenderPass2Screen* D3D11Machine::createRenderPass2Screen(RenderTargetType* targets, uint32_t subpassCount, int32_t key, bool useDepth, bool* useDepthAsInput) {
+    D3D11Machine::RenderPass2Screen* D3D11Machine::createRenderPass2Screen(int32_t key, const RenderPassCreationOptions& opts) {
         RenderPass2Screen* r = getRenderPass2Screen(key);
         if (r) return r;
-        if (subpassCount == 0) return nullptr;
-        std::vector<RenderTarget*> targs(subpassCount);
-        for (uint32_t i = 0; i < subpassCount - 1; i++) {
-            targs[i] = createRenderTarget2D(singleton->swapchain.width, singleton->swapchain.height, INT32_MIN, targets[i], RenderTargetInputOption::SAMPLED_LINEAR, useDepthAsInput ? useDepthAsInput[i] : false);
+        if (opts.subpassCount == 0) return nullptr;
+        std::vector<RenderTarget*> targs(opts.subpassCount);
+        for (uint32_t i = 0; i < opts.subpassCount - 1; i++) {
+            targs[i] = createRenderTarget2D(singleton->swapchain.width, singleton->swapchain.height, opts.targets ? opts.targets[i] : RenderTargetType::RTT_COLOR1, opts.depthInput ? opts.depthInput[i] : false, false, false);
             if (!targs[i]) {
                 LOGHERE;
                 for (RenderTarget* t : targs) delete t;
@@ -907,7 +932,7 @@ namespace onart {
             }
         }
 
-        RenderPass* ret = new RenderPass(targs.data(), subpassCount);
+        RenderPass* ret = new RenderPass(opts.subpassCount);
         ret->targets = std::move(targs);
         ret->setViewport((float)singleton->swapchain.width, (float)singleton->swapchain.height, 0.0f, 0.0f);
         ret->setScissor(singleton->swapchain.width, singleton->swapchain.height, 0, 0);
@@ -915,24 +940,30 @@ namespace onart {
         return singleton->finalPasses[key] = ret;
     }
 
-    D3D11Machine::RenderPass* D3D11Machine::createRenderPass(RenderTarget** targets, uint32_t subpassCount, int32_t key) {
+    D3D11Machine::RenderPass* D3D11Machine::createRenderPass(int32_t key, const RenderPassCreationOptions& opts) {
         if (RenderPass* r = getRenderPass(key)) return r;
-        if (subpassCount == 0) return nullptr;
+        if (opts.subpassCount == 0) return nullptr;
 
-        if (targets[subpassCount - 1] == nullptr) {
-            LOGWITH("Inavailable targets.");
-            return {};
+        std::vector<RenderTarget*> targs(opts.subpassCount);
+
+        for (uint32_t i = 0; i < opts.subpassCount; i++) {
+            targs[i] = createRenderTarget2D(opts.width, opts.height, opts.targets ? opts.targets[i] : RenderTargetType::RTT_COLOR1, opts.depthInput ? opts.depthInput[i] : false, i == opts.subpassCount - 1, opts.linearSampled);
+            if (!targs[i]) {
+                LOGHERE;
+                for (RenderTarget* t : targs) { if (t) delete t; }
+                return {};
+            }
         }
 
-        RenderPass* ret = new RenderPass(targets, subpassCount);
-        std::memcpy(ret->targets.data(), targets, sizeof(RenderTarget*) * subpassCount);
-        ret->setViewport((float)targets[0]->width, (float)targets[0]->height, 0.0f, 0.0f);
-        ret->setScissor(targets[0]->width, targets[0]->height, 0, 0);
+        RenderPass* ret = new RenderPass(opts.subpassCount);
+        ret->targets = std::move(targs);
+        ret->setViewport((float)opts.width, (float)opts.height, 0.0f, 0.0f);
+        ret->setScissor(opts.width, opts.height, 0, 0);
         if (key == INT32_MIN) return ret;
         return singleton->renderPasses[key] = ret;
     }
 
-    D3D11Machine::RenderPass2Cube* D3D11Machine::createRenderPass2Cube(uint32_t width, uint32_t height, int32_t key, bool useColor, bool useDepth) {
+    D3D11Machine::RenderPass2Cube* D3D11Machine::createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth) {
         if (RenderPass2Cube* r = getRenderPass2Cube(key)) return r;
         if (!useColor && !useDepth) {
             LOGWITH("Either useColor or useDepth must be true");
@@ -963,7 +994,7 @@ namespace onart {
             D3D11_RENDER_TARGET_VIEW_DESC targetInfo{};
             targetInfo.Format = textureInfo.Format;
             targetInfo.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
-            targetInfo.Texture2DArray.ArraySize = 6; // TODO: ±×³É GS ¾²°Ô ¸¸µé°Å³ª / RTV¶û DSV 6°³·Î ºÐ¸®ÇÏ°Å³ª
+            targetInfo.Texture2DArray.ArraySize = 6; // TODO: ï¿½×³ï¿½ GS ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Å³ï¿½ / RTVï¿½ï¿½ DSV 6ï¿½ï¿½ï¿½ï¿½ ï¿½Ð¸ï¿½ï¿½Ï°Å³ï¿½
             targetInfo.Texture2DArray.FirstArraySlice = 0;
             targetInfo.Texture2DArray.MipSlice = 0;
             result = singleton->device->CreateRenderTargetView(colorMap, &targetInfo, &colorView);
@@ -1085,39 +1116,59 @@ namespace onart {
             return;
         }
         singleton->context->VSSetShaderResources(pos, 1, &tx->dset);
-        singleton->context->PSSetShaderResources(pos, 1, &tx->dset); // ÀÓ½Ã
+        singleton->context->PSSetShaderResources(pos, 1, &tx->dset); // ï¿½Ó½ï¿½
         singleton->context->PSSetSamplers(pos, 1, tx->linearSampled ? &singleton->linearBorderSampler : &singleton->nearestBorderSampler);
     }
 
-    void D3D11Machine::RenderPass2Cube::bind(uint32_t pos, RenderTarget* target, uint32_t index) {
-        if (!recording) {
-            LOGWITH("Invalid call: render pass not begun");
-            return;
+    void D3D11Machine::RenderPass2Cube::bind(uint32_t pos, RenderPass2Cube* prev) {
+        if (recording) {
+            singleton->context->VSSetShaderResources(pos, 1, &prev->srv);
+            singleton->context->PSSetShaderResources(pos, 1, &prev->srv);
+            ID3D11SamplerState* samp[1]{};
+            for (int i = 0; i < 1; i++) {
+                samp[i] = singleton->linearBorderSampler;
+            }
+            singleton->context->VSSetSamplers(pos, 1, samp);
+            singleton->context->PSSetSamplers(pos, 1, samp);
         }
-        ID3D11ShaderResourceView* srv{};
-        switch (index)
-        {
-        case 0:
-            srv = target->color1->srv;
-            break;
-        case 1:
-            srv = target->color2->srv;
-            break;
-        case 2:
-            srv = target->color3->srv;
-            break;
-        case 3:
-            srv = target->ds->srv;
-            break;
-        default:
-            break;
+        else {
+            LOGWITH("No subpass is running");
         }
-        if (!srv) {
-            LOGWITH("Warning: requested texture is empty");
+    }
+
+    void D3D11Machine::RenderPass2Cube::bind(uint32_t pos, RenderPass* prev) {
+        if (recording) {
+            if (auto targ = prev->targets.back()) {
+                ID3D11ShaderResourceView* srv[4]{};
+                int nim = 0;
+                if (targ->color1) {
+                    srv[nim++] = targ->color1->srv;
+                    if (targ->color2) {
+                        srv[nim++] = targ->color2->srv;
+                        if (targ->color3) {
+                            srv[nim++] = targ->color3->srv;
+                        }
+                    }
+                }
+                if (targ->ds && targ->ds->srv) {
+                    srv[nim++] = targ->ds->srv;
+                }
+                singleton->context->VSSetShaderResources(pos, nim, srv);
+                singleton->context->PSSetShaderResources(pos, nim, srv);
+                ID3D11SamplerState* samp[4]{};
+                for (int i = 0; i < 4; i++) {
+                    samp[i] = targ->linearSampled ? singleton->linearBorderSampler : singleton->nearestBorderSampler;
+                }
+                singleton->context->VSSetSamplers(pos, nim, samp);
+                singleton->context->PSSetSamplers(pos, nim, samp);
+            }
+            else {
+                LOGWITH("Can\'t bind renderpas2screen");
+            }
         }
-        singleton->context->VSSetShaderResources(pos, 1, &srv);
-        singleton->context->PSSetShaderResources(pos, 1, &srv); // ÀÓ½Ã
-        singleton->context->PSSetSamplers(pos, 1, target->linearSampled ? &singleton->linearBorderSampler : &singleton->nearestBorderSampler);
+        else {
+            LOGWITH("No subpass is running");
+        }
     }
 
     void D3D11Machine::RenderPass2Cube::bind(uint32_t pos, const pStreamTexture& tx) {
@@ -1126,7 +1177,7 @@ namespace onart {
             return;
         }
         singleton->context->VSSetShaderResources(pos, 1, &tx->dset);
-        singleton->context->PSSetShaderResources(pos, 1, &tx->dset); // ÀÓ½Ã
+        singleton->context->PSSetShaderResources(pos, 1, &tx->dset); // ï¿½Ó½ï¿½
         singleton->context->PSSetSamplers(pos, 1, tx->linearSampled ? &singleton->linearBorderSampler : &singleton->nearestBorderSampler);
     }
 
@@ -1140,7 +1191,7 @@ namespace onart {
             singleton->context->DSSetShader(pipeline->tes, nullptr, 0);
             singleton->context->GSSetShader(pipeline->gs, nullptr, 0);
             singleton->context->PSSetShader(pipeline->fs, nullptr, 0);
-            singleton->context->OMSetDepthStencilState(pipeline->dsState, 0);
+            singleton->context->OMSetDepthStencilState(pipeline->dsState, pipeline->stencilRef);
             singleton->context->OMSetBlendState(singleton->basicBlend, nullptr, 0xffffffff);
         }
     }
@@ -1257,15 +1308,10 @@ namespace onart {
         usePipeline(pipeline);
         singleton->context->RSSetViewports(1, &viewport);
         singleton->context->RSSetScissorRects(1, &scissor);
-        // TODO: VS ±â¹Ý ·»´õ¸µÀ» À§ÇÑ Å¸°Ù ¼¼ÆÃ
+        // TODO: VS ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ Å¸ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
     }
 
-    D3D11Machine::RenderTarget* D3D11Machine::createRenderTarget2D(int width, int height, int32_t key, RenderTargetType type, RenderTargetInputOption sampled, bool useDepthInput, bool useStencil, bool mmap) {
-        auto it = singleton->renderTargets.find(key);
-        if (it != singleton->renderTargets.end()) {
-            return it->second;
-        }
-
+    D3D11Machine::RenderTarget* D3D11Machine::createRenderTarget2D(int width, int height, RenderTargetType type, bool useDepthInput, bool sampled, bool linear) {
         D3D11_TEXTURE2D_DESC textureInfo{};
         textureInfo.Width = width;
         textureInfo.Height = height;
@@ -1284,7 +1330,7 @@ namespace onart {
         targetInfo.ViewDimension = D3D11_RTV_DIMENSION::D3D11_RTV_DIMENSION_TEXTURE2D;
         targetInfo.Texture2D.MipSlice = 0;
 
-        ImageSet* color1{}, *color2{}, *color3{}, *ds{};
+        ImageSet* color1{}, * color2{}, * color3{}, * ds{};
         ID3D11RenderTargetView* rtv1{}, * rtv2{}, * rtv3{};
         ID3D11DepthStencilView* rtvds{};
 
@@ -1420,7 +1466,7 @@ namespace onart {
                     return {};
                 }
             }
-            
+
             D3D11_DEPTH_STENCIL_VIEW_DESC dsInfo{};
             dsInfo.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
             dsInfo.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
@@ -1439,10 +1485,9 @@ namespace onart {
                 return {};
             }
         }
-        ImageSet* params[] = {color1, color2, color3, ds};
-        ID3D11RenderTargetView* params2[] = {rtv1, rtv2, rtv3};
-        if (key == INT32_MIN) return new RenderTarget(type, width, height, params, params2, mmap, rtvds, sampled == RenderTargetInputOption::SAMPLED_LINEAR);
-        return singleton->renderTargets[key] = new RenderTarget(type, width, height, params, params2, mmap, rtvds, sampled == RenderTargetInputOption::SAMPLED_LINEAR);
+        ImageSet* params[] = { color1, color2, color3, ds };
+        ID3D11RenderTargetView* params2[] = { rtv1, rtv2, rtv3 };
+        return new RenderTarget(type, width, height, params, params2, rtvds, linear);
     }
 
     template<class T>
@@ -1456,62 +1501,80 @@ namespace onart {
         return nullptr;
     }
 
-    D3D11Machine::Pipeline* D3D11Machine::createPipeline(PipelineInputVertexSpec* vinfo, uint32_t vsize, uint32_t vattr, PipelineInputVertexSpec* iinfo, uint32_t isize, uint32_t iattr, void* vsBytecode, uint32_t codeSize, ID3D11DeviceChild* vs, ID3D11DeviceChild* fs, int32_t name, bool depth, vec4 clearColor, UINT stencilRef, D3D11_DEPTH_STENCILOP_DESC* front, D3D11_DEPTH_STENCILOP_DESC* back, ID3D11DeviceChild* tc, ID3D11DeviceChild* te, ID3D11DeviceChild* gs) {
-        if (auto ret = getPipeline(name)) { return ret; }
-        std::vector<PipelineInputVertexSpec> inputLayoutInfo(vattr + iattr);
-        std::memcpy(inputLayoutInfo.data(), vinfo, vattr * sizeof(PipelineInputVertexSpec));
+    D3D11Machine::Pipeline* D3D11Machine::createPipeline(int32_t key, const PipelineCreationOptions& opts) {
+        if (auto ret = getPipeline(key)) { return ret; }
+        std::vector<PipelineInputVertexSpec> inputLayoutInfo(opts.vertexAttributeCount + opts.instanceAttributeCount);
+        std::memcpy(inputLayoutInfo.data(), opts.vertexSpec, opts.vertexAttributeCount * sizeof(PipelineInputVertexSpec));
         ID3D11InputLayout* layout{};
-        HRESULT result = singleton->device->CreateInputLayout(inputLayoutInfo.data(), vattr + iattr, vsBytecode, codeSize, &layout);
-        if (result != S_OK) { 
-            LOGWITH("Failed to create vertex input layout:", result);
-            return {};
+        HRESULT result{};
+        if (opts.vsByteCodeSize == 0) {
+            Pipeline* pp = reinterpret_cast<Pipeline*>(opts.vsByteCode);
+            if (!pp) {
+                LOGWITH("Failed to get vertex input layout");
+                return {};
+            }
+            layout = pp->layout;
+            layout->AddRef();
         }
-        ID3D11VertexShader* vert = downcastShader<ID3D11VertexShader>(vs);
-        ID3D11PixelShader* frag = downcastShader<ID3D11PixelShader>(fs);
+        else {
+            result = singleton->device->CreateInputLayout(inputLayoutInfo.data(), opts.vertexAttributeCount + opts.instanceAttributeCount, opts.vsByteCode, opts.vsByteCodeSize, &layout);
+            if (result != S_OK) {
+                LOGWITH("Failed to create vertex input layout:", result);
+                return {};
+            }
+        }
+        ID3D11VertexShader* vert = downcastShader<ID3D11VertexShader>(opts.vertexShader);
+        ID3D11PixelShader* frag = downcastShader<ID3D11PixelShader>(opts.fragmentShader);
         if (!vert || !frag) {
             LOGWITH(vert, frag);
             LOGWITH("Vertex shader and Pixel shader must be provided");
             return {};
         }
 
-        ID3D11HullShader* tctrl = downcastShader<ID3D11HullShader>(tc);
-        if (tc && !tctrl) {
+        ID3D11HullShader* tctrl = downcastShader<ID3D11HullShader>(opts.tessellationControlShader);
+        if (opts.tessellationControlShader && !tctrl) {
             LOGWITH("Given hull shader is invalid");
             return {};
         }
-        ID3D11DomainShader* teval = downcastShader<ID3D11DomainShader>(te);
-        if (te && !teval) {
+        ID3D11DomainShader* teval = downcastShader<ID3D11DomainShader>(opts.tessellationEvaluationShader);
+        if (opts.tessellationEvaluationShader && !teval) {
             LOGWITH("Given domain shader is invalid");
             return {};
         }
-        ID3D11GeometryShader* geom = downcastShader<ID3D11GeometryShader>(gs);
-        if (gs && !geom) {
+        ID3D11GeometryShader* geom = downcastShader<ID3D11GeometryShader>(opts.geometryShader);
+        if (opts.geometryShader && !geom) {
             LOGWITH("Given geometry shader is invalid");
             return {};
         }
         ID3D11DepthStencilState* dsState = nullptr;
         D3D11_DEPTH_STENCIL_DESC dsStateInfo{};
-        if (depth) {
+        if (opts.depthStencil.depthTest) {
             dsStateInfo.DepthEnable = true;
-            dsStateInfo.DepthFunc = D3D11_COMPARISON_LESS;
+            dsStateInfo.DepthFunc = (D3D11_COMPARISON_FUNC)opts.depthStencil.comparison;
         }
-        dsStateInfo.StencilEnable = (back || front);
+        dsStateInfo.StencilEnable = opts.depthStencil.stencilTest;
         dsStateInfo.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-        dsStateInfo.StencilReadMask = 0xff;
-        dsStateInfo.StencilReadMask = 0xff;
-        if (back) dsStateInfo.BackFace = *back;
-        if (front)dsStateInfo.FrontFace = *front;
+        dsStateInfo.StencilReadMask = opts.depthStencil.stencilFront.compareMask;
+        dsStateInfo.StencilWriteMask = opts.depthStencil.stencilFront.writeMask;
+
+        dsStateInfo.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)opts.depthStencil.stencilBack.compare;
+        dsStateInfo.BackFace.StencilFailOp = (D3D11_STENCIL_OP)opts.depthStencil.stencilBack.onFail;
+        dsStateInfo.BackFace.StencilDepthFailOp = (D3D11_STENCIL_OP)opts.depthStencil.stencilBack.onDepthFail;
+        dsStateInfo.BackFace.StencilPassOp = (D3D11_STENCIL_OP)opts.depthStencil.stencilBack.onPass;
+
+        dsStateInfo.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)opts.depthStencil.stencilFront.compare;
+        dsStateInfo.FrontFace.StencilFailOp = (D3D11_STENCIL_OP)opts.depthStencil.stencilFront.onFail;
+        dsStateInfo.FrontFace.StencilDepthFailOp = (D3D11_STENCIL_OP)opts.depthStencil.stencilFront.onDepthFail;
+        dsStateInfo.FrontFace.StencilPassOp = (D3D11_STENCIL_OP)opts.depthStencil.stencilFront.onPass;
+
         result = singleton->device->CreateDepthStencilState(&dsStateInfo, &dsState);
         if (result != S_OK) {
             LOGWITH("Failed to create depth stencil state:", result);
             return {};
         }
 
-        return singleton->pipelines[name] = new Pipeline(layout, vert, tctrl, teval, geom, frag, dsState, stencilRef, clearColor);
+        return singleton->pipelines[key] = new Pipeline(layout, vert, tctrl, teval, geom, frag, dsState, opts.depthStencil.stencilFront.reference, {});
     }
-
-    unsigned D3D11Machine::createPipelineLayout(...) { return 0; }
-    unsigned D3D11Machine::getPipelineLayout(int32_t) { return 0; }
 
     D3D11Machine::Pipeline::Pipeline(ID3D11InputLayout* layout, ID3D11VertexShader* v, ID3D11HullShader* h, ID3D11DomainShader* d, ID3D11GeometryShader* g, ID3D11PixelShader* p, ID3D11DepthStencilState* dss, UINT stencilRef, vec4 clearColor)
         :vs(v), tcs(h), tes(d), gs(g), fs(p), dsState(dss), stencilRef(stencilRef), clearColor(clearColor), layout(layout) {
@@ -1531,8 +1594,8 @@ namespace onart {
         return mat4();
     }
 
-    D3D11Machine::UniformBuffer::UniformBuffer(uint32_t length, ID3D11Buffer* ubo, uint32_t binding)
-        :length(length), ubo(ubo), binding(binding) {
+    D3D11Machine::UniformBuffer::UniformBuffer(uint32_t length, ID3D11Buffer* ubo)
+        :length(length), ubo(ubo) {
 
     }
 
@@ -1549,7 +1612,7 @@ namespace onart {
             return;
         }
         D3D11_MAPPED_SUBRESOURCE mappedResource;
-        if (singleton->context->Map(ubo, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource) == S_OK)
+        if (singleton->context->Map(ubo, 0, D3D11_MAP_WRITE_NO_OVERWRITE, 0, &mappedResource) == S_OK) // cpu ï¿½ï¿½ï¿½Ìµï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ö°ï¿½ discardï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
         {
             std::memcpy((uint8_t*)mappedResource.pData + offset, input, size);
             singleton->context->Unmap(ubo, 0);
@@ -1560,11 +1623,11 @@ namespace onart {
         }
     }
 
-    D3D11Machine::UniformBuffer* D3D11Machine::createUniformBuffer(uint32_t length, uint32_t size, size_t stages, int32_t key, uint32_t binding) {
+    D3D11Machine::UniformBuffer* D3D11Machine::createUniformBuffer(int32_t key, const UniformBufferCreationOptions& opts) {
         if (auto ret = getUniformBuffer(key)) { return ret; }
         ID3D11Buffer* buffer{};
         D3D11_BUFFER_DESC bufferInfo{};
-        bufferInfo.ByteWidth = size;
+        bufferInfo.ByteWidth = opts.size;
         bufferInfo.Usage = D3D11_USAGE_DYNAMIC;
         bufferInfo.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         bufferInfo.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -1575,12 +1638,11 @@ namespace onart {
             return {};
         }
 
-        if (key == INT32_MIN) return new UniformBuffer(size, buffer, binding);
-        return singleton->uniformBuffers[key] = new UniformBuffer(size, buffer, binding);
+        return singleton->uniformBuffers[key] = new UniformBuffer(opts.size, buffer);
     }
 
-    D3D11Machine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet** sets, ID3D11RenderTargetView** rtvs, bool mmap, ID3D11DepthStencilView* dsv, bool linearSampled)
-        :width(width), height(height), mapped(mmap), type(type), color1(sets[0]), color2(sets[1]), color3(sets[2]), ds(sets[3]), dset1(rtvs[0]), dset2(rtvs[1]), dset3(rtvs[2]), dsetDS(dsv), linearSampled(linearSampled) {
+    D3D11Machine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet** sets, ID3D11RenderTargetView** rtvs, ID3D11DepthStencilView* dsv, bool linearSampled)
+        :width(width), height(height), type(type), color1(sets[0]), color2(sets[1]), color3(sets[2]), ds(sets[3]), dset1(rtvs[0]), dset2(rtvs[1]), dset3(rtvs[2]), dsetDS(dsv), linearSampled(linearSampled) {
 
     }
 
@@ -1595,16 +1657,14 @@ namespace onart {
         delete ds;
     }
 
-    D3D11Machine::RenderPass::RenderPass(RenderTarget** fb, uint16_t stageCount)
+    D3D11Machine::RenderPass::RenderPass(uint16_t stageCount)
         :stageCount(stageCount), targets(stageCount), pipelines(stageCount) {
 
     }
 
     D3D11Machine::RenderPass::~RenderPass() {
-        if (targets[stageCount - 1] == nullptr) { // renderpass to screenÀÌ¹Ç·Î Å¸°ÙÀ» ÀÚÃ¼ »ý¼ºÇØ¼­ º¸À¯
-            for (RenderTarget* targ : targets) {
-                delete targ;
-            }
+        for (RenderTarget* targ : targets) {
+            delete targ;
         }
     }
 
@@ -1652,10 +1712,28 @@ namespace onart {
         }
         if (currentPass > 0) {
             RenderTarget* prev = targets[currentPass - 1];
-            if (prev->color1) bind(pos, prev, 0);
-            if (prev->color2) bind(pos + 1, prev, 1);
-            if (prev->color3) bind(pos + 2, prev, 2);
-            if (prev->ds) bind(pos + 3, prev, 3);
+            ID3D11ShaderResourceView* srv[4]{};
+            int nim = 0;
+            if (prev->color1) {
+                srv[nim++] = prev->color1->srv;
+                if (prev->color2) {
+                    srv[nim++] = prev->color2->srv;
+                    if (prev->color3) {
+                        srv[nim++] = prev->color3->srv;
+                    }
+                }
+            }
+            if (prev->ds && prev->ds->srv) {
+                srv[nim++] = prev->ds->srv;
+            }
+            singleton->context->VSSetShaderResources(pos, nim, srv);
+            singleton->context->PSSetShaderResources(pos, nim, srv);
+            ID3D11SamplerState* samp[4]{};
+            for (int i = 0; i < 4; i++) {
+                samp[i] = singleton->nearestBorderSampler;
+            }
+            singleton->context->VSSetSamplers(pos, nim, samp);
+            singleton->context->PSSetSamplers(pos, nim, samp);
         }
         singleton->context->RSSetViewports(1, &viewport);
         singleton->context->RSSetScissorRects(1, &scissor);
@@ -1698,7 +1776,7 @@ namespace onart {
             singleton->context->GSSetShader(pipeline->gs, nullptr, 0);
             singleton->context->PSSetShader(pipeline->fs, nullptr, 0);
             auto& currentTarget = targets[currentPass];
-            singleton->context->OMSetDepthStencilState(pipelines[currentPass]->dsState, 0);
+            singleton->context->OMSetDepthStencilState(pipelines[currentPass]->dsState, pipeline->stencilRef);
             singleton->context->OMSetBlendState(singleton->basicBlend, nullptr, 0xffffffff);
         }
     }
@@ -1714,7 +1792,7 @@ namespace onart {
         }
         if (currentPass >= 0) {
             singleton->context->VSSetConstantBuffers(pos, 1, &ub->ubo);
-            singleton->context->PSSetConstantBuffers(pos, 1, &ub->ubo); // ÀÓ½Ã
+            singleton->context->PSSetConstantBuffers(pos, 1, &ub->ubo); // ï¿½Ó½ï¿½
         }
         else {
             LOGWITH("No subpass is running");
@@ -1724,7 +1802,7 @@ namespace onart {
     void D3D11Machine::RenderPass::bind(uint32_t pos, const pTexture& tx) {
         if (currentPass >= 0) {
             singleton->context->VSSetShaderResources(pos, 1, &tx->dset);
-            singleton->context->PSSetShaderResources(pos, 1, &tx->dset); // ÀÓ½Ã
+            singleton->context->PSSetShaderResources(pos, 1, &tx->dset); // ï¿½Ó½ï¿½
             singleton->context->PSSetSamplers(pos, 1, tx->linearSampled ? &singleton->linearBorderSampler : &singleton->nearestBorderSampler);
         }
         else {
@@ -1735,7 +1813,7 @@ namespace onart {
     void D3D11Machine::RenderPass::bind(uint32_t pos, const pStreamTexture& tx) {
         if (currentPass >= 0) {
             singleton->context->VSSetShaderResources(pos, 1, &tx->dset);
-            singleton->context->PSSetShaderResources(pos, 1, &tx->dset); // ÀÓ½Ã
+            singleton->context->PSSetShaderResources(pos, 1, &tx->dset); // ï¿½Ó½ï¿½
             singleton->context->PSSetSamplers(pos, 1, tx->linearSampled ? &singleton->linearBorderSampler : &singleton->nearestBorderSampler);
         }
         else {
@@ -1743,30 +1821,51 @@ namespace onart {
         }
     }
 
-    void D3D11Machine::RenderPass::bind(uint32_t pos, RenderTarget* target, uint32_t index) {
+    void D3D11Machine::RenderPass::bind(uint32_t pos, RenderPass* prev) {
         if (currentPass >= 0) {
-            ID3D11ShaderResourceView* srv;
-            switch (index)
-            {
-            case 0:
-                srv = target->color1->srv;
-                break;
-            case 1:
-                srv = target->color2->srv;
-                break;
-            case 2:
-                srv = target->color3->srv;
-                break;
-            case 3:
-                srv = target->ds->srv;
-                break;
-            default:
-                LOGWITH("index must be 0~3");
-                return;
+            if (auto targ = prev->targets.back()) {
+                ID3D11ShaderResourceView* srv[4]{};
+                int nim = 0;
+                if (targ->color1) {
+                    srv[nim++] = targ->color1->srv;
+                    if (targ->color2) {
+                        srv[nim++] = targ->color2->srv;
+                        if (targ->color3) {
+                            srv[nim++] = targ->color3->srv;
+                        }
+                    }
+                }
+                if (targ->ds && targ->ds->srv) {
+                    srv[nim++] = targ->ds->srv;
+                }
+                singleton->context->VSSetShaderResources(pos, nim, srv);
+                singleton->context->PSSetShaderResources(pos, nim, srv);
+                ID3D11SamplerState* samp[4]{};
+                for (int i = 0; i < 4; i++) {
+                    samp[i] = targ->linearSampled ? singleton->linearBorderSampler : singleton->nearestBorderSampler;
+                }
+                singleton->context->VSSetSamplers(pos, nim, samp);
+                singleton->context->PSSetSamplers(pos, nim, samp);
             }
-            singleton->context->VSSetShaderResources(pos, 1, &srv);
-            singleton->context->PSSetShaderResources(pos, 1, &srv); // ÀÓ½Ã
-            singleton->context->PSSetSamplers(pos, 1, target->linearSampled ? &singleton->linearBorderSampler : &singleton->nearestBorderSampler);
+            else {
+                LOGWITH("Can\'t bind renderpas2screen");
+            }
+        }
+        else {
+            LOGWITH("No subpass is running");
+        }
+    }
+
+    void D3D11Machine::RenderPass::bind(uint32_t pos, RenderPass2Cube* prev) {
+        if (currentPass >= 0) {
+            singleton->context->VSSetShaderResources(pos, 1, &prev->srv);
+            singleton->context->PSSetShaderResources(pos, 1, &prev->srv);
+            ID3D11SamplerState* samp[1]{};
+            for (int i = 0; i < 1; i++) {
+                samp[i] = singleton->linearBorderSampler;
+            }
+            singleton->context->VSSetSamplers(pos, 1, samp);
+            singleton->context->PSSetSamplers(pos, 1, samp);
         }
         else {
             LOGWITH("No subpass is running");
@@ -1942,7 +2041,7 @@ namespace onart {
     }
 
     void D3D11Machine::Mesh::update(const void* input, uint32_t offset, uint32_t size) {
-        // offset Á¶¸¸°£ ¾ø¾Ö±â (d3d11 dynamic¿¡¼­´Â »ç½Ç»ó offsetÀ» ÀÎÁ¤¾ÈÇÏ±â ¶§¹®)
+        // offset ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ö±ï¿½ (d3d11 dynamicï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Ç»ï¿½ offsetï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï±ï¿½ ï¿½ï¿½ï¿½ï¿½)
         D3D11_MAPPED_SUBRESOURCE subresource;
         HRESULT hr = singleton->context->Map(vb, 0, D3D11_MAP_WRITE_DISCARD, 0, &subresource);
         if (!SUCCEEDED(hr)) {
@@ -1954,7 +2053,7 @@ namespace onart {
     }
 
     void D3D11Machine::Mesh::updateIndex(const void* input, uint32_t offset, uint32_t size) {
-        // Àü ÇÃ·§Æû offset Á¶¸¸°£ ¾ø¾Ö±â, vulkanÀÇ dynamic ub Á¦¿Ü (d3d11 dynamic¿¡¼­´Â »ç½Ç»ó offsetÀ» ÀÎÁ¤¾ÈÇÏ±â ¶§¹®)
+        // ï¿½ï¿½ ï¿½Ã·ï¿½ï¿½ï¿½ offset ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ö±ï¿½, vulkanï¿½ï¿½ dynamic ub ï¿½ï¿½ï¿½ï¿½ (d3d11 dynamicï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Ç»ï¿½ offsetï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï±ï¿½ ï¿½ï¿½ï¿½ï¿½)
         if (!ib) { return; }
         D3D11_MAPPED_SUBRESOURCE subresource;
         HRESULT hr = singleton->context->Map(ib, 0, D3D11_MAP_WRITE_DISCARD, 0, &subresource);
@@ -1975,57 +2074,90 @@ namespace onart {
         return false;
     }
 
-    DXGI_FORMAT textureFormatFallback(ID3D11Device* device, uint32_t nChannels, bool srgb, bool hq, UINT flags) {
+    DXGI_FORMAT textureFormatFallback(ID3D11Device* device, uint32_t nChannels, bool srgb, D3D11Machine::TextureFormatOptions hq, UINT flags) {
 #define CHECK_N_RETURN(f) if(isThisFormatAvailable(device,f,flags)) return f
         switch (nChannels)
         {
         case 4:
             if (srgb) {
-                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
-                if (hq) return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-                CHECK_N_RETURN(DXGI_FORMAT_BC3_UNORM_SRGB);
+                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                    CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
+                }
+                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                    CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
+                    CHECK_N_RETURN(DXGI_FORMAT_BC3_UNORM_SRGB);
+                }
                 return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
             }
             else {
-                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM);
-                if (hq) return DXGI_FORMAT_R8G8B8A8_UNORM;
-                CHECK_N_RETURN(DXGI_FORMAT_BC3_UNORM);
+                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                    CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM);
+                }
+                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                    CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM);
+                    CHECK_N_RETURN(DXGI_FORMAT_BC3_UNORM);
+                }
                 return DXGI_FORMAT_R8G8B8A8_UNORM;
             }
             break;
         case 3:
             if (srgb) {
-                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
-                if (hq) return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-                CHECK_N_RETURN(DXGI_FORMAT_BC1_UNORM_SRGB);
-                return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                    CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
+                }
+                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                    CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
+                    CHECK_N_RETURN(DXGI_FORMAT_BC1_UNORM_SRGB);
+                }
+                return DXGI_FORMAT_R8G8B8A8_UNORM;
             }
             else {
-                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM);
-                if (hq) return DXGI_FORMAT_R8G8B8A8_UNORM;
-                CHECK_N_RETURN(DXGI_FORMAT_BC1_UNORM);
+                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                    CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM);
+                }
+                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                    CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM);
+                    CHECK_N_RETURN(DXGI_FORMAT_BC1_UNORM);
+                }
                 return DXGI_FORMAT_R8G8B8A8_UNORM;
             }
         case 2:
             if (srgb) {
-                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
-                return DXGI_FORMAT_R8G8_UNORM; // SRGB ¾Èº¸ÀÓ..
+                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                    CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
+                }
+                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                    CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
+                }
+                return DXGI_FORMAT_R8G8_UNORM; // SRGB ï¿½Èºï¿½ï¿½ï¿½..
             }
             else {
-                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM);
-                if (hq) return DXGI_FORMAT_R8G8_UNORM;
-                CHECK_N_RETURN(DXGI_FORMAT_BC5_UNORM);
+                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                    CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
+                }
+                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                    CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
+                    CHECK_N_RETURN(DXGI_FORMAT_BC5_UNORM);
+                }
                 return DXGI_FORMAT_R8G8_UNORM;
             }
         case 1:
             if (srgb) {
-                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
+                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                    // ï¿½ë·®ï¿½ï¿½ ï¿½Ù¾ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+                }
+                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                    // ï¿½ë·®ï¿½ï¿½ ï¿½Ù¾ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+                }
                 return DXGI_FORMAT_R8_UNORM;
             }
             else {
-                CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
-                if (hq) return DXGI_FORMAT_R8_UNORM;
-                CHECK_N_RETURN(DXGI_FORMAT_BC4_UNORM);
+                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                    // ï¿½ë·®ï¿½ï¿½ ï¿½Ù¾ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+                }
+                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                    CHECK_N_RETURN(DXGI_FORMAT_BC4_UNORM);
+                }
                 return DXGI_FORMAT_R8_UNORM;
             }
         default:
@@ -2034,25 +2166,25 @@ namespace onart {
 #undef CHECK_N_RETURN
     }
 
-    ID3DBlob* compileShader(const char* code, size_t size, D3D11Machine::ShaderType type) {
+    ID3DBlob* compileShader(const char* code, size_t size, D3D11Machine::ShaderStage type) {
         ID3DBlob* ret{};
         ID3DBlob* result{};
         char targ[] = { 'v','s','_','5','_','0',0 };
         switch (type)
         {
-        case onart::D3D11Machine::ShaderType::VERTEX:
+        case onart::D3D11Machine::ShaderStage::VERTEX:
             targ[0] = 'v';
             break;
-        case onart::D3D11Machine::ShaderType::FRAGMENT:
+        case onart::D3D11Machine::ShaderStage::FRAGMENT:
             targ[0] = 'p';
             break;
-        case onart::D3D11Machine::ShaderType::GEOMETRY:
+        case onart::D3D11Machine::ShaderStage::GEOMETRY:
             targ[0] = 'g';
             break;
-        case onart::D3D11Machine::ShaderType::TESS_CTRL:
+        case onart::D3D11Machine::ShaderStage::TESS_CTRL:
             targ[0] = 'h';
             break;
-        case onart::D3D11Machine::ShaderType::TESS_EVAL:
+        case onart::D3D11Machine::ShaderStage::TESS_EVAL:
             targ[0] = 'd';
             break;
         default:

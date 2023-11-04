@@ -1330,7 +1330,7 @@ namespace onart {
     VkMachine::pTexture VkMachine::createTextureFromImage(int32_t key, const char* fileName, const TextureCreationOptions& opts) {
         if (auto tex = getTexture(key)) { return tex; }
         int x, y, nChannels;
-        uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 0);
+        uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 4);
         if (!pix) {
             LOGWITH("Failed to load image:", stbi_failure_reason());
             return {};
@@ -1349,7 +1349,7 @@ namespace onart {
     VkMachine::pTexture VkMachine::createTextureFromImage(int32_t key, const void* mem, size_t size, const TextureCreationOptions& opts) {
         if (auto tex = getTexture(key)) { return tex; }
         int x, y, nChannels;
-        uint8_t* pix = stbi_load_from_memory((uint8_t*)mem, (int)size, &x, &y, &nChannels, 0);
+        uint8_t* pix = stbi_load_from_memory((uint8_t*)mem, (int)size, &x, &y, &nChannels, 4);
         if (!pix) {
             LOGWITH("Failed to load image:", stbi_failure_reason());
             return pTexture();
