@@ -344,7 +344,7 @@ namespace onart{
 #define GLFW_EXPOSE_NATIVE_WIN32
 #endif
 #include "../externals/glfw/include/GLFW/glfw3.h"
-#include "../externals/glfw/include/GLFW/glfw3Native.h"
+#include "../externals/glfw/include/GLFW/glfw3native.h"
 
 namespace onart{
 

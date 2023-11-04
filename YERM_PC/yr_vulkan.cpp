@@ -1606,7 +1606,7 @@ namespace onart {
         if(ret) return ret;
 
         VkDescriptorSetLayoutBinding uboBinding{};
-        uboBinding.binding = opts.binding;
+        uboBinding.binding = 0;
         uboBinding.descriptorType = (opts.count == 1) ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         uboBinding.descriptorCount = 1; // 이 카운트가 늘면 ubo 자체가 배열이 됨, 언젠가는 이를 선택으로 제공할 수도
         uboBinding.stageFlags = opts.accessibleStages;
@@ -1684,7 +1684,7 @@ namespace onart {
         wr.pBufferInfo = &dsNBuffer;
         wr.dstSet = dset;
         vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
-        return singleton->uniformBuffers[name] = new UniformBuffer(opts.count, individual, buffer, layout, dset, alloc, mmap, opts.binding);
+        return singleton->uniformBuffers[name] = new UniformBuffer(opts.count, individual, buffer, layout, dset, alloc, mmap, 0);
     }
 
     uint32_t VkMachine::RenderTarget::attachmentRefs(VkAttachmentDescription* arr, bool forSample){

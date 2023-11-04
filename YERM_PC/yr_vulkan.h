@@ -121,6 +121,7 @@ namespace onart {
                 bool srgb = false;
                 /// @brief 이미지의 채널 수를 지정합니다. 이 값은 BasisU 텍스처에 대하여 사용되며 그 외에는 이 값을 무시하고 원본 이미지의 채널 수를 사용합니다. 기본값 4
                 int nChannels = 4;
+                inline TextureCreationOptions(){}
             };
             enum ShaderStage: VkFlags {
                 VERTEX = VK_SHADER_STAGE_VERTEX_BIT,
