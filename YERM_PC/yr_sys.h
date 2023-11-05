@@ -90,7 +90,7 @@ namespace onart{
             /// @brief 객체가 정상적으로 생성되었는지 확인합니다.
             inline bool isNormal(){ return isOn; }
             /// @brief Vulkan instance에서 활성화해야 할 확장 이름들을 얻어옵니다. 그 외의 플랫폼에서는 빈 벡터를 리턴합니다.
-            std::vector<const char*> requiredInstanceExentsions();
+            static std::vector<const char*> requiredInstanceExentsions();
             /// @brief PC 환경에서는 주어진 값을 그대로 리턴하고, 안드로이드에서는 internal data path에 상대적인 경로를 리턴합니다.
             /// @param p 255자를 넘을 수 없습니다.
             string255 rwPath(const string255& p);
@@ -101,6 +101,8 @@ namespace onart{
             VkResult createWindowSurface(VkInstance instance, VkSurfaceKHR* surface);
             /// @brief win32 핸들을 리턴합니다. windows 이외의 플랫폼에서는 nullptr를 리턴합니다.
             void* getWin32Handle();
+            /// @brief opengl에 한하여 0번 프레임버퍼의 내용를 화면에 보여줍니다.
+            void glPresent();
             /// @brief 창이 최소화되거나 비활성화될 때 호출될 함수입니다.
             std::function<void(int, int)> loseFocusCallback;
             /// @brief 창 크기가 변경될 때 호출될 함수입니다. 시그니처: void(int [가로 길이(픽셀)], int [세로 길이(픽셀)])

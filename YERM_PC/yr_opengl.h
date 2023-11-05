@@ -56,11 +56,13 @@ namespace onart {
     class GLMachine{
         friend class Game;
         public:
+            static int32_t currentWindowContext;
             /// @brief 스레드에서 최근에 호출된 함수의 실패 요인을 일부 확인할 수 있습니다. Vulkan 호출에 의한 실패가 아닌 경우 MAX_ENUM 값이 들어갑니다.
             static thread_local unsigned reason;
             constexpr static bool VULKAN_GRAPHICS = false, D3D12_GRAPHICS = false, D3D11_GRAPHICS = false, OPENGL_GRAPHICS = true, OPENGLES_GRAPHICS = false, METAL_GRAPHICS = false;
             /// @brief OpenGL 오류 콜백을 사용하려면 이것을 활성화해 주세요.
             constexpr static bool USE_OPENGL_DEBUG = true;
+            struct WindowSystem;
             /// @brief 그리기 대상입니다. 텍스처로 사용하거나 메모리 맵으로 데이터에 접근할 수 있습니다. 
             class RenderTarget;
             /// @brief 오프스크린용 렌더 패스입니다.
@@ -264,8 +266,6 @@ namespace onart {
 
             /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
             static void handle();
-            /// @brief 단위행렬이 리턴됩니다.
-            static mat4 preTransform();
             /// @brief 보통 이미지 파일을 불러와 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
             /// @param fileName 파일 이름
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
@@ -323,7 +323,7 @@ namespace onart {
             /// @param useDepth true인 경우 깊이 버퍼를 이미지에 사용합니다. useDepth와 useColor가 모두 true인 경우 샘플링은 색 버퍼에 대해서만 가능합니다.
             static RenderPass2Cube* createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth);
             /// @brief 화면으로 이어지는 렌더패스를 생성합니다. 각 패스의 타겟들은 현재 창의 해상도와 동일하게 맞춰집니다.
-            static RenderPass2Screen* createRenderPass2Screen(int32_t key, const RenderPassCreationOptions& opts);
+            static RenderPass2Screen* createRenderPass2Screen(int32_t key, int32_t windowIdx, const RenderPassCreationOptions& opts);
             /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 불러올 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
             static Pipeline* createPipeline(int32_t key, const PipelineCreationOptions& opts);
             /// @brief 정점 버퍼를 생성합니다.
@@ -350,17 +350,16 @@ namespace onart {
             static pTexture getTexture(int32_t key);
             /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pMesh getMesh(int32_t key);
-            /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
-            inline static bool isSurfaceSRGB() { return false; }
         private:
             /// @brief 기본 OpenGL 컨텍스트를 생성합니다.
-            GLMachine(Window*);
-            /// @brief 아무것도 하지 않습니다.
-            void checkSurfaceHandle();
-            /// @brief 화면으로 그리기 위해 필요한 크기를 전달합니다.
-            void createSwapchain(uint32_t width, uint32_t height, Window* window = nullptr);
-            /// @brief 아무것도 하지 않습니다.
-            void destroySwapchain();
+            GLMachine();
+            /// @brief 주어진 창에 렌더링할 수 있도록 정보를 추가합니다.
+            /// @return 정상적으로 추가되었는지 여부
+            bool addWindow(int32_t key, Window* window);
+            /// @brief 창을 제거합니다. 해당 창에 연결되었던 모든 렌더패스는 제거됩니다.
+            void removeWindow(int32_t key);
+            /// @brief 창 크기 또는 스타일이 변경되거나 최소화/복원할 때 호출하여 뷰포트를 다시 세팅합니다.
+            void resetWindow(int32_t key, bool = false);
             /// @brief ktxTexture2 객체로 텍스처를 생성합니다.
             pTexture createTexture(void* ktxObj, int32_t key, const TextureCreationOptions& opts);
             static RenderTarget* createRenderTarget2D(int width, int height, RenderTargetType type, bool useDepthInput, bool linear);
@@ -382,19 +381,21 @@ namespace onart {
             std::map<int32_t, pTexture> textures;
             std::map<int32_t, pStreamTexture> streamTextures;
             std::map<int32_t, pTextureSet> textureSets;
+            std::map<int32_t, WindowSystem*> windowSystems;
 
             std::mutex textureGuard;
-            uint32_t surfaceWidth{}, surfaceHeight{};
-
-            struct {
-                bool handle = true;
-            }swapchain;
 
             std::vector<std::shared_ptr<RenderPass>> passes;
             enum vkm_strand { 
                 NONE = 0,
                 GENERAL = 1,
             };
+    };
+
+    struct GLMachine::WindowSystem {
+        Window* window;
+        uint32_t width, height;
+        WindowSystem(Window*);
     };
 
     class GLMachine::RenderTarget{
@@ -493,6 +494,8 @@ namespace onart {
             std::vector<Pipeline*> pipelines;
             std::vector<RenderTarget*> targets;
             int currentPass = -1;
+            int32_t windowIdx;
+            bool is4Screen = false;
             struct {
                 float    x;
                 float    y;
@@ -550,8 +553,8 @@ namespace onart {
             /// @brief 큐브맵 타겟 크기를 바꿉니다. 이 함수를 호출한 경우, bind에서 면마다 따로 바인드했던 유니폼 버퍼는 모두 리셋되므로 필요하면 꼭 다시 기록해야 합니다.
             /// @return 실패한 경우 false를 리턴하며, 이 때 내부 데이터는 모두 해제되어 있습니다.
             bool resconstructFB(uint32_t width, uint32_t height);
-            /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
-            /// @param other 이 패스가 시작하기 전에 기다릴 다른 렌더패스입니다. 전후 의존성이 존재할 경우 사용하는 것이 좋습니다. (Vk세마포어 동기화를 사용) 현재 버전에서 기다리는 단계는 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT 하나로 고정입니다.
+            /// @brief 기록된 명령을 모두 수행합니다.
+            /// @param other 이 패스가 시작하기 전에 기다릴 다른 렌더패스입니다.
             void execute(RenderPass* other = nullptr);
         private:
             inline RenderPass2Cube(){}

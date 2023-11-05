@@ -32,9 +32,9 @@
 namespace onart {
 
     /// @brief Vulkan 인스턴스를 생성합니다. 자동으로 호출됩니다.
-    static VkInstance createInstance(Window*);
+    static VkInstance createInstance();
     /// @brief 사용할 Vulkan 물리 장치를 선택합니다. CPU 기반인 경우 경고를 표시하지만 선택에 실패하지는 않습니다.
-    static VkPhysicalDevice findPhysicalDevice(VkInstance, VkSurfaceKHR, bool*, uint32_t*, uint32_t*, uint32_t*, uint32_t*, uint64_t*);
+    static VkPhysicalDevice findPhysicalDevice(VkInstance, bool*, uint32_t*, uint32_t*, uint32_t*, uint32_t*, uint64_t*);
     /// @brief 주어진 Vulkan 물리 장치에 대한 우선도를 매깁니다. 높을수록 좋게 취급합니다. 대부분의 경우 물리 장치는 하나일 것이므로 함수가 아주 중요하지는 않을 거라 생각됩니다.
     static uint64_t assessPhysicalDevice(VkPhysicalDevice);
     /// @brief 주어진 장치에 대한 가상 장치를 생성합니다.
@@ -49,8 +49,6 @@ namespace onart {
     static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t samplerLimit = 256, uint32_t dynUniLimit = 8, uint32_t uniLimit = 16, uint32_t intputAttachmentLimit = 16);
     /// @brief 주어진 기반 형식과 아귀가 맞는, 현재 장치에서 사용 가능한 압축 형식을 리턴합니다.
     static VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, uint32_t nChannels, bool srgb, VkMachine::TextureFormatOptions hq, VkImageCreateFlagBits flags);
-    /// @brief 파이프라인을 주어진 옵션에 따라 생성합니다.
-    static VkPipeline createPipeline(VkDevice device, VkVertexInputAttributeDescription* vinfo, uint32_t size, uint32_t vattr, VkVertexInputAttributeDescription* iinfo, uint32_t isize, uint32_t iattr, VkRenderPass pass, uint32_t subpass, uint32_t flags, const uint32_t OPT_COLOR_COUNT, const bool OPT_USE_DEPTHSTENCIL, VkPipelineLayout layout, VkShaderModule vs, VkShaderModule fs, VkShaderModule tc, VkShaderModule te, VkShaderModule gs, VkStencilOpState* front, VkStencilOpState* back);
     /// @brief VkResult를 스트링으로 표현합니다. 리턴되는 문자열은 텍스트(코드) 영역에 존재합니다.
     inline static const char* resultAsString(VkResult);
 
@@ -61,24 +59,24 @@ namespace onart {
     VkMachine* VkMachine::singleton = nullptr;
     thread_local VkResult VkMachine::reason = VK_SUCCESS;
 
-    VkMachine::VkMachine(Window* window){
+    VkMachine::VkMachine(){
         if(singleton) {
             LOGWITH("Tried to create multiple VkMachine objects");
             return;
         }
 
-        if(!(instance = createInstance(window))) {
+        if(!(instance = createInstance())) {
             return;
         }
 
-        if((reason = window->createWindowSurface(instance, &surface.handle)) != VK_SUCCESS){
+        /*if ((reason = window->createWindowSurface(instance, &surface.handle)) != VK_SUCCESS) {
             LOGWITH("Failed to create Window surface:", reason,resultAsString(reason));
             free();
             return;
-        }
+        }*/
 
         bool isCpu;
-        if(!(physicalDevice.card = findPhysicalDevice(instance, surface.handle, &isCpu, &physicalDevice.gq, &physicalDevice.pq, &physicalDevice.subq, &physicalDevice.subqIndex, &physicalDevice.minUBOffsetAlignment))) { // TODO: 모든 가용 graphics/transfer 큐 정보를 저장해 두고 버퍼/텍스처 등 자원 세팅은 다른 큐를 사용하게 만들자
+        if(!(physicalDevice.card = findPhysicalDevice(instance, &isCpu, &physicalDevice.gq, &physicalDevice.pq, &physicalDevice.subq, &physicalDevice.subqIndex, &physicalDevice.minUBOffsetAlignment))) { // TODO: 모든 가용 graphics/transfer 큐 정보를 저장해 두고 버퍼/텍스처 등 자원 세팅은 다른 큐를 사용하게 만들자
             LOGWITH("Couldn\'t find any appropriate graphics device");
             free();
             reason = VK_RESULT_MAX_ENUM;
@@ -88,8 +86,6 @@ namespace onart {
         // properties.limits.minMemorymapAlignment, minTexelBufferOffsetAlignment, minUniformBufferOffsetAlignment, minStorageBufferOffsetAlignment, optimalBufferCopyOffsetAlignment, optimalBufferCopyRowPitchAlignment를 저장
 
         vkGetPhysicalDeviceFeatures(physicalDevice.card, &physicalDevice.features);
-
-        checkSurfaceHandle();
 
         if(!(device = createDevice(physicalDevice.card, physicalDevice.gq, physicalDevice.pq, physicalDevice.subq, physicalDevice.subqIndex))) {
             free();
@@ -122,9 +118,6 @@ namespace onart {
         if(!baseBuffer[0]){
             free();
         }
-        int w,h;
-        window->getSize(&w,&h);
-        createSwapchain(w, h);
 
         if(!(descriptorPool = createDescriptorPool(device))){
             free();
@@ -137,6 +130,43 @@ namespace onart {
         }
 
         singleton = this;
+    }
+
+    bool VkMachine::addWindow(int32_t key, Window* window) {
+        if (windowSystems.find(key) != windowSystems.end()) { return true; }
+        auto w = new WindowSystem(window);
+        if (w->swapchain.handle) {
+            windowSystems[key] = w;
+            if (windowSystems.size() == 1) {
+                baseSurfaceRendertargetFormat = w->surface.format.format;
+            }
+            return true;
+        }
+        else {
+            delete w;
+            return false;
+        }
+    }
+
+    void VkMachine::removeWindow(int32_t key) {
+        bool waited = false;
+        for (auto it = finalPasses.begin(); it != finalPasses.end();) {
+            if (it->second->windowIdx == key) {
+                if (!waited) {
+                    vkDeviceWaitIdle(singleton->device);
+                    waited = true;
+                }
+                delete it->second;
+                finalPasses.erase(it++);
+            }
+            else {
+                ++it;
+            }
+        }
+        windowSystems.erase(key);
+        if (windowSystems.size() == 1) {
+            baseSurfaceRendertargetFormat = windowSystems.begin()->second->surface.format.format;
+        }
     }
 
     VkFence VkMachine::createFence(bool signaled){
@@ -237,13 +267,31 @@ namespace onart {
         }
     }
 
-    void VkMachine::checkSurfaceHandle(){
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice.card, surface.handle, &surface.caps);
+    void VkMachine::resetWindow(int32_t key, bool recreateSurface) {
+        auto it = singleton->windowSystems.find(key);
+        if (it == singleton->windowSystems.end()) { return; }
+
+        it->second->recreateSwapchain(recreateSurface);
+        uint32_t width = it->second->swapchain.extent.width;
+        uint32_t height = it->second->swapchain.extent.height;
+        if (width & height) { // 값이 0이면 크기 0이라 스왑체인 재생성 실패한 것
+            for (auto& fpass : singleton->finalPasses) {
+                if (fpass.second->windowIdx == key) {
+                    if (!fpass.second->reconstructFB(width, height)) {
+                        LOGWITH("RenderPass", fpass.first, ": Failed to be recreate framebuffer");
+                    }
+                }
+            }
+        }
+    }
+
+    void VkMachine::WindowSystem::checkSurfaceHandle(){
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(singleton->physicalDevice.card, surface.handle, &surface.caps);
         uint32_t count;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice.card, surface.handle, &count, nullptr);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(singleton->physicalDevice.card, surface.handle, &count, nullptr);
         if(count == 0) LOGWITH("Fatal: no available surface format?");
         std::vector<VkSurfaceFormatKHR> formats(count);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice.card, surface.handle, &count, formats.data());
+        vkGetPhysicalDeviceSurfaceFormatsKHR(singleton->physicalDevice.card, surface.handle, &count, formats.data());
         surface.format = formats[0];
         for(VkSurfaceFormatKHR& form:formats){
             if(form.colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR && form.format == VK_FORMAT_B8G8R8A8_SRGB){
@@ -252,31 +300,38 @@ namespace onart {
         }
     }
 
-    mat4 VkMachine::preTransform(){
-#if BOOST_PLAT_ANDROID
-        switch(singleton->surface.caps.currentTransform){            
-            case VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR:
-                return mat4::rotate(0, 0, PI<float> * 0.5f);
-            case VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR:
-                return mat4::rotate(0, 0, PI<float>);
-            case VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR:
-                return mat4::rotate(0, 0, PI<float> * 1.5f);
-            default:
-                return mat4();
-        }   
-#else
-        return mat4();
-#endif
-    }
-
-    void VkMachine::createSwapchain(uint32_t width, uint32_t height, Window* window){
-        destroySwapchain();
-        if(width == 0 || height == 0) { // 창 최소화 상태 등. VkMachine은 swapchain이 nullptr일 때 그것이 대상인 렌더패스를 사용할 수 없음 (그리기 호출 시 아무것도 하지 않음)
+    VkMachine::WindowSystem::WindowSystem(Window* window) {
+        VkResult result = window->createWindowSurface(singleton->instance, &surface.handle);
+        if (result != VK_SUCCESS) {
+            LOGWITH("Failed to create window surface:", result, resultAsString(result));
             return;
         }
-        if(window) { // 안드로이드에서 홈키 누른 뒤로 surface lost 떠서 다시 안 그려지는 것 때문에
-            vkDestroySurfaceKHR(singleton->instance, singleton->surface.handle, nullptr);
-            window->createWindowSurface(singleton->instance, &singleton->surface.handle);
+        VkBool32 supported;
+        result = vkGetPhysicalDeviceSurfaceSupportKHR(singleton->physicalDevice.card, singleton->physicalDevice.pq, surface.handle, &supported);
+        if (result != VK_SUCCESS || supported == 0) {
+            LOGWITH("Window surface does not seem to compatible with the best adapter");
+            return;
+        }
+        this->window = window;
+        checkSurfaceHandle();
+        recreateSwapchain();
+    }
+
+    void VkMachine::WindowSystem::recreateSwapchain(bool resetSurface) {
+        if (swapchain.handle) {
+            destroySwapchain();
+        }
+        int width, height;
+        window->getFramebufferSize(&width, &height);
+        swapchain.extent.width = width;
+        swapchain.extent.height = height;
+        if (width == 0 || height == 0) {
+            return;
+        }
+        if (resetSurface) {
+            vkDestroySurfaceKHR(singleton->instance, surface.handle, nullptr);
+            window->createWindowSurface(singleton->instance, &surface.handle);
+            checkSurfaceHandle();
         }
         checkSurfaceHandle();
         VkSwapchainCreateInfoKHR scInfo{};
@@ -288,61 +343,36 @@ namespace onart {
         scInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
         scInfo.imageArrayLayers = 1;
         scInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-#if BOOST_PLAT_ANDROID
-        // 아래처럼 currnetTransform을 주지 않으면 suboptimal이라는 문제가 생김. currentTransform을 적용하면 괜찮지만 응용단에서 최후에 회전을 추가로 가해야 함
-        scInfo.preTransform = surface.caps.currentTransform; // IDENTITY: 1, 90: 2, 180: 4, 270: 8
-        if (scInfo.preTransform == VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR || scInfo.preTransform == VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR) {
-	        // Pre-rotation: always use native orientation i.e. if rotated, use width and height of identity transform
-	        std::swap(width, height);
-        }
-#else
-        scInfo.preTransform = VkSurfaceTransformFlagBitsKHR::VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-#endif
-        scInfo.imageExtent.width = std::clamp(width, surface.caps.minImageExtent.width, surface.caps.maxImageExtent.width);
-        scInfo.imageExtent.height = std::clamp(height, surface.caps.minImageExtent.height, surface.caps.maxImageExtent.height);
+        scInfo.preTransform = VkSurfaceTransformFlagBitsKHR::VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR; // pretransform 대신 항상 surface 재생성으로 처리
+        scInfo.imageExtent.width = std::clamp(swapchain.extent.width, surface.caps.minImageExtent.width, surface.caps.maxImageExtent.width);
+        scInfo.imageExtent.height = std::clamp(swapchain.extent.height, surface.caps.minImageExtent.height, surface.caps.maxImageExtent.height);
         scInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         scInfo.clipped = VK_TRUE;
         scInfo.oldSwapchain = VK_NULL_HANDLE; // 같은 표면에 대한 핸들은 올드로 사용할 수 없음
-        uint32_t qfi[2] = {physicalDevice.gq, physicalDevice.pq};
-        if(physicalDevice.gq == physicalDevice.pq){
+        uint32_t qfi[2] = { singleton->physicalDevice.gq, singleton->physicalDevice.pq };
+        if (singleton->physicalDevice.gq == singleton->physicalDevice.pq) {
             scInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
         }
-        else{
+        else {
             scInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
             scInfo.queueFamilyIndexCount = 2;
             scInfo.pQueueFamilyIndices = qfi;
         }
-
-        if((reason = vkCreateSwapchainKHR(device, &scInfo, nullptr, &swapchain.handle))!=VK_SUCCESS){
-            LOGWITH("Failed to create swapchain:",reason,resultAsString(reason));
+        if ((reason = vkCreateSwapchainKHR(singleton->device, &scInfo, nullptr, &swapchain.handle)) != VK_SUCCESS) {
+            LOGWITH("Failed to create swapchain:", reason, resultAsString(reason));
             return;
         }
-        swapchain.extent = scInfo.imageExtent;
         uint32_t count;
-        vkGetSwapchainImagesKHR(device, swapchain.handle, &count, nullptr);
+        vkGetSwapchainImagesKHR(singleton->device, swapchain.handle, &count, nullptr);
         std::vector<VkImage> images(count);
         swapchain.imageView.resize(count);
-        vkGetSwapchainImagesKHR(device, swapchain.handle, &count, images.data());
-        for(size_t i = 0;i < count;i++){
-            swapchain.imageView[i] = createImageView(device,images[i],VK_IMAGE_VIEW_TYPE_2D,surface.format.format,1,1,VK_IMAGE_ASPECT_COLOR_BIT);
-            if(swapchain.imageView[i] == 0) {
+        vkGetSwapchainImagesKHR(singleton->device, swapchain.handle, &count, images.data());
+        for (size_t i = 0; i < count; i++) {
+            swapchain.imageView[i] = createImageView(singleton->device, images[i], VK_IMAGE_VIEW_TYPE_2D, surface.format.format, 1, 1, VK_IMAGE_ASPECT_COLOR_BIT);
+            if (swapchain.imageView[i] == 0) {
                 return;
             }
         }
-
-        for(auto& fpass: finalPasses){
-            if(!fpass.second->reconstructFB(width, height)){
-                LOGWITH("RenderPass",fpass.first,": Failed to be recreate framebuffer");
-            }
-        }
-    }
-
-    void VkMachine::destroySwapchain(){
-        vkDeviceWaitIdle(device);
-        for(VkImageView v: swapchain.imageView){ vkDestroyImageView(device, v, nullptr); }
-        vkDestroySwapchainKHR(device, swapchain.handle, nullptr);
-        swapchain.imageView.clear();
-        swapchain.handle = VK_NULL_HANDLE;
     }
 
     void VkMachine::free() {
@@ -370,13 +400,17 @@ namespace onart {
         renderPasses.clear();
         renderTargets.clear();
         shaders.clear();
-        destroySwapchain();
+        
+        for (auto& wsi : windowSystems) {
+            delete wsi.second;
+        }
+        windowSystems.clear();
+
         vmaDestroyAllocator(allocator);
         vkDestroyCommandPool(device, gCommandPool, nullptr);
         vkDestroyCommandPool(device, tCommandPool, nullptr);
         vkDestroyDescriptorPool(device, descriptorPool, nullptr);
         vkDestroyDevice(device, nullptr);
-        vkDestroySurfaceKHR(instance, surface.handle, nullptr);
         vkDestroyInstance(instance, nullptr);
         allocator = VK_NULL_HANDLE;
         gCommandPool = VK_NULL_HANDLE;
@@ -386,8 +420,20 @@ namespace onart {
         graphicsQueue = VK_NULL_HANDLE;
         presentQueue = VK_NULL_HANDLE;
         transferQueue = VK_NULL_HANDLE;
-        surface.handle = VK_NULL_HANDLE;
         instance = VK_NULL_HANDLE;
+    }
+
+    void VkMachine::WindowSystem::destroySwapchain() {
+        for (VkImageView v : swapchain.imageView) { vkDestroyImageView(singleton->device, v, nullptr); }
+        vkDestroySwapchainKHR(singleton->device, swapchain.handle, nullptr);
+        swapchain.imageView.clear();
+        swapchain.handle = VK_NULL_HANDLE;
+    }
+
+    VkMachine::WindowSystem::~WindowSystem() {
+        destroySwapchain();
+        vkDestroySurfaceKHR(singleton->instance, surface.handle, nullptr);
+        std::memset(&surface, 0, sizeof(surface));
     }
 
     void VkMachine::handle() {
@@ -637,7 +683,7 @@ namespace onart {
         if((int)type & 0b1){
             color1 = new ImageSet;
             imgInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | (sampled ? VkImageUsageFlagBits::VK_IMAGE_USAGE_SAMPLED_BIT : VkImageUsageFlagBits::VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT);
-            imgInfo.format = singleton->surface.format.format;
+            imgInfo.format = singleton->baseSurfaceRendertargetFormat;
             reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &color1->img, &color1->alloc, nullptr);
             if(reason != VK_SUCCESS) {
                 LOGWITH("Failed to create image:", reason,resultAsString(reason));
@@ -1690,7 +1736,7 @@ namespace onart {
     uint32_t VkMachine::RenderTarget::attachmentRefs(VkAttachmentDescription* arr, bool forSample){
         uint32_t colorCount = 0;
         if(color1) {
-            arr[0].format = singleton->surface.format.format;
+            arr[0].format = singleton->baseSurfaceRendertargetFormat;
             arr[0].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
             arr[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
             arr[0].storeOp = sampled ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -1762,7 +1808,7 @@ namespace onart {
         VkImageView texture = VK_NULL_HANDLE; // 컬러가 있으면 컬러, 깊이만 있으면 깊이. (큐브맵 텍스처가 가능한 경우에 한해서)
 
         if(useColor) {
-            imgInfo.format = singleton->surface.format.format;
+            imgInfo.format = singleton->baseSurfaceRendertargetFormat;
             imgInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
             reason = vmaCreateImage(singleton->allocator, &imgInfo, &allocInfo, &colorImage, &colorAlloc, nullptr);
             if(reason != VK_SUCCESS) {
@@ -1791,7 +1837,7 @@ namespace onart {
 
         if(useColor) {
             viewInfo.image = colorImage;
-            viewInfo.format = singleton->surface.format.format;
+            viewInfo.format = singleton->baseSurfaceRendertargetFormat;
             viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             for(int i = 0; i < 6; i++){
                 reason = vkCreateImageView(singleton->device, &viewInfo, nullptr, &targets[i]);
@@ -1828,7 +1874,7 @@ namespace onart {
         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
         viewInfo.subresourceRange.layerCount = 6;
         viewInfo.image = useColor ? colorImage : depthImage;
-        viewInfo.format = useColor ? singleton->surface.format.format : VK_FORMAT_D32_SFLOAT;
+        viewInfo.format = useColor ? singleton->baseSurfaceRendertargetFormat : VK_FORMAT_D32_SFLOAT;
         viewInfo.subresourceRange.aspectMask = useColor ? VK_IMAGE_ASPECT_COLOR_BIT : VK_IMAGE_ASPECT_DEPTH_BIT; // ??
         reason = vkCreateImageView(singleton->device, &viewInfo, nullptr, &texture);
         if(reason != VK_SUCCESS){
@@ -1859,7 +1905,7 @@ namespace onart {
         attachs[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         attachs[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         attachs[0].samples = VK_SAMPLE_COUNT_1_BIT;
-        attachs[0].format = singleton->surface.format.format;
+        attachs[0].format = singleton->baseSurfaceRendertargetFormat;
 
         attachs[1].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         attachs[1].finalLayout = useColor ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -1994,13 +2040,19 @@ namespace onart {
         return singleton->cubePasses[key] = r;
     }
 
-    VkMachine::RenderPass2Screen* VkMachine::createRenderPass2Screen(int32_t name, const RenderPassCreationOptions& opts) {
+    VkMachine::RenderPass2Screen* VkMachine::createRenderPass2Screen(int32_t name, int32_t windowIdx, const RenderPassCreationOptions& opts) {
+        auto it = singleton->windowSystems.find(windowIdx);
+        if (it == singleton->windowSystems.end()) {
+            LOGWITH("Invalid window number");
+            return nullptr;
+        }
+        WindowSystem* window = it->second;
         RenderPass2Screen* r = getRenderPass2Screen(name);
         if (r) return r;
         if (opts.subpassCount == 0) return nullptr;
         std::vector<RenderTarget*> targets(opts.subpassCount - 1);
         for (uint32_t i = 0; i < opts.subpassCount - 1; i++) {
-            targets[i] = createRenderTarget2D(singleton->swapchain.extent.width, singleton->swapchain.extent.height, opts.targets[i], opts.depthInput ? opts.depthInput[i] : false, false, false);
+            targets[i] = createRenderTarget2D(window->swapchain.extent.width, window->swapchain.extent.height, opts.targets[i], opts.depthInput ? opts.depthInput[i] : false, false, false);
             if (!targets[i]) {
                 LOGHERE;
                 for (RenderTarget* t : targets) delete t;
@@ -2017,8 +2069,8 @@ namespace onart {
             imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
             imgInfo.arrayLayers = 1;
             imgInfo.extent.depth = 1;
-            imgInfo.extent.width = singleton->swapchain.extent.width;
-            imgInfo.extent.height = singleton->swapchain.extent.height;
+            imgInfo.extent.width = window->swapchain.extent.width;
+            imgInfo.extent.height = window->swapchain.extent.height;
             imgInfo.format = VK_FORMAT_D24_UNORM_S8_UINT;
             imgInfo.mipLevels = 1;
             imgInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -2106,7 +2158,7 @@ namespace onart {
         attachments[totalAttachments].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         attachments[totalAttachments].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         attachments[totalAttachments].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        attachments[totalAttachments].format = singleton->surface.format.format;
+        attachments[totalAttachments].format = window->surface.format.format;
         attachments[totalAttachments].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
 
         subpasses[opts.subpassCount - 1].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -2163,18 +2215,18 @@ namespace onart {
             return nullptr;
         }
 
-        std::vector<VkFramebuffer> fbs(singleton->swapchain.imageView.size());
+        std::vector<VkFramebuffer> fbs(window->swapchain.imageView.size());
         VkFramebufferCreateInfo fbInfo{};
         fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         fbInfo.attachmentCount = totalAttachments;
         fbInfo.pAttachments = ivs.data();
         fbInfo.renderPass = newPass;
-        fbInfo.width = singleton->swapchain.extent.width;
-        fbInfo.height = singleton->swapchain.extent.height;
+        fbInfo.width = window->swapchain.extent.width;
+        fbInfo.height = window->swapchain.extent.height;
         fbInfo.layers = 1;
         uint32_t i = 0;
         for (VkFramebuffer& fb : fbs) {
-            swapchainImageViewPlace = singleton->swapchain.imageView[i++];
+            swapchainImageViewPlace = window->swapchain.imageView[i++];
             if ((reason = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS) {
                 LOGWITH("Failed to create framebuffer:", reason, resultAsString(reason));
                 for (VkFramebuffer d : fbs) vkDestroyFramebuffer(singleton->device, d, nullptr);
@@ -2185,8 +2237,14 @@ namespace onart {
                 return nullptr;
             }
         }
-        if(name == INT32_MIN) return new RenderPass2Screen(newPass, std::move(targets), std::move(fbs), dsImage, dsImageView, dsAlloc);
-        RenderPass2Screen* ret = singleton->finalPasses[name] = new RenderPass2Screen(newPass, std::move(targets), std::move(fbs), dsImage, dsImageView, dsAlloc);
+        RenderPass2Screen* ret = new RenderPass2Screen(newPass, std::move(targets), std::move(fbs), dsImage, dsImageView, dsAlloc);
+        ret->setViewport((float)window->swapchain.extent.width, (float)window->swapchain.extent.height, 0.0f, 0.0f);
+        ret->setScissor(window->swapchain.extent.width, window->swapchain.extent.height, 0, 0);
+        ret->width = window->swapchain.extent.width;
+        ret->height = window->swapchain.extent.height;
+        ret->windowIdx = windowIdx;
+        if (name == INT32_MIN) return ret;
+        return singleton->finalPasses[name] = ret;
         return ret;
     }
 
@@ -3353,10 +3411,6 @@ namespace onart {
         singleton->allocateCommandBuffers(COMMANDBUFFER_COUNT, true, true, cbs);
         pipelines.resize(this->targets.size() + 1, VK_NULL_HANDLE);
         pipelineLayouts.resize(this->targets.size() + 1, VK_NULL_HANDLE);
-        setViewport((float)singleton->swapchain.extent.width, (float)singleton->swapchain.extent.height, 0.0f, 0.0f);
-        setScissor(singleton->swapchain.extent.width, singleton->swapchain.extent.height, 0, 0);
-        width = scissor.extent.width;
-        height = scissor.extent.height;
     }
 
     VkMachine::RenderPass2Screen::~RenderPass2Screen(){
@@ -3405,7 +3459,7 @@ namespace onart {
             targets.clear();
             opts.depthInput = (bool*)useDepth.data();
 
-            RenderPass2Screen* newDat = singleton->createRenderPass2Screen(INT32_MIN, opts);
+            RenderPass2Screen* newDat = singleton->createRenderPass2Screen(INT32_MIN, windowIdx, opts);
             if(!newDat) {
                 this->~RenderPass2Screen();
                 return false;
@@ -3425,7 +3479,8 @@ namespace onart {
             return true;
         }
         else{ // 새 스왑체인으로 프레임버퍼만 재생성
-            fbs.resize(singleton->swapchain.imageView.size());
+            WindowSystem* window = singleton->windowSystems[windowIdx];
+            fbs.resize(window->swapchain.imageView.size());
             std::vector<VkImageView> ivs;
             ivs.reserve(pipelines.size()*4);
             uint32_t totalAttachments = 0;
@@ -3464,7 +3519,7 @@ namespace onart {
             fbInfo.layers = 1;
             uint32_t i = 0;
             for(VkFramebuffer& fb: fbs){
-                swapchainImageViewPlace = singleton->swapchain.imageView[i++];
+                swapchainImageViewPlace = window->swapchain.imageView[i++];
                 if((reason = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
                     LOGWITH("Failed to create framebuffer:",reason,resultAsString(reason));
                     this->~RenderPass2Screen();
@@ -3615,7 +3670,8 @@ namespace onart {
             LOGWITH("Invalid call. The last subpass already started");
             return;
         }
-        if(!singleton->swapchain.handle) {
+        WindowSystem* window = singleton->windowSystems[windowIdx];
+        if(!window->swapchain.handle) {
             LOGWITH("Swapchain not ready. This message can be ignored safely if the rendering goes fine after now");
             return;
         }
@@ -3626,7 +3682,7 @@ namespace onart {
             return;
         }
         if(currentPass == 0){
-            reason = vkAcquireNextImageKHR(singleton->device, singleton->swapchain.handle, UINT64_MAX, acquireSm[currentCB], VK_NULL_HANDLE, &imgIndex);
+            reason = vkAcquireNextImageKHR(singleton->device, window->swapchain.handle, UINT64_MAX, acquireSm[currentCB], VK_NULL_HANDLE, &imgIndex);
             if(reason != VK_SUCCESS) {
                 LOGWITH("Failed to acquire swapchain image:",reason,resultAsString(reason),"\nThis message can be ignored safely if the rendering goes fine after now");
                 currentPass = -1;
@@ -3671,7 +3727,7 @@ namespace onart {
             rpInfo.pClearValues = clearValues.data(); // TODO: 렌더패스 첨부물 인덱스에 대응하게 준비해야 함
             rpInfo.clearValueCount = (uint32_t)clearValues.size();
             rpInfo.renderArea.offset = {0,0};
-            rpInfo.renderArea.extent = singleton->swapchain.extent;
+            rpInfo.renderArea.extent = window->swapchain.extent;
             rpInfo.renderPass = rp;
 
             vkCmdBeginRenderPass(cbs[currentCB], &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
@@ -3696,8 +3752,8 @@ namespace onart {
             LOGWITH("Failed to end command buffer:",reason,resultAsString(reason));
             return;
         }
-
-        if(!singleton->swapchain.handle){
+        WindowSystem* window = singleton->windowSystems[windowIdx];
+        if(!window->swapchain.handle){
             LOGWITH("Swapchain is not ready. This message can be ignored safely if the rendering goes fine after now");
             return;
         }
@@ -3732,7 +3788,7 @@ namespace onart {
         VkPresentInfoKHR presentInfo{};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         presentInfo.swapchainCount = 1;
-        presentInfo.pSwapchains = &singleton->swapchain.handle;
+        presentInfo.pSwapchains = &window->swapchain.handle;
         presentInfo.waitSemaphoreCount = 1;
         presentInfo.pWaitSemaphores = &drawSm[currentCB];
         presentInfo.pImageIndices = &imgIndex;
@@ -3866,7 +3922,7 @@ namespace onart {
 
     // static함수들 구현
 
-    VkInstance createInstance(Window* window){
+    VkInstance createInstance(){
         VkInstance instance;
         VkInstanceCreateInfo instInfo{};
 
@@ -3878,7 +3934,7 @@ namespace onart {
         appInfo.apiVersion = VK_API_VERSION_1_0;
         appInfo.engineVersion = VK_MAKE_API_VERSION(0,0,1,0);
 
-        std::vector<const char*> windowExt = window->requiredInstanceExentsions();
+        std::vector<const char*> windowExt = Window::requiredInstanceExentsions();
 
         instInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         instInfo.pApplicationInfo = &appInfo;
@@ -3902,7 +3958,7 @@ namespace onart {
         return instance;
     }
 
-    VkPhysicalDevice findPhysicalDevice(VkInstance instance, VkSurfaceKHR surface, bool* isCpu, uint32_t* graphicsQueue, uint32_t* presentQueue, uint32_t* subQueue, uint32_t* subqIndex, uint64_t* minUBAlignment) {
+    VkPhysicalDevice findPhysicalDevice(VkInstance instance, bool* isCpu, uint32_t* graphicsQueue, uint32_t* presentQueue, uint32_t* subQueue, uint32_t* subqIndex, uint64_t* minUBAlignment) {
         uint32_t count;
         vkEnumeratePhysicalDevices(instance, &count, nullptr);
         std::vector<VkPhysicalDevice> cards(count);
@@ -3940,17 +3996,13 @@ namespace onart {
                     subq = i;
                     si = 0;
                 }
-                VkBool32 supported;
-                vkGetPhysicalDeviceSurfaceSupportKHR(card, i, surface, &supported);
-                if(supported) {
-                    if(pq == ~0ULL){ pq = i; }
-                    if(qfs[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) { // 큐 계열 하나로 다 된다면 EXCLUSIVE 모드를 사용할 수 있음
-                        gq = pq = i;
-                        if(qfs[i].queueCount >= 2) {
-                            subq = i;
-                            si = 1;
-                            break;
-                        }
+                if (pq == ~0ULL) { pq = i; }
+                if (qfs[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) { // 큐 계열 하나로 다 된다면 EXCLUSIVE 모드를 사용할 수 있음
+                    gq = pq = i;
+                    if (qfs[i].queueCount >= 2) {
+                        subq = i;
+                        si = 1;
+                        break;
                     }
                 }
             }

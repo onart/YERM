@@ -261,8 +261,6 @@ namespace onart {
             };
             /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
             static void handle();
-            /// @brief 스왑체인 회전 변동 관련 최적의 처리를 위해 응용단에서 추가로 가해야 할 회전입니다. PC 버전에서는 반드시 단위행렬이 리턴됩니다.
-            static mat4 preTransform();
             /// @brief 보통 이미지 파일을 불러와 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param fileName 파일 이름
@@ -321,7 +319,7 @@ namespace onart {
             static RenderPass2Cube* createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth);
             /// @brief 화면으로 이어지는 렌더패스를 생성합니다. 각 패스의 타겟들은 현재 창의 해상도와 동일하게 맞춰집니다.
             /// @param key 이름입니다. (RenderPass 객체와 같은 집합을 공유하지 않음) 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. INT32_MIN, 즉 -2147483648은 예약된 값이기 때문에 사용할 수 없습니다.
-            static RenderPass2Screen* createRenderPass2Screen(int32_t key, const RenderPassCreationOptions& opts);
+            static RenderPass2Screen* createRenderPass2Screen(int32_t key, int32_t windowIdx, const RenderPassCreationOptions& opts);
             /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 불러올 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
             static VkPipeline createPipeline(int32_t key, const PipelineCreationOptions& opts);
             /// @brief 정점 버퍼를 생성합니다.
@@ -352,8 +350,6 @@ namespace onart {
             static pStreamTexture getStreamTexture(int32_t key);
             /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pMesh getMesh(int32_t key);
-            /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
-            inline static bool isSurfaceSRGB(){ return singleton->surface.format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;}
             /// @brief Vulkan 인스턴스를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
             inline static VkInstance getInstance() { return singleton->instance; }
             /// @brief Vulkan 물리 장치를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
@@ -363,8 +359,8 @@ namespace onart {
             /// @brief Vma 할당기를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
             inline static VmaAllocator getAllocator() { return singleton->allocator; }
         private:
-            /// @brief 기본 Vulkan 컨텍스트를 생성합니다. 이 객체를 생성하면 기본적으로 인스턴스, 물리 장치, 가상 장치, 창 표면이 생성됩니다.
-            VkMachine(Window*);
+            /// @brief 기본 Vulkan 컨텍스트를 생성합니다. 이 객체를 생성하면 기본적으로 인스턴스, 물리 장치, 가상 장치가 생성됩니다.
+            VkMachine();
             /// @brief 그래픽스/전송 명령 버퍼를 풀로부터 할당합니다.
             /// @param count 할당할 수
             /// @param isPrimary true면 주 버퍼, false면 보조 버퍼입니다.
@@ -376,12 +372,13 @@ namespace onart {
             /// @param count 할당할 수
             /// @param output 리턴받을 곳. 실패하면 첫 번째 원소가 nullptr로 들어감이 보장됩니다.
             void allocateDescriptorSets(VkDescriptorSetLayout* layouts, uint32_t count, VkDescriptorSet* output);
-            /// @brief 창 표면 초기화 이후 호출되어 특성을 파악합니다.
-            void checkSurfaceHandle();
-            /// @brief 기존 스왑체인을 제거하고 다시 생성하며, 스왑체인에 대한 이미지뷰도 가져옵니다.
-            void createSwapchain(uint32_t width, uint32_t height, Window* window = nullptr);
-            /// @brief 기존 스왑체인과 관련된 모든 것을 해제합니다.
-            void destroySwapchain();
+            /// @brief 주어진 창에 렌더링할 수 있도록 정보를 추가합니다.
+            /// @return 정상적으로 추가되었는지 여부
+            bool addWindow(int32_t key, Window* window);
+            /// @brief 창을 제거합니다. 해당 창에 연결되었던 모든 렌더패스는 제거됩니다.
+            void removeWindow(int32_t key);
+            /// @brief 창 크기 또는 스타일이 변경되거나 최소화/복원할 때 호출하여 스왑체인을 재생성합니다.
+            void resetWindow(int32_t key, bool recreateSurface = false);
             /// @brief 샘플러들을 미리 만들어 둡니다.
             bool createSamplers();
             /// @brief 펜스를 생성합니다. (해제는 알아서)
@@ -411,11 +408,9 @@ namespace onart {
             static VkMachine* singleton;
             ThreadPool loadThread;
             VkInstance instance = VK_NULL_HANDLE;
-            struct{
-                VkSurfaceKHR handle;
-                VkSurfaceCapabilitiesKHR caps;
-                VkSurfaceFormatKHR format;
-            } surface{};
+            class WindowSystem;
+            std::map<int32_t, WindowSystem*> windowSystems;
+            VkFormat baseSurfaceRendertargetFormat = VK_FORMAT_R8G8B8A8_UNORM;
             struct{
                 VkPhysicalDevice card = VK_NULL_HANDLE;
                 uint32_t gq, pq, subq;
@@ -437,11 +432,6 @@ namespace onart {
             
             VkSampler textureSampler[16] = {}; // maxLod 1~17. TODO: 비등방성 샘플링 선택 제공
             VkSampler nearestSampler = VK_NULL_HANDLE; // maxLod 1
-            struct{
-                VkSwapchainKHR handle = VK_NULL_HANDLE;
-                VkExtent2D extent{};
-                std::vector<VkImageView> imageView;
-            }swapchain;
             std::map<int32_t, RenderPass*> renderPasses;
             std::map<int32_t, RenderPass2Screen*> finalPasses;
             std::map<int32_t, RenderPass2Cube*> cubePasses;
@@ -474,6 +464,31 @@ namespace onart {
         private:
             /// @brief 렌더 타겟에 부여된 이미지 셋을 제거합니다.
             void removeImageSet(ImageSet*);
+    };
+
+    struct VkMachine::WindowSystem {
+        friend class VkMachine;
+        struct {
+            VkSurfaceKHR handle;
+            VkSurfaceCapabilitiesKHR caps;
+            VkSurfaceFormatKHR format;
+        } surface{};
+        struct {
+            VkSwapchainKHR handle = VK_NULL_HANDLE;
+            VkExtent2D extent{};
+            std::vector<VkImageView> imageView;
+        }swapchain;
+        Window* window = nullptr;
+        
+        /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
+        inline bool isSurfaceSRGB() { return surface.format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR; }
+        void recreateSwapchain(bool resetSurface = false);
+        void destroySwapchain();
+    private:
+        /// @brief 창 표면 초기화 이후 호출되어 특성을 파악합니다.
+        void checkSurfaceHandle();
+        WindowSystem(Window*);
+        ~WindowSystem();
     };
 
     class VkMachine::RenderTarget{
@@ -774,6 +789,7 @@ namespace onart {
             uint32_t width, height;
             
             int currentPass = -1;
+            int32_t windowIdx;
             uint32_t imgIndex;
             VkViewport viewport;
             VkRect2D scissor;

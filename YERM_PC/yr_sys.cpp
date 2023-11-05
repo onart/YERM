@@ -510,6 +510,10 @@ namespace onart{
 #endif
     }
 
+    void Window::glPresent() {
+        glfwSwapBuffers((GLFWwindow*)window);
+    }
+
     std::vector<const char*> Window::requiredInstanceExentsions(){
         uint32_t count;
         const char** names = glfwGetRequiredInstanceExtensions(&count);

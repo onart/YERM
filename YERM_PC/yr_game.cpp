@@ -142,7 +142,8 @@ namespace onart{
         std::thread gamethread([]() {
 #endif
             window->setMainThread();
-            vk = new YRGraphics(window);
+            vk = new YRGraphics();
+            vk->addWindow(0, window);
             if (!init()) {
                 delete window;
                 Window::terminate();
@@ -181,28 +182,23 @@ namespace onart{
                 ivec2 scr(x, y);
                 float aspect = 1.0f;// (float)x / y;
                 float pushed = PI<float> / 2;// std::abs(std::sin((double)_tp * 0.000000001));
-                mat4 rot = YRGraphics::preTransform() * mat4(1, 0, 0, 0, 0, aspect, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) * mat4::rotate(0, 0, (double)_tp * 0.000000001);
-                if (vk->swapchain.handle) {
-                    off->start();
-                    if (loaded) {
-                        off->push(&rot, 0, 64);
-                        off->push(&thr, 64, 68);
-                        off->bind(0, tx);
-                        off->invoke(vb);
-                    }
-                    off->start();
+                mat4 rot = mat4(1, 0, 0, 0, 0, aspect, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) * mat4::rotate(0, 0, (double)_tp * 0.000000001);
+                off->start();
+                if (loaded) {
+                    off->push(&rot, 0, 64);
+                    off->push(&thr, 64, 68);
+                    off->bind(0, tx);
                     off->invoke(vb);
-                    off->execute();
-                    rp2s->start();
-                    rp2s->push(&rot, 0, 64);
-                    rp2s->push(&thr, 64, 68);
-                    rp2s->bind(0, off);
-                    rp2s->invoke(vb);
-                    rp2s->execute(off);
-                    if constexpr (YRGraphics::OPENGL_GRAPHICS) {
-                        glfwSwapBuffers((GLFWwindow*)window->window);
-                    }
                 }
+                off->start();
+                off->invoke(vb);
+                off->execute();
+                rp2s->start();
+                rp2s->push(&rot, 0, 64);
+                rp2s->push(&thr, 64, 68);
+                rp2s->bind(0, off);
+                rp2s->invoke(vb);
+                rp2s->execute(off);
             }
 #if !YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
         });
@@ -287,7 +283,7 @@ namespace onart{
         rpopts.subpassCount = 2;
         auto offrp = YRGraphics::createRenderPass(0, rpopts);
         rpopts.subpassCount = 1;
-        auto rp2s = YRGraphics::createRenderPass2Screen(1, rpopts);
+        auto rp2s = YRGraphics::createRenderPass2Screen(1, 0, rpopts);
         using testv_t = YRGraphics::Vertex<vec3, vec2>;
         YRGraphics::createTexture(0, TEX0, sizeof(TEX0));
         loaded = true;
@@ -485,9 +481,9 @@ float4 main(PS_INPUT input): SV_TARGET {
 
     void Game::windowResized(int x, int y){
 #if BOOST_PLAT_ANDROID
-        vk->createSwapchain(x, y, window);
+        vk->resetWindow(0, true);
 #else
-        vk->createSwapchain(x, y);
+        vk->resetWindow(0);
 #endif
     }
 

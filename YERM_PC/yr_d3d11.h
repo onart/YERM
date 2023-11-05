@@ -73,7 +73,7 @@ namespace onart {
         static thread_local HRESULT reason;
         constexpr static bool VULKAN_GRAPHICS = false, D3D12_GRAPHICS = false, D3D11_GRAPHICS = true, OPENGL_GRAPHICS = false, OPENGLES_GRAPHICS = false, METAL_GRAPHICS = false;
         /// @brief OpenGL 오류 콜백을 사용하려면 이것을 활성화해 주세요.
-        constexpr static bool USE_D3D11_DEBUG = false;
+        constexpr static bool USE_D3D11_DEBUG = true;
         /// @brief 그리기 대상입니다. 텍스처로 사용하거나 메모리 맵으로 데이터에 접근할 수 있습니다. 
         class RenderTarget;
         /// @brief 오프스크린용 렌더 패스입니다.
@@ -341,7 +341,7 @@ namespace onart {
         static RenderPass2Cube* createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth);
         /// @brief 화면으로 이어지는 렌더패스를 생성합니다. 각 패스의 타겟들은 현재 창의 해상도와 동일하게 맞춰집니다.
         /// @param key 이름입니다. (RenderPass 객체와 같은 집합을 공유하지 않음) 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. INT32_MIN, 즉 -2147483648은 예약된 값이기 때문에 사용할 수 없습니다.
-        static RenderPass2Screen* createRenderPass2Screen(int32_t key, const RenderPassCreationOptions& opts);
+        static RenderPass2Screen* createRenderPass2Screen(int32_t key, int32_t windowIdx, const RenderPassCreationOptions& opts);
         /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 불러올 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
         static Pipeline* createPipeline(int32_t key, const PipelineCreationOptions& opts);
         /// @brief 정점 버퍼를 생성합니다.
@@ -376,11 +376,14 @@ namespace onart {
         inline static int getInputAttachmentLayout(uint32_t binding) { return 0; }
     private:
         /// @brief 기본 OpenGL 컨텍스트를 생성합니다.
-        D3D11Machine(Window*);
-        /// @brief 화면으로 그리기 위해 필요한 크기를 전달합니다.
-        void createSwapchain(uint32_t width, uint32_t height, Window* window = nullptr);
-        /// @brief 스왑체인 대상의 유효한 렌더 타겟을 얻습니다.
-        ID3D11RenderTargetView* getSwapchainTarget();
+        D3D11Machine();
+        /// @brief 주어진 창에 렌더링할 수 있도록 정보를 추가합니다.
+            /// @return 정상적으로 추가되었는지 여부
+        bool addWindow(int32_t key, Window* window);
+        /// @brief 창을 제거합니다. 해당 창에 연결되었던 모든 렌더패스는 제거됩니다.
+        void removeWindow(int32_t key);
+        /// @brief 창 크기 또는 스타일이 변경되거나 최소화/복원할 때 호출하여 스왑체인을 재생성합니다.
+        void resetWindow(int32_t key, bool = false);
         /// @brief ktxTexture2 객체로 텍스처를 생성합니다.
         pTexture createTexture(void* ktxObj, int32_t key, const TextureCreationOptions& opts);
         /// @brief 렌더패스에서 사용할 2D 렌더타겟을 생성합니다.
@@ -395,12 +398,8 @@ namespace onart {
         static uint64_t currentRenderPass;
         ID3D11Device* device{};
         ID3D11DeviceContext* context{};
-        struct {
-            IDXGISwapChain* handle{};
-            int width;
-            int height;
-        }swapchain;
-        ID3D11DepthStencilView* screenDSView{};
+        class WindowSystem;
+        std::map<int32_t, WindowSystem*> windowSystems;
 
         bool canUseBC7 = false;
 
@@ -415,8 +414,6 @@ namespace onart {
         std::map<int32_t, pMesh> meshes;
         std::map<int32_t, pTexture> textures;
         std::map<int32_t, pStreamTexture> streamTextures;
-
-        std::map<ID3D11Texture2D*, ID3D11RenderTargetView*> screenTargets;
 
         ID3D11BlendState* basicBlend;
         ID3D11SamplerState* linearBorderSampler;
@@ -437,6 +434,24 @@ namespace onart {
             NONE = 0,
             GENERAL = 1,
         };
+    };
+
+    class D3D11Machine::WindowSystem {
+        friend class D3D11Machine;
+        struct {
+            IDXGISwapChain* handle{};
+            int width;
+            int height;
+        }swapchain;
+        /// @brief 스왑체인 대상의 유효한 렌더 타겟을 얻습니다.
+        ID3D11RenderTargetView* getSwapchainTarget();
+        ID3D11DepthStencilView* screenDSView{};
+        Window* window = nullptr;
+    private:
+        std::map<ID3D11Texture2D*, ID3D11RenderTargetView*> screenTargets;
+        void resizeSwapchain();
+        WindowSystem(Window*);
+        ~WindowSystem();
     };
 
     class D3D11Machine::Texture {
@@ -572,6 +587,8 @@ namespace onart {
         std::vector<Pipeline*> pipelines;
         std::vector<RenderTarget*> targets;
         int currentPass = -1;
+        int32_t windowIdx;
+        bool is4Screen = false;
         D3D11_VIEWPORT viewport;
         D3D11_RECT scissor;
         const static Mesh* bound;

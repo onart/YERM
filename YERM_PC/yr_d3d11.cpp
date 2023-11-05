@@ -28,7 +28,7 @@ namespace onart {
     static ktx_error_code_e tryTranscode(ktxTexture2* texture, ID3D11Device* device, uint32_t nChannels, bool srgb, D3D11Machine::TextureFormatOptions hq);
     static DXGI_FORMAT textureFormatFallback(ID3D11Device* device, uint32_t nChannels, bool srgb, D3D11Machine::TextureFormatOptions hq, UINT flags);
 
-    D3D11Machine::D3D11Machine(Window* window) {
+    D3D11Machine::D3D11Machine() {
         if (singleton) {
             LOGWITH("Tried to create multiple D3D11Machine objects");
             return;
@@ -75,15 +75,6 @@ namespace onart {
         }
         if (result != S_OK) {
             LOGWITH("Failed to create d3d11 device:", result);
-            reason = result;
-            return;
-        }
-
-        int x, y;
-        window->getFramebufferSize(&x, &y);
-        createSwapchain(x, y, window);
-        if (!swapchain.handle) {
-            LOGWITH("Failed to create swapchain");
             reason = result;
             return;
         }
@@ -135,42 +126,56 @@ namespace onart {
         }
     }
 
-    void D3D11Machine::createSwapchain(uint32_t width, uint32_t height, Window* window) {
-        HRESULT result{};
-        if (swapchain.handle) {
-            for (auto& buf : screenTargets) {
-                buf.first->Release();
-                buf.second->Release();
-            }
-            screenTargets.clear();
-
-            if (screenDSView) {
-                screenDSView->Release();
-                screenDSView = nullptr;
-            }
-            result = swapchain.handle->ResizeBuffers(2, width, height, DXGI_FORMAT_UNKNOWN, 0);
-            if (result != S_OK) {
-                _com_error err(result);
-                LOGWITH("Failed to resize swapchain:", result, err.ErrorMessage());
-                swapchain.handle->Release();
-                swapchain.handle = nullptr;
-                reason = result;
-                return;
-            }
-            for (auto& renderPass : finalPasses) {
-                renderPass.second->setViewport((float)width, (float)height, 0, 0, true); // ���� ���� �ʿ�: ������ ������ ����
-                renderPass.second->setScissor(width, height, 0, 0, true); // ���� ���� �ʿ�: ������ ������ ����
-            }
-            return;
+    bool D3D11Machine::addWindow(int32_t key, Window* window) {
+        if (windowSystems.find(key) != windowSystems.end()) { return true; }
+        auto w = new WindowSystem(window);
+        if (w->swapchain.handle) {
+            windowSystems[key] = w;            
+            return true;
         }
+        else {
+            delete w;
+            return false;
+        }
+    }
 
+    void D3D11Machine::removeWindow(int32_t key) {
+        for (auto it = finalPasses.begin(); it != finalPasses.end();) {
+            if (it->second->windowIdx == key) {
+                delete it->second;
+                finalPasses.erase(it++);
+            }
+            else {
+                ++it;
+            }
+        }
+        windowSystems.erase(key);
+    }
+
+    void D3D11Machine::resetWindow(int32_t key, bool) {
+        auto it = singleton->windowSystems.find(key);
+        if (it == singleton->windowSystems.end()) { return; }
+
+        it->second->resizeSwapchain();
+        uint32_t width = it->second->swapchain.width;
+        uint32_t height = it->second->swapchain.height;
+        if (width & height) { // 값이 0이면 크기 0이라 스왑체인 재생성 실패한 것
+            for (auto& fpass : singleton->finalPasses) {
+                if (fpass.second->windowIdx == key) {
+                    fpass.second->reconstructFB(width, height);
+                }
+            }
+        }
+    }
+
+    D3D11Machine::WindowSystem::WindowSystem(Window* window):window(window) {
         // https://learn.microsoft.com/ko-kr/windows/win32/api/dxgi/ns-dxgi-dxgi_swap_chain_desc?redirectedfrom=MSDN
         // https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/bb173064(v=vs.85)
         IDXGIDevice* dxgiDevice{};
         IDXGIAdapter* dxgiAdapter{};
         IDXGIFactory* dxgiFactory{};
 
-        result = device->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDevice);
+        HRESULT result = singleton->device->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDevice);
         if (!dxgiDevice) {
             _com_error err(result);
             LOGWITH("Failed to query dxgi device:", result, err.ErrorMessage());
@@ -192,6 +197,9 @@ namespace onart {
             return;
         }
 
+        int width, height;
+        window->getFramebufferSize(&width, &height);
+
         DXGI_SWAP_CHAIN_DESC swapchainInfo{};
         swapchainInfo.BufferDesc.Width = width;
         swapchainInfo.BufferDesc.Height = height;
@@ -199,17 +207,16 @@ namespace onart {
         swapchainInfo.SampleDesc.Count = 1;
         swapchainInfo.SampleDesc.Quality = 0;
         swapchainInfo.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        swapchainInfo.BufferCount = 1; // TODO: Ʈ���ù��۸� �Ϸ��� seqencial_flip���� �ϰ� ���� 2�� ����, ������ ����
-        swapchainInfo.SwapEffect = DXGI_SWAP_EFFECT_DISCARD; // TODO: Ʈ���ù��۸� �Ϸ��� seqencial_flip���� �ϰ� ��Ÿ ����
+        swapchainInfo.BufferCount = 1;
+        swapchainInfo.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
         swapchainInfo.OutputWindow = (HWND)window->getWin32Handle();
         //swapchainInfo.BufferDesc.ScanlineOrdering = 0;
 
-        // HW ���� �ʿ�
-        swapchainInfo.BufferDesc.RefreshRate.Numerator = window->getMonitorRefreshRate();;
+        swapchainInfo.BufferDesc.RefreshRate.Numerator = window->getMonitorRefreshRate(); // only used in fullscreen
         swapchainInfo.BufferDesc.RefreshRate.Denominator = 1;
         swapchainInfo.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
-        result = dxgiFactory->CreateSwapChain(device, &swapchainInfo, &swapchain.handle);
+        result = dxgiFactory->CreateSwapChain(singleton->device, &swapchainInfo, &swapchain.handle);
         if (!swapchain.handle) {
             _com_error err(result);
             LOGWITH("Failed to create swapchain:", result, err.ErrorMessage());
@@ -236,7 +243,7 @@ namespace onart {
         dsInfo.BindFlags = D3D11_BIND_DEPTH_STENCIL;
         dsInfo.SampleDesc.Count = 1;
         dsInfo.SampleDesc.Quality = 0;
-        result = device->CreateTexture2D(&dsInfo, nullptr, &dsTex);
+        result = singleton->device->CreateTexture2D(&dsInfo, nullptr, &dsTex);
         if (result != S_OK) {
             LOGWITH("Failed to create screen target depth stencil buffer:", result);
             reason = result;
@@ -246,7 +253,7 @@ namespace onart {
         dsvInfo.Format = dsInfo.Format;
         dsvInfo.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
         dsvInfo.Texture2D.MipSlice = 0;
-        result = device->CreateDepthStencilView(dsTex, &dsvInfo, &screenDSView);
+        result = singleton->device->CreateDepthStencilView(dsTex, &dsvInfo, &screenDSView);
         if (result != S_OK) {
             LOGWITH("Failed to create screen target depth stencil buffer view:", result);
             reason = result;
@@ -257,6 +264,64 @@ namespace onart {
         dsTex->Release();
         swapchain.width = width;
         swapchain.height = height;
+    }
+
+    D3D11Machine::WindowSystem::~WindowSystem() {
+        for (auto& tg : screenTargets) {
+            tg.first->Release();
+            tg.second->Release();
+        }
+        if (screenDSView) { screenDSView->Release(); }
+        if (swapchain.handle) { swapchain.handle->Release(); }
+    }
+
+    void D3D11Machine::WindowSystem::resizeSwapchain() {
+        int w, h;
+        window->getFramebufferSize(&w, &h);
+        HRESULT result = swapchain.handle->ResizeBuffers(1, w, h, DXGI_FORMAT_UNKNOWN, 0);
+        screenDSView->Release();
+        screenDSView = nullptr;
+        
+        if (result != S_OK) {
+            _com_error err(result);
+            LOGWITH("Failed to resize swapchain:", result, err.ErrorMessage());
+            swapchain.handle->Release();
+            swapchain.handle = nullptr;
+            reason = result;
+            return;
+        }
+
+        ID3D11Texture2D* dsTex{};
+
+        D3D11_TEXTURE2D_DESC dsInfo{};
+        dsInfo.Width = w;
+        dsInfo.Height = h;
+        dsInfo.MipLevels = 1;
+        dsInfo.ArraySize = 1;
+        dsInfo.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+        dsInfo.Usage = D3D11_USAGE_DEFAULT;
+        dsInfo.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+        dsInfo.SampleDesc.Count = 1;
+        dsInfo.SampleDesc.Quality = 0;
+        result = singleton->device->CreateTexture2D(&dsInfo, nullptr, &dsTex);
+        if (result != S_OK) {
+            LOGWITH("Failed to create screen target depth stencil buffer:", result);
+            reason = result;
+            return;
+        }
+        D3D11_DEPTH_STENCIL_VIEW_DESC dsvInfo{};
+        dsvInfo.Format = dsInfo.Format;
+        dsvInfo.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+        dsvInfo.Texture2D.MipSlice = 0;
+        result = singleton->device->CreateDepthStencilView(dsTex, &dsvInfo, &screenDSView);
+        if (result != S_OK) {
+            LOGWITH("Failed to create screen target depth stencil buffer view:", result);
+            reason = result;
+            dsTex->Release();
+            return;
+        }
+
+        dsTex->Release();
     }
 
     D3D11Machine::~D3D11Machine() {
@@ -273,12 +338,6 @@ namespace onart {
         meshes.clear();
         textures.clear();
         streamTextures.clear();
-
-        for (auto& buf : screenTargets) {
-            buf.first->Release();
-            buf.second->Release();
-        }
-        screenTargets.clear();
         for (auto& rt : renderTargets) { delete rt.second; }
         renderTargets.clear();
         for (auto& rp : renderPasses) { delete rp.second; }
@@ -291,16 +350,16 @@ namespace onart {
         uniformBuffers.clear();
         for (auto& pp : pipelines) { delete pp.second; }
         pipelines.clear();
+        for (auto ws : windowSystems) { delete ws.second; }
+        windowSystems.clear();
 
-        if (screenDSView) screenDSView->Release();
-        if (swapchain.handle) swapchain.handle->Release();
         context->ClearState();
         context->Flush();
         context->Release();
         device->Release();
     }
 
-    ID3D11RenderTargetView* D3D11Machine::getSwapchainTarget() {
+    ID3D11RenderTargetView* D3D11Machine::WindowSystem::getSwapchainTarget() {
         ID3D11Texture2D* pBackBuffer = nullptr;
         HRESULT result = swapchain.handle->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&pBackBuffer));
         if (result != S_OK) {
@@ -320,7 +379,7 @@ namespace onart {
             rtvInfo.Texture2D.MipSlice = 0;
             rtvInfo.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
             ID3D11RenderTargetView* rtv{};
-            result = device->CreateRenderTargetView(pBackBuffer, &rtvInfo, &rtv);
+            result = singleton->device->CreateRenderTargetView(pBackBuffer, &rtvInfo, &rtv);
             if (result != S_OK) {
                 LOGWITH("Failed to create swapchain render target view:", result);
                 pBackBuffer->Release();
@@ -918,13 +977,19 @@ namespace onart {
         if (tex) { tex->Release(); }
     }
 
-    D3D11Machine::RenderPass2Screen* D3D11Machine::createRenderPass2Screen(int32_t key, const RenderPassCreationOptions& opts) {
+    D3D11Machine::RenderPass2Screen* D3D11Machine::createRenderPass2Screen(int32_t key, int32_t windowIdx, const RenderPassCreationOptions& opts) {
+        auto it = singleton->windowSystems.find(windowIdx);
+        if (it == singleton->windowSystems.end()) {
+            LOGWITH("Invalid window number");
+            return nullptr;
+        }
+        WindowSystem* window = it->second;
         RenderPass2Screen* r = getRenderPass2Screen(key);
         if (r) return r;
         if (opts.subpassCount == 0) return nullptr;
         std::vector<RenderTarget*> targs(opts.subpassCount);
         for (uint32_t i = 0; i < opts.subpassCount - 1; i++) {
-            targs[i] = createRenderTarget2D(singleton->swapchain.width, singleton->swapchain.height, opts.targets ? opts.targets[i] : RenderTargetType::RTT_COLOR1, opts.depthInput ? opts.depthInput[i] : false, false, false);
+            targs[i] = createRenderTarget2D(window->swapchain.width, window->swapchain.height, opts.targets ? opts.targets[i] : RenderTargetType::RTT_COLOR1, opts.depthInput ? opts.depthInput[i] : false, false, false);
             if (!targs[i]) {
                 LOGHERE;
                 for (RenderTarget* t : targs) delete t;
@@ -934,8 +999,10 @@ namespace onart {
 
         RenderPass* ret = new RenderPass(opts.subpassCount);
         ret->targets = std::move(targs);
-        ret->setViewport((float)singleton->swapchain.width, (float)singleton->swapchain.height, 0.0f, 0.0f);
-        ret->setScissor(singleton->swapchain.width, singleton->swapchain.height, 0, 0);
+        ret->setViewport((float)window->swapchain.width, (float)window->swapchain.height, 0.0f, 0.0f);
+        ret->setScissor(window->swapchain.width, window->swapchain.height, 0, 0);
+        ret->is4Screen = true;
+        ret->windowIdx = windowIdx;
         if (key == INT32_MIN) return ret;
         return singleton->finalPasses[key] = ret;
     }
@@ -1707,8 +1774,9 @@ namespace onart {
             if (currentPass != stageCount - 1) {
                 LOGWITH("Warning: No render target set. Rendering to swapchain target");
             }
-            ID3D11RenderTargetView* rtv = singleton->getSwapchainTarget();
-            singleton->context->OMSetRenderTargets(1, &rtv, singleton->screenDSView);
+            WindowSystem* ws = singleton->windowSystems[windowIdx];
+            ID3D11RenderTargetView* rtv = ws->getSwapchainTarget();
+            singleton->context->OMSetRenderTargets(1, &rtv, ws->screenDSView);
         }
         if (currentPass > 0) {
             RenderTarget* prev = targets[currentPass - 1];
@@ -1740,7 +1808,8 @@ namespace onart {
         usePipeline(pipelines[currentPass], currentPass);
         if (clearTarget) {
             if (targets[currentPass] == nullptr) {
-                singleton->context->ClearRenderTargetView(singleton->getSwapchainTarget(), pipelines[currentPass]->clearColor.entry);
+                WindowSystem* ws = singleton->windowSystems[windowIdx];
+                singleton->context->ClearRenderTargetView(ws->getSwapchainTarget(), pipelines[currentPass]->clearColor.entry);
                 return;
             }
             if(targets[currentPass]->dsetDS) singleton->context->ClearDepthStencilView(targets[currentPass]->dsetDS, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
@@ -1916,7 +1985,7 @@ namespace onart {
             return;
         }
         if (targets.back() == nullptr) {
-            singleton->swapchain.handle->Present(1, 0);
+            singleton->windowSystems[windowIdx]->swapchain.handle->Present(1, 0);
         }
         currentPass = -1;
         currentRenderPass = 0;

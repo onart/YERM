@@ -97,12 +97,13 @@ namespace onart {
     };
 
 
+    int32_t GLMachine::currentWindowContext = INT32_MIN;
     GLMachine* GLMachine::singleton = nullptr;
     thread_local unsigned GLMachine::reason = GL_NO_ERROR;
 
     const GLMachine::Mesh* bound = nullptr;
 
-    GLMachine::GLMachine(Window* window){
+    GLMachine::GLMachine(){
         if(singleton) {
             LOGWITH("Tried to create multiple GLMachine objects");
             return;
@@ -125,10 +126,6 @@ namespace onart {
             }
         }
         checkTextureAvailable();
-
-        int x, y;
-        window->getFramebufferSize(&x, &y);
-        createSwapchain(x, y);
 
         if constexpr(USE_OPENGL_DEBUG) {
             glEnable(GL_DEBUG_OUTPUT);
@@ -197,21 +194,43 @@ namespace onart {
         else return pTexture();
     }
 
-    void GLMachine::checkSurfaceHandle(){ }
-
-    mat4 GLMachine::preTransform(){
-        return mat4();
+    GLMachine::WindowSystem::WindowSystem(Window* window):window(window) {
+        window->getFramebufferSize((int*)&width, (int*)&height);
     }
 
-    void GLMachine::createSwapchain(uint32_t width, uint32_t height, Window* window) {
-        surfaceWidth = width;
-        surfaceHeight = height;
-        for (auto& renderPass: finalPasses) {
-            renderPass.second->resize(width, height);
+    bool GLMachine::addWindow(int32_t key, Window* window) {
+        if (windowSystems.find(key) != windowSystems.end()) { return true; }
+        auto w = new WindowSystem(window);
+        windowSystems[key] = w;
+        if (windowSystems.size() == 1) { 
+            window->setMainThread();
+            currentWindowContext = key;
+        }
+        return true;
+    }
+
+    void GLMachine::removeWindow(int32_t key) {
+        for (auto it = finalPasses.begin(); it != finalPasses.end();) {
+            if (it->second->windowIdx == key) {
+                delete it->second;
+                finalPasses.erase(it++);
+            }
+            else {
+                ++it;
+            }
+        }
+        windowSystems.erase(key);
+    }
+
+    void GLMachine::resetWindow(int32_t key, bool) {
+        auto it = singleton->windowSystems.find(key);
+        if (it == singleton->windowSystems.end()) { return; }
+        WindowSystem* ws = it->second;
+        ws->window->getFramebufferSize((int*)&ws->width, (int*)&ws->height);
+        for (auto& renderPass : finalPasses) {
+            renderPass.second->resize(ws->width, ws->height);
         }
     }
-
-    void GLMachine::destroySwapchain(){}
 
     void GLMachine::free() {
         for(auto& cp: cubePasses) { delete cp.second; }
@@ -219,6 +238,7 @@ namespace onart {
         for(auto& rp: renderPasses) { delete rp.second; }
         for(auto& sh: shaders) { glDeleteShader(sh.second); }
         for(auto& pp: pipelines) { delete pp.second; }
+        for (auto& ws : windowSystems) { delete ws.second; }
 
         streamTextures.clear();
         textures.clear();
@@ -227,6 +247,7 @@ namespace onart {
         cubePasses.clear();
         finalPasses.clear();
         renderPasses.clear();
+        windowSystems.clear();
         shaders.clear();
     }
 
@@ -1100,13 +1121,19 @@ namespace onart {
         return singleton->cubePasses[key] = r;
     }
 
-    GLMachine::RenderPass2Screen* GLMachine::createRenderPass2Screen(int32_t key, const RenderPassCreationOptions& opts) {
+    GLMachine::RenderPass2Screen* GLMachine::createRenderPass2Screen(int32_t key, int32_t windowIdx, const RenderPassCreationOptions& opts) {
+        auto it = singleton->windowSystems.find(windowIdx);
+        if (it == singleton->windowSystems.end()) {
+            LOGWITH("Invalid window number");
+            return nullptr;
+        }
+        WindowSystem* window = it->second;
         if (RenderPass2Screen* ret = getRenderPass2Screen(key)) { return ret; }
         if (opts.subpassCount == 0) { return nullptr; }
 
         std::vector<RenderTarget*> targets(opts.subpassCount);
         for (uint32_t i = 0; i < opts.subpassCount - 1; i++) {
-            targets[i] = createRenderTarget2D(singleton->surfaceWidth, singleton->surfaceHeight, opts.targets[i], opts.depthInput, opts.linearSampled);
+            targets[i] = createRenderTarget2D(window->width, window->height, opts.targets[i], opts.depthInput, opts.linearSampled);
             if (!targets[i]) {
                 LOGHERE;
                 for (RenderTarget* t : targets) delete t;
@@ -1116,8 +1143,10 @@ namespace onart {
 
         RenderPass* ret = new RenderPass(opts.subpassCount);
         ret->targets = std::move(targets);
-        ret->setViewport((float)singleton->surfaceWidth, (float)singleton->surfaceHeight, 0.0f, 0.0f);
-        ret->setScissor(singleton->surfaceWidth, singleton->surfaceHeight, 0, 0);
+        ret->setViewport((float)window->width, (float)window->height, 0.0f, 0.0f);
+        ret->setScissor(window->width, window->height, 0, 0);
+        ret->windowIdx = windowIdx;
+        ret->is4Screen = true;
         return singleton->finalPasses[key] = ret;
     }
 
@@ -1501,6 +1530,9 @@ namespace onart {
             return;
         }
         currentPass = -1;
+        if (is4Screen) {
+            singleton->windowSystems[windowIdx]->window->glPresent();
+        }        
     }
 
     bool GLMachine::RenderPass::wait(uint64_t timeout){
@@ -1550,6 +1582,10 @@ namespace onart {
             else glDisable(GL_DEPTH_TEST);
         }
         else {
+            if (currentWindowContext != windowIdx) {
+                singleton->windowSystems[windowIdx]->window->setMainThread();
+                currentWindowContext = windowIdx;
+            }
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             glEnable(GL_DEPTH_TEST);
         }
