@@ -119,7 +119,7 @@ namespace onart{
     }
 
     bool loaded = false; // async 테스트용
-    static float thr = 0.5f;
+    static float thr = 1.f;
 
     int Game::start(void* hd, Window::CreationOptions* opt){
         if(window) {
@@ -147,7 +147,7 @@ namespace onart{
             if (!init()) {
                 delete window;
                 Window::terminate();
-                return;
+                return 3;
             }
             for (;; _frame++) {
                 pollEvents();
@@ -285,9 +285,9 @@ namespace onart{
         rpopts.subpassCount = 1;
         auto rp2s = YRGraphics::createRenderPass2Screen(1, 0, rpopts);
         using testv_t = YRGraphics::Vertex<vec3, vec2>;
-        YRGraphics::createTexture(0, TEX0, sizeof(TEX0));
-        loaded = true;
-        //YRGraphics::asyncCreateTexture(0, TEX0, sizeof(TEX0), [](variant8) { loaded = true; });
+        //YRGraphics::createTexture(0, TEX0, sizeof(TEX0));
+        //loaded = true;
+        YRGraphics::asyncCreateTexture(0, TEX0, sizeof(TEX0), [](variant8) { loaded = true; });
         testv_t verts[]{ {{-1,-1,0},{0,0}},{{-1,1,0},{0,1}},{{1,-1,0},{1,0}},{{1,1,0},{1,1}} };
         uint16_t inds[]{ 0,1,2,2,1,3 };
         YRGraphics::MeshCreationOptions mopts;
