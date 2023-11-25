@@ -285,6 +285,37 @@ namespace onart {
         }
     }
 
+    void VkMachine::__reaper::reap() {
+        if (!empty) {
+            vkDeviceWaitIdle(singleton->device);
+            for (auto& dset : descriptorsets) { vkFreeDescriptorSets(singleton->device, dset.second, 1, &dset.first); } // 동일 풀에 대한 것은 한 번에 해제하도록 최적화 가능
+            for (VkImageView v : views) { vkDestroyImageView(singleton->device, v, nullptr); }
+            for (auto& img : images) { vmaDestroyImage(singleton->allocator, img.first, img.second); }
+            for (auto& buf : buffers) { vmaDestroyBuffer(singleton->allocator, buf.first, buf.second); }
+
+            descriptorsets.clear();
+            views.clear();
+            images.clear();
+            buffers.clear();
+
+            empty = true;
+        }
+    }
+
+    void VkMachine::reap() {
+        /*
+        * 리핑 방법 후보
+        * 1. 자원을 바인드한 렌더패스가 항상 참조수를 보유
+        * 1.1. 연관 컨테이너로 중복을 방지할 경우 룩업비용과 메모리, 대부분의 상황에서 의미없는 shared ptr 소멸자 비용
+        * 1.2. 순차 컨테이너로 보유만 할 경우 더 많은 메모리 사용, 대부분의 상황에서 의미없는 shared ptr 소멸자 비용
+        * 2. 자원을 보유한 클래스가 렌더패스를 참조: 소멸 시에만, 패스마다의 대기가 발생하나
+        * 이를 무결하게 구현하려면 메모리 사용량은 더 많아질 수밖에 없음.
+        * 자원은 최근에 들어간 렌더패스가 사라졌는지도 알아야 하는데 역시 무결하게 구현하려면 양방향 참조가 들어갈 수 있음
+        * 3. 렌더패스 관계없이 디바이스 대기: device wait이 필요하나 구분 비용이 없음. vsync를 제외하면 단일 렌더패스 대기 비용이나 디바이스 대기나 비슷할 때도 있음
+        */
+        singleton->reaper.reap();
+    }
+
     void VkMachine::WindowSystem::checkSurfaceHandle(){
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(singleton->physicalDevice.card, surface.handle, &surface.caps);
         uint32_t count;
@@ -400,6 +431,8 @@ namespace onart {
         renderPasses.clear();
         renderTargets.clear();
         shaders.clear();
+
+        reap();
         
         for (auto& wsi : windowSystems) {
             delete wsi.second;
@@ -1272,12 +1305,12 @@ namespace onart {
     VkMachine::StreamTexture::~StreamTexture() {
         vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, UINT64_MAX);
         vkDestroyFence(singleton->device, fence, nullptr);
-        vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
         vmaUnmapMemory(singleton->allocator, allocb);
-        vkDestroyImageView(singleton->device, view, nullptr);
-        vmaDestroyImage(singleton->allocator, img, alloc);
-        vmaDestroyBuffer(singleton->allocator, buf, allocb);
         vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &cb);
+        singleton->reaper.push(dset, singleton->descriptorPool);
+        singleton->reaper.push(view);
+        singleton->reaper.push(img, alloc);
+        singleton->reaper.push(buf, allocb);
     }
 
     void VkMachine::StreamTexture::update(void* src) {
@@ -1315,7 +1348,7 @@ namespace onart {
     }
 
     VkMachine::TextureSet::~TextureSet() {
-        vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
+        singleton->reaper.push(dset, singleton->descriptorPool);
     }
 
     static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, VkMachine::TextureFormatOptions option){
@@ -1614,9 +1647,9 @@ namespace onart {
 
     VkMachine::Texture::Texture(VkImage img, VkImageView view, VmaAllocation alloc, VkDescriptorSet dset, uint16_t width, uint16_t height) :img(img), view(view), alloc(alloc), dset(dset), width(width), height(height) { }
     VkMachine::Texture::~Texture(){
-        vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
-        vkDestroyImageView(singleton->device, view, nullptr);
-        vmaDestroyImage(singleton->allocator, img, alloc);
+        singleton->reaper.push(dset, singleton->descriptorPool);
+        singleton->reaper.push(img, alloc);
+        singleton->reaper.push(view);
     }
 
     void VkMachine::Texture::collect(bool removeUsing) {
@@ -2760,7 +2793,10 @@ namespace onart {
     }
 
     VkMachine::Mesh::Mesh(VkBuffer vb, VmaAllocation vba, size_t vcount, size_t icount, size_t ioff, void *vmap, bool use32):vb(vb),vba(vba),vcount(vcount),icount(icount),ioff(ioff),vmap(vmap),idxType(use32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16){ }
-    VkMachine::Mesh::~Mesh(){ vmaDestroyBuffer(singleton->allocator, vb, vba); }
+    VkMachine::Mesh::~Mesh() { 
+        if (vmap) { vmaUnmapMemory(singleton->allocator, vba); }
+        singleton->reaper.push(vb, vba);
+    }
 
     void VkMachine::Mesh::update(const void* input, uint32_t offset, uint32_t size){
         if(!vmap) return;

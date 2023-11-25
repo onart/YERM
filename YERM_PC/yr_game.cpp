@@ -147,7 +147,7 @@ namespace onart{
             if (!init()) {
                 delete window;
                 Window::terminate();
-                return 3;
+                return;
             }
             for (;; _frame++) {
                 pollEvents();

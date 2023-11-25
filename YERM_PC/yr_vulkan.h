@@ -350,6 +350,8 @@ namespace onart {
             static pStreamTexture getStreamTexture(int32_t key);
             /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pMesh getMesh(int32_t key);
+            /// @brief 해제되어야 할 자원을 안전하게 해제합니다. 각 자원의 collect와 이것의 호출 주기는 적절하게 설정할 필요가 있습니다.
+            static void reap();
             /// @brief Vulkan 인스턴스를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
             inline static VkInstance getInstance() { return singleton->instance; }
             /// @brief Vulkan 물리 장치를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
@@ -445,6 +447,21 @@ namespace onart {
             std::map<int32_t, pTextureSet> textureSets;
             std::map<int32_t, pStreamTexture> streamTextures;
 
+            struct __reaper{
+            private:
+                bool empty = true;
+                std::vector<std::pair<VkDescriptorSet, VkDescriptorPool>> descriptorsets;
+                std::vector<VkImageView> views;
+                std::vector<std::pair<VkBuffer, VmaAllocation>> buffers;
+                std::vector<std::pair<VkImage, VmaAllocation>> images;
+            public:
+                void reap();
+                inline void push(VkDescriptorSet s, VkDescriptorPool p) { descriptorsets.push_back({ s,p }); empty = false; }
+                inline void push(VkImageView v) { views.push_back(v); empty = false; }
+                inline void push(VkBuffer b, VmaAllocation a) { buffers.push_back({ b,a }); empty = false; }
+                inline void push(VkImage i, VmaAllocation a) { images.push_back({ i,a }); empty = false; }
+            } reaper;
+
             std::mutex textureGuard;
             std::mutex qGuard; // gq와 tq에 동시 제출을 시도하는데 gq == tq일 때는 동기화가 필요함
 
@@ -466,7 +483,8 @@ namespace onart {
             void removeImageSet(ImageSet*);
     };
 
-    struct VkMachine::WindowSystem {
+    class VkMachine::WindowSystem {
+    public:
         friend class VkMachine;
         struct {
             VkSurfaceKHR handle;
