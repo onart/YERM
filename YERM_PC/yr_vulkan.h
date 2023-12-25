@@ -169,6 +169,8 @@ namespace onart {
                 bool linearSampled = true;
                 /// @brief screen 대상의 렌더패스의 최종 타겟에 depth 또는 stencil을 포함할지 결정합니다. 즉, RenderTargetType::DEPTH, RenderTargetType::STENCIL 이외에는 무시됩니다. 기본값 COLOR1
                 RenderTargetType screenDepthStencil = RenderTargetType::RTT_COLOR1;
+                /// @brief true일 경우 내용을 CPU 메모리로 읽어오거나 텍스처로 추출할 수 있습니다. RenderPass2Screen 및 RenderPass2Cube 생성 시에는 무시됩니다. 기본값 false
+                bool canCopy = false;
             };
             struct ShaderModuleCreationOptions {
                 /// @brief SPIR-V 바이너리입니다. 기본값 없음
@@ -259,6 +261,14 @@ namespace onart {
                 void* vsByteCode = nullptr;
                 size_t vsByteCodeSize = 0;
             };
+
+            struct RenderTarget2TextureOptions {
+                /// @brief 0~2: 타겟의 해당 번호의 색 버퍼를 복사합니다. 3~: 현재 지원하지 않습니다. 기본값 0
+                uint32_t index = 0;
+                /// @brief true 결과 텍스처의 샘플링 방식이 linear로 수행됩니다. 기본값 false
+                bool linearSampled = false;
+            };
+
             /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
             static void handle();
             /// @brief 보통 이미지 파일을 불러와 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
@@ -400,7 +410,7 @@ namespace onart {
             /// @brief vulkan 객체를 없앱니다.
             void free();
         private:
-            static RenderTarget* createRenderTarget2D(int width, int height, RenderTargetType type, bool useDepthInput, bool sampled, bool linear);
+            static RenderTarget* createRenderTarget2D(int width, int height, RenderTargetType type, bool useDepthInput, bool sampled, bool linear, bool canRead);
             static VkPipelineLayout createPipelineLayout(const PipelineLayoutOptions& options);
             static VkDescriptorSetLayout getDescriptorSetLayout(ShaderResourceType);
             ~VkMachine();
@@ -531,6 +541,11 @@ namespace onart {
     class VkMachine::RenderPass{
         friend class VkMachine;
         public:
+            struct ReadBackBuffer {
+                uint8_t* data;
+                int32_t key;
+            };
+        public:
             RenderPass& operator=(const RenderPass&) = delete;
             /// @brief 뷰포트를 설정합니다. 기본 상태는 프레임버퍼 생성 당시의 크기들입니다. (즉 @ref reconstructFB 를 사용 시 여기서 수동으로 정한 값은 리셋됩니다.)
             /// 이것은 패스 내의 모든 파이프라인이 공유합니다.
@@ -604,8 +619,20 @@ namespace onart {
             bool wait(uint64_t timeout = UINT64_MAX);
             /// @brief 렌더타겟의 크기를 일괄 변경합니다.
             void resize(int width, int height, bool linearSampled = true);
+            /// @brief 렌더타겟에 직전 execute 이후 그려진 내용을 별도의 텍스처로 복사합니다.
+            /// @param key 텍스처 키입니다.
+            /// @param index 0~3이 가능합니다. 0~2: 색 타겟, 3: 깊이/스텐실 타겟
+            pTexture copy2Texture(int32_t key, const RenderTarget2TextureOptions& opts = {});
+            /// @brief 렌더타겟에 직전 execute 이후 그려진 내용을 비동기로 별도의 텍스처로 복사합니다.
+            void asyncCopy2Texture(int32_t key, std::function<void(variant8)> handler, const RenderTarget2TextureOptions& opts = {});
+            /// @brief 렌더타겟에 직전 execute 이후 그려진 내용을 CPU 메모리에 작성합니다. 포맷은 렌더타겟과 동일합니다. 현재 depth/stencil 버퍼는 항상 24/8 포맷임에 유의해 주세요.
+            std::unique_ptr<uint8_t[]> readBack(uint32_t index);
+            /// @brief 렌더타겟에 그려진 내용을 CPU 메모리에 비동기로 작성합니다. asyncReadBack 호출 시점보다 뒤에 그려진 내용이 캡처될 수 있으며 이 사양은 추후 변할 수 있습니다. 포맷은 렌더타겟과 동일합니다.
+            /// @param key 핸들러에 전달될 키입니다.
+            /// @param handler 비동기 핸들러입니다. ReadBackBuffer의 포인터가 전달되며 해당 메모리는 핸들러에서 delete로 해제해야 합니다.
+            void asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler);
         private:
-            RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount); // 이후 다수의 서브패스를 쓸 수 있도록 변경
+            RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount, bool canBeRead); // 이후 다수의 서브패스를 쓸 수 있도록 변경
             ~RenderPass();
             void reconstructFB(RenderTarget** targets);
             const uint16_t stageCount;
@@ -619,7 +646,7 @@ namespace onart {
             VkRect2D scissor{};
             VkCommandBuffer cb = VK_NULL_HANDLE;
             const Mesh* bound = nullptr;
-            
+            const bool canBeRead;
             
             VkFence fence = VK_NULL_HANDLE;
             VkSemaphore semaphore = VK_NULL_HANDLE;
