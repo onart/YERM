@@ -1657,6 +1657,10 @@ namespace onart {
         singleton->loadThread.handleCompleted();
     }
 
+    void D3D11Machine::post(std::function<variant8(void)> exec, std::function<void(variant8)> handler, uint8_t strand = 0) {
+        singleton->loadThread.post(exec, handler, strand);
+    }
+
     mat4 D3D11Machine::preTransform() {
         return mat4();
     }

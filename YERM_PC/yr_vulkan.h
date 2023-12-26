@@ -271,6 +271,11 @@ namespace onart {
 
             /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
             static void handle();
+            /// @brief 원하는 비동기 동작을 요청합니다.
+            /// @param work 다른 스레드에서 실행할 함수
+            /// @param handler 호출되는 것
+            /// @param strand 이 값이 값은 것들끼리는(0 제외) 동시에 다른 스레드에서 실행되지 않습니다. 그래픽스에 관련된 내용을 수행할 경우 1을 입력해 주세요.
+            static void post(std::function<variant8(void)> work, std::function<void(variant8)> handler, uint8_t strand = 0);
             /// @brief 보통 이미지 파일을 불러와 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param fileName 파일 이름
@@ -621,7 +626,6 @@ namespace onart {
             void resize(int width, int height, bool linearSampled = true);
             /// @brief 렌더타겟에 직전 execute 이후 그려진 내용을 별도의 텍스처로 복사합니다.
             /// @param key 텍스처 키입니다.
-            /// @param index 0~3이 가능합니다. 0~2: 색 타겟, 3: 깊이/스텐실 타겟
             pTexture copy2Texture(int32_t key, const RenderTarget2TextureOptions& opts = {});
             /// @brief 렌더타겟에 직전 execute 이후 그려진 내용을 비동기로 별도의 텍스처로 복사합니다.
             void asyncCopy2Texture(int32_t key, std::function<void(variant8)> handler, const RenderTarget2TextureOptions& opts = {});

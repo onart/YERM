@@ -72,7 +72,7 @@ namespace onart {
         /// @brief 스레드에서 최근에 호출된 함수의 실패 요인을 일부 확인할 수 있습니다. D3D11 호출에 의한 실패가 아닌 경우 MAX_ENUM 값이 들어갑니다.
         static thread_local HRESULT reason;
         constexpr static bool VULKAN_GRAPHICS = false, D3D12_GRAPHICS = false, D3D11_GRAPHICS = true, OPENGL_GRAPHICS = false, OPENGLES_GRAPHICS = false, METAL_GRAPHICS = false;
-        /// @brief OpenGL 오류 콜백을 사용하려면 이것을 활성화해 주세요.
+        /// @brief D3D11 디버그 레이어를 사용하려면 이것을 활성화해 주세요.
         constexpr static bool USE_D3D11_DEBUG = true;
         /// @brief 그리기 대상입니다. 텍스처로 사용하거나 메모리 맵으로 데이터에 접근할 수 있습니다. 
         class RenderTarget;
@@ -121,6 +121,11 @@ namespace onart {
         };
         /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
         static void handle();
+        /// @brief 원하는 비동기 동작을 요청합니다.
+        /// @param work 다른 스레드에서 실행할 함수
+        /// @param handler 호출되는 것
+        /// @param strand 이 값이 값은 것들끼리는(0 제외) 동시에 다른 스레드에서 실행되지 않습니다. 그래픽스에 관련된 내용을 수행할 경우 1을 입력해 주세요.
+        static void post(std::function<variant8(void)> work, std::function<void(variant8)> handler, uint8_t strand = 0);
         /// @brief 단위행렬이 리턴됩니다.
         static mat4 preTransform();
 

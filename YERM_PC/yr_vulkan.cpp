@@ -473,6 +473,10 @@ namespace onart {
         singleton->loadThread.handleCompleted();
     }
 
+    void VkMachine::post(std::function<variant8(void)> exec, std::function<void(variant8)> handler, uint8_t strand = 0) {
+        singleton->loadThread.post(exec, handler, strand);
+    }
+
     void VkMachine::allocateDescriptorSets(VkDescriptorSetLayout* layouts, uint32_t count, VkDescriptorSet* output){
         VkDescriptorSetAllocateInfo dsAllocInfo{};
         dsAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -2897,6 +2901,10 @@ namespace onart {
             LOGWITH("Invalid key");
             return {};
         }
+        if (!canBeRead) {
+            LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
+            return {};
+        }
         RenderTarget* targ = targets.back();
         ImageSet* srcSet{};
         if (opts.index < 3) {
@@ -3083,6 +3091,10 @@ namespace onart {
     }
 
     void VkMachine::RenderPass::asyncCopy2Texture(int32_t key, std::function<void(variant8)> handler, const RenderTarget2TextureOptions& opts) {
+        if (!canBeRead) {
+            LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
+            return;
+        }
         if (key == INT32_MIN) {
             LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
             return;
@@ -3110,9 +3122,13 @@ namespace onart {
     }
 
     std::unique_ptr<uint8_t[]> VkMachine::RenderPass::readBack(uint32_t index) {
+        if (!canBeRead) {
+            LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
+            return {};
+        }
         RenderTarget* targ = targets.back();
         ImageSet* srcSet{};
-        {
+        if (index < 4) {
             ImageSet* sources[] = { targ->color1,targ->color2,targ->color3,targ->depthstencil };
             srcSet = sources[index];
         }
@@ -3225,6 +3241,10 @@ namespace onart {
     }
 
     void VkMachine::RenderPass::asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler) {
+        if (!canBeRead) {
+            LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
+            return;
+        }
         singleton->loadThread.post([key, index, this]() {
             ReadBackBuffer* ret = new ReadBackBuffer;
             ret->key = key;
