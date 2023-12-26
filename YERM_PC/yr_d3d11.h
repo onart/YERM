@@ -143,6 +143,8 @@ namespace onart {
             bool linearSampled = true;
             /// @brief screen 대상의 렌더패스의 최종 타겟에 depth 또는 stencil을 포함할지 결정합니다. 즉, RenderTargetType::DEPTH, RenderTargetType::STENCIL 이외에는 무시됩니다. 기본값 COLOR1
             RenderTargetType screenDepthStencil = RenderTargetType::RTT_COLOR1;
+            /// @brief true일 경우 내용을 CPU 메모리로 읽어오거나 텍스처로 추출할 수 있습니다. RenderPass2Screen 및 RenderPass2Cube 생성 시에는 무시됩니다. 기본값 false
+            bool canCopy = false;
         };
 
         /// @brief 이미지 파일로부터 텍스처를 생성할 때 줄 수 있는 옵션입니다. 비트 OR로 여러 조건을 조합할 수 있습니다.
@@ -290,6 +292,13 @@ namespace onart {
             size_t vsByteCodeSize = 0;
         };
 
+        struct RenderTarget2TextureOptions {
+            /// @brief 0~2: 타겟의 해당 번호의 색 버퍼를 복사합니다. 3~: 현재 지원하지 않습니다. 기본값 0
+            uint32_t index = 0;
+            /// @brief true 결과 텍스처의 샘플링 방식이 linear로 수행됩니다. 기본값 false
+            bool linearSampled = false;
+        };
+
         /// @brief 보통 이미지 파일을 불러와 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
         /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
         /// @param fileName 파일 이름
@@ -373,6 +382,8 @@ namespace onart {
         static pTexture getTexture(int32_t key);
         /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
         static pMesh getMesh(int32_t key);
+        /// @brief 해제되어야 할 자원을 안전하게 해제합니다. 각 자원의 collect와 이것의 호출 주기는 적절하게 설정할 필요가 있습니다.
+        static void reap();
         /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
         inline static bool isSurfaceSRGB() { return false; }
         /// @brief 아무 것도 하지 않습니다.
@@ -523,6 +534,11 @@ namespace onart {
     class D3D11Machine::RenderPass {
         friend class D3D11Machine;
     public:
+        struct ReadBackBuffer {
+            uint8_t* data;
+            int32_t key;
+        };
+    public:
         RenderPass& operator=(const RenderPass&) = delete;
         /// @brief 뷰포트를 설정합니다. 기본 상태는 프레임버퍼 생성 당시의 크기들입니다. (즉 @ref reconstructFB 를 사용 시 여기서 수동으로 정한 값은 리셋됩니다.)
         /// 이것은 패스 내의 모든 파이프라인이 공유합니다.
@@ -585,8 +601,19 @@ namespace onart {
         bool wait(uint64_t timeout = UINT64_MAX);
         /// @brief 아무것도 하지 않습니다.
         inline void reconstructFB(...) {}
+        /// @brief 렌더타겟에 직전 execute 이후 그려진 내용을 별도의 텍스처로 복사합니다. 텍스처는 DEFAULT usage로 생성되며, IMMUTABLE을 원하는 경우 readBack의 결과를 이용하여 텍스처 생성 함수를 별도로 호출해 주세요.
+        /// @param key 텍스처 키입니다.
+        pTexture copy2Texture(int32_t key, const RenderTarget2TextureOptions& opts = {});
+        /// @brief 렌더타겟에 직전 execute 이후 그려진 내용을 별도의 텍스처로 복사합니다. 동기화의 편의를 위해 DEFAULT usage로 생성되며, IMMUTABLE을 원하는 경우 readBack의 결과를 이용하여 텍스처 생성 함수를 별도로 호출해 주세요.
+        void asyncCopy2Texture(int32_t key, std::function<void(variant8)> handler, const RenderTarget2TextureOptions& opts = {});
+        /// @brief 렌더타겟에 직전 execute 이후 그려진 내용을 CPU 메모리에 작성합니다. 포맷은 렌더타겟과 동일합니다. 현재 depth/stencil 버퍼는 항상 24/8 포맷임에 유의해 주세요.
+        std::unique_ptr<uint8_t[]> readBack(uint32_t index);
+        /// @brief 렌더타겟에 그려진 내용을 CPU 메모리에 비동기로 작성합니다. asyncReadBack 호출 시점보다 뒤에 그려진 내용이 캡처될 수 있으며 이 사양은 추후 변할 수 있습니다. 포맷은 렌더타겟과 동일합니다. 동기화 편의를 위하여 handle() 여러 번에 걸쳐 수행됩니다.
+        /// @param key 핸들러에 전달될 키입니다.
+        /// @param handler 비동기 핸들러입니다. @ref ReadBackBuffer의 포인터가 전달되며 해당 메모리는 자동으로 해제되므로 핸들러에서는 읽기만 가능합니다.
+        void asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler);
     private:
-        RenderPass(uint16_t stageCount); // 이후 다수의 서브패스를 쓸 수 있도록 변경
+        RenderPass(uint16_t stageCount, bool canBeRead); // 이후 다수의 서브패스를 쓸 수 있도록 변경
         ~RenderPass();
         const uint16_t stageCount;
         std::vector<Pipeline*> pipelines;
@@ -597,6 +624,7 @@ namespace onart {
         D3D11_VIEWPORT viewport;
         D3D11_RECT scissor;
         const static Mesh* bound;
+        const bool canBeRead;
     };
 
     /// @brief 큐브맵 대상의 렌더패스입니다.

@@ -1737,12 +1737,10 @@ namespace onart {
         LOGWITH("Warning: Currently there is no async copy in OpenGL API; This call will be executed now");
         std::unique_ptr<uint8_t[]> up = readBack(index);
         uint8_t* dat = up.release();
-        singleton->loadThread.post([key, dat]() {
-            ReadBackBuffer* ret = new ReadBackBuffer;
-            ret->key = key;
-            ret->data = dat;
-            return variant8(ret);
-        }, handler);
+        ReadBackBuffer ret;
+        ret.key = key;
+        ret.data = dat;
+        if (handler) handler(&ret);
     }
 
     GLMachine::RenderPass2Cube::~RenderPass2Cube(){

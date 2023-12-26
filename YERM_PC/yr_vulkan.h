@@ -633,7 +633,7 @@ namespace onart {
             std::unique_ptr<uint8_t[]> readBack(uint32_t index);
             /// @brief 렌더타겟에 그려진 내용을 CPU 메모리에 비동기로 작성합니다. asyncReadBack 호출 시점보다 뒤에 그려진 내용이 캡처될 수 있으며 이 사양은 추후 변할 수 있습니다. 포맷은 렌더타겟과 동일합니다.
             /// @param key 핸들러에 전달될 키입니다.
-            /// @param handler 비동기 핸들러입니다. ReadBackBuffer의 포인터가 전달되며 해당 메모리는 핸들러에서 delete로 해제해야 합니다.
+            /// @param handler 비동기 핸들러입니다. @ref ReadBackBuffer의 포인터가 전달되며 해당 메모리는 자동으로 해제되므로 핸들러에서는 읽기만 가능합니다.
             void asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler);
         private:
             RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount, bool canBeRead); // 이후 다수의 서브패스를 쓸 수 있도록 변경

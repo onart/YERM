@@ -3251,7 +3251,11 @@ namespace onart {
             std::unique_ptr<uint8_t[]> p = readBack(index);
             ret->data = p.release();
             return variant8(ret);
-        }, handler, vkm_strand::GENERAL);
+            }, [handler](variant8 param) {
+                if (handler) handler(param);
+                ReadBackBuffer* result = (ReadBackBuffer*)param.vp;
+                delete result;
+            }, vkm_strand::GENERAL);
     }
 
     void VkMachine::RenderPass::reconstructFB(VkMachine::RenderTarget** targets){

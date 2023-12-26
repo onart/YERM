@@ -440,6 +440,10 @@ namespace onart {
         return score;
     }
 
+    void D3D11Machine::reap() {
+
+    }
+
     D3D11Machine::pMesh D3D11Machine::getMesh(int32_t key) {
         auto it = singleton->meshes.find(key);
         if (it != singleton->meshes.end()) {
@@ -997,7 +1001,7 @@ namespace onart {
             }
         }
 
-        RenderPass* ret = new RenderPass(opts.subpassCount);
+        RenderPass* ret = new RenderPass(opts.subpassCount, false);
         ret->targets = std::move(targs);
         ret->setViewport((float)window->swapchain.width, (float)window->swapchain.height, 0.0f, 0.0f);
         ret->setScissor(window->swapchain.width, window->swapchain.height, 0, 0);
@@ -1022,7 +1026,7 @@ namespace onart {
             }
         }
 
-        RenderPass* ret = new RenderPass(opts.subpassCount);
+        RenderPass* ret = new RenderPass(opts.subpassCount, opts.canCopy);
         ret->targets = std::move(targs);
         ret->setViewport((float)opts.width, (float)opts.height, 0.0f, 0.0f);
         ret->setScissor(opts.width, opts.height, 0, 0);
@@ -1657,7 +1661,7 @@ namespace onart {
         singleton->loadThread.handleCompleted();
     }
 
-    void D3D11Machine::post(std::function<variant8(void)> exec, std::function<void(variant8)> handler, uint8_t strand = 0) {
+    void D3D11Machine::post(std::function<variant8(void)> exec, std::function<void(variant8)> handler, uint8_t strand) {
         singleton->loadThread.post(exec, handler, strand);
     }
 
@@ -1728,8 +1732,8 @@ namespace onart {
         delete ds;
     }
 
-    D3D11Machine::RenderPass::RenderPass(uint16_t stageCount)
-        :stageCount(stageCount), targets(stageCount), pipelines(stageCount) {
+    D3D11Machine::RenderPass::RenderPass(uint16_t stageCount, bool canBeRead)
+        :stageCount(stageCount), targets(stageCount), pipelines(stageCount), canBeRead(canBeRead) {
 
     }
 
@@ -2019,6 +2023,269 @@ namespace onart {
         if (applyNow && currentPass != -1) {
             singleton->context->RSSetScissorRects(1, &scissor);
         }
+    }
+
+    D3D11Machine::pTexture D3D11Machine::RenderPass::copy2Texture(int32_t key, const RenderTarget2TextureOptions& opts) {
+        if (getTexture(key)) {
+            LOGWITH("Invalid key");
+            return {};
+        }
+        if (!canBeRead) {
+            LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
+            return {};
+        }
+        RenderTarget* targ = targets.back();
+        ImageSet* srcSet{};
+        if (opts.index < 3) {
+            ImageSet* sources[] = { targ->color1,targ->color2,targ->color3 };
+            srcSet = sources[opts.index];
+        }
+        if (!srcSet) {
+            LOGWITH("Invalid index");
+            return {};
+        }
+        D3D11_TEXTURE2D_DESC texInfo{};
+        texInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        texInfo.ArraySize = 1;
+        texInfo.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        texInfo.SampleDesc.Count = 1;
+        texInfo.MipLevels = 1;
+        texInfo.Width = targ->width;
+        texInfo.Height = targ->height;
+        texInfo.Usage = D3D11_USAGE_DEFAULT;
+
+        ID3D11Texture2D* newTex{};
+        HRESULT result = singleton->device->CreateTexture2D(&texInfo, nullptr, &newTex);
+        if (!SUCCEEDED(result)) {
+            LOGWITH("Failed to create new texture:", result);
+            reason = result;
+            return {};
+        }
+        singleton->context->CopyResource(newTex, srcSet->tex);
+        D3D11_SHADER_RESOURCE_VIEW_DESC srvInfo{};
+        srvInfo.Format = texInfo.Format;
+        srvInfo.Texture2D.MipLevels = 1;
+        srvInfo.Texture2D.MostDetailedMip = 0;
+        srvInfo.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        ID3D11ShaderResourceView* newSrv{};
+        result = singleton->device->CreateShaderResourceView(newTex, &srvInfo, &newSrv);
+        if (!SUCCEEDED(result)) {
+            LOGWITH("Failed to create new shader resource view:", result);
+            newTex->Release();
+            return {};
+        }
+        struct txtr :public Texture { inline txtr(ID3D11Resource* _1, ID3D11ShaderResourceView* _2, uint16_t _3, uint16_t _4, bool _5, bool _6) :Texture(_1, _2, _3, _4, _5, _6) {} };
+        pTexture ret = std::make_shared<txtr>(newTex, newSrv, targ->width, targ->height, false, opts.linearSampled);
+        if (key == INT32_MIN) return ret;
+        return singleton->textures[key] = ret;
+    }
+
+    void D3D11Machine::RenderPass::asyncCopy2Texture(int32_t key, std::function<void(variant8)> handler, const RenderTarget2TextureOptions& opts) {
+        if (getTexture(key)) {
+            LOGWITH("Invalid key");
+            return;
+        }
+        if (!canBeRead) {
+            LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
+            return;
+        }
+        if (key == INT32_MIN) {
+            LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
+            return;
+        }
+        uint32_t index = opts.index;
+        bool linear = opts.linearSampled;
+        RenderTarget* targ = targets.back();
+        ImageSet* srcSet{};
+        if (index < 3) {
+            ImageSet* sources[] = { targ->color1,targ->color2,targ->color3 };
+            srcSet = sources[index];
+        }
+        if (!srcSet) {
+            LOGWITH("Invalid index");
+            return;
+        }
+        singleton->loadThread.post([this, key, index, linear]() {
+            RenderTarget* targ = targets.back();
+            D3D11_TEXTURE2D_DESC texInfo{};
+            texInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            texInfo.ArraySize = 1;
+            texInfo.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            texInfo.SampleDesc.Count = 1;
+            texInfo.MipLevels = 1;
+            texInfo.Width = targ->width;
+            texInfo.Height = targ->height;
+            texInfo.Usage = D3D11_USAGE_DEFAULT;
+
+            ID3D11Texture2D* newTex{};
+            reason = singleton->device->CreateTexture2D(&texInfo, nullptr, &newTex);
+            return variant8(newTex);
+            }, [key, this, targ, srcSet, handler, linear](variant8 param) {
+                ID3D11Texture2D* newTex = (ID3D11Texture2D*)param.vp;
+                if (!newTex) {
+                    variant8 par2;
+                    par2.bytedata4[0] = key;
+                    par2.bytedata4[1] = E_FAIL;
+                    if (handler) handler(par2);
+                    return;
+                }
+                
+                singleton->context->CopyResource(newTex, srcSet->tex);
+                D3D11_SHADER_RESOURCE_VIEW_DESC srvInfo{};
+                srvInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                srvInfo.Texture2D.MipLevels = 1;
+                srvInfo.Texture2D.MostDetailedMip = 0;
+                srvInfo.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+                ID3D11ShaderResourceView* newSrv{};
+                reason = singleton->device->CreateShaderResourceView(newTex, &srvInfo, &newSrv);
+                if (!SUCCEEDED(reason)) {
+                    variant8 par2;
+                    par2.bytedata4[0] = key;
+                    par2.bytedata4[1] = reason;
+                    if (handler) handler(par2);
+                    return;
+                }
+                struct txtr :public Texture { inline txtr(ID3D11Resource* _1, ID3D11ShaderResourceView* _2, uint16_t _3, uint16_t _4, bool _5, bool _6) :Texture(_1, _2, _3, _4, _5, _6) {} };
+                singleton->textures[key] = std::make_shared<txtr>(newTex, newSrv, targ->width, targ->height, false, linear);
+                variant8 par2;
+                par2.bytedata4[0] = key;
+                if(handler) handler(par2);
+         });
+    }
+
+    std::unique_ptr<uint8_t[]> D3D11Machine::RenderPass::readBack(uint32_t index) {
+        if (!canBeRead) {
+            LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
+            return {};
+        }
+        RenderTarget* targ = targets.back();
+        ImageSet* srcSet{};
+        if (index < 3) {
+            ImageSet* sources[] = { targ->color1,targ->color2,targ->color3 };
+            srcSet = sources[index];
+        }
+        if (!srcSet) {
+            LOGWITH("Invalid index");
+            return {};
+        }
+        D3D11_TEXTURE2D_DESC texInfo{};
+        texInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        texInfo.ArraySize = 1;
+        texInfo.BindFlags = 0;
+        texInfo.SampleDesc.Count = 1;
+        texInfo.MipLevels = 1;
+        texInfo.Width = targ->width;
+        texInfo.Height = targ->height;
+        texInfo.Usage = D3D11_USAGE_STAGING;
+        texInfo.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+
+        ID3D11Texture2D* newTex{};
+        HRESULT result = singleton->device->CreateTexture2D(&texInfo, nullptr, &newTex);
+        if (!SUCCEEDED(result)) {
+            LOGWITH("Failed to create staging target:", result);
+            reason = result;
+            return {};
+        }
+        singleton->context->CopyResource(newTex, srcSet->tex);
+        std::unique_ptr<uint8_t[]> up(new uint8_t[targ->width * targ->height * 4]);
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        result = singleton->context->Map(newTex, 0, D3D11_MAP_READ, 0, &mapped);
+        if (!SUCCEEDED(result)) {
+            LOGWITH("Failed to map staging target:", result);
+            reason = result;
+            newTex->Release();
+            return {};
+        }
+        uint8_t* srcPos = (uint8_t*)mapped.pData;
+        uint8_t* dstPos = up.get();
+        for (uint32_t i = 0; i < targ->height; i++) {
+            std::memcpy(dstPos, srcPos, targ->width * 4);
+            srcPos += mapped.RowPitch;
+            dstPos += targ->width * 4;
+        }
+        singleton->context->Unmap(newTex, 0);
+        return up;
+    }
+
+    void D3D11Machine::RenderPass::asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler) {
+        if (!canBeRead) {
+            LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
+            return;
+        }
+        RenderTarget* targ = targets.back();
+        ImageSet* srcSet{};
+        if (index < 3) {
+            ImageSet* sources[] = { targ->color1,targ->color2,targ->color3 };
+            srcSet = sources[index];
+        }
+        if (!srcSet) {
+            LOGWITH("Invalid index");
+            return;
+        }
+        uint32_t w = targ->width, h = targ->height;
+        uint32_t dataSize = targ->width * targ->height * 4;
+        singleton->loadThread.post([this]() {
+            RenderTarget* targ = targets.back();
+            D3D11_TEXTURE2D_DESC texInfo{};
+            texInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            texInfo.ArraySize = 1;
+            texInfo.BindFlags = 0;
+            texInfo.SampleDesc.Count = 1;
+            texInfo.MipLevels = 1;
+            texInfo.Width = targ->width;
+            texInfo.Height = targ->height;
+            texInfo.Usage = D3D11_USAGE_STAGING;
+            texInfo.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            ID3D11Texture2D* newTex{};
+            HRESULT result = singleton->device->CreateTexture2D(&texInfo, nullptr, &newTex);
+            if (!SUCCEEDED(result)) {
+                LOGWITH("Failed to create staging target:", result);
+                reason = result;
+                return variant8(nullptr);
+            }
+            return variant8(newTex);
+            }, [this, key, srcSet, handler, dataSize, w, h](variant8 param) {
+                ID3D11Texture2D* newTex = (ID3D11Texture2D*)param.vp;
+                if (!newTex) {
+                    variant8 par2;
+                    par2.bytedata4[0] = key;
+                    par2.bytedata4[1] = E_FAIL;
+                    handler(par2);
+                    return;
+                }
+                singleton->context->CopyResource(newTex, srcSet->tex);
+                D3D11_MAPPED_SUBRESOURCE* mapped = new D3D11_MAPPED_SUBRESOURCE;
+                HRESULT result = singleton->context->Map(newTex, 0, D3D11_MAP_READ, 0, mapped);
+                if (!SUCCEEDED(result)) {
+                    delete mapped;
+                    newTex->Release();
+                    variant8 par2;
+                    par2.bytedata4[0] = key;
+                    par2.bytedata4[1] = result;
+                    handler(par2);
+                    return;
+                }
+                singleton->loadThread.post([key, mapped, newTex, dataSize, w, h]() {
+                    uint8_t* up = new uint8_t[dataSize];
+                    uint8_t* srcPos = (uint8_t*)mapped->pData;
+                    uint8_t* dstPos = up;
+                    for (uint32_t i = 0; i < h; i++) {
+                        std::memcpy(dstPos, srcPos, w * 4);
+                        srcPos += mapped->RowPitch;
+                        dstPos += w * 4;
+                    }
+                    delete mapped;
+                    ReadBackBuffer* result = new ReadBackBuffer;
+                    result->data = up;
+                    result->key = key;
+                    return variant8(result);
+                }, [newTex, handler](variant8 param) {
+                    singleton->context->Unmap(newTex, 0);
+                    if (handler) handler(param);
+                    ReadBackBuffer* result = (ReadBackBuffer*)param.vp;
+                    delete result;
+                });
+            });
     }
 
     D3D11Machine::Texture::Texture(ID3D11Resource* texture, ID3D11ShaderResourceView* dset, uint16_t width, uint16_t height, bool isCubemap, bool linearSampled)
