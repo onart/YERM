@@ -172,6 +172,8 @@ namespace onart {
                 bool linearSampled = true;
                 /// @brief screen 대상의 렌더패스의 최종 타겟에 depth 또는 stencil을 포함할지 결정합니다. 즉, RenderTargetType::DEPTH, RenderTargetType::STENCIL 이외에는 무시됩니다. 기본값 COLOR1
                 RenderTargetType screenDepthStencil = RenderTargetType::RTT_COLOR1;
+                /// @brief true일 경우 내용을 CPU 메모리로 읽어오거나 텍스처로 추출할 수 있습니다. RenderPass2Screen 및 RenderPass2Cube 생성 시에는 무시됩니다. 기본값 false
+                bool canCopy = false;
             };
 
             struct ShaderModuleCreationOptions {
@@ -264,8 +266,20 @@ namespace onart {
                 size_t vsByteCodeSize = 0;
             };
 
+            struct RenderTarget2TextureOptions {
+                /// @brief 0~2: 타겟의 해당 번호의 색 버퍼를 복사합니다. 3~: 현재 지원하지 않습니다. 기본값 0
+                uint32_t index = 0;
+                /// @brief true 결과 텍스처의 샘플링 방식이 linear로 수행됩니다. 기본값 false
+                bool linearSampled = false;
+            };
+
             /// @brief 요청한 비동기 동작 중 완료된 것이 있으면 처리합니다.
             static void handle();
+            /// @brief 원하는 비동기 동작을 요청합니다.
+            /// @param work 다른 스레드에서 실행할 함수
+            /// @param handler 호출되는 것
+            /// @param strand 이 값이 값은 것들끼리는(0 제외) 동시에 다른 스레드에서 실행되지 않습니다. 그래픽스에 관련된 내용을 수행할 경우 1을 입력해 주세요.
+            static void post(std::function<variant8(void)> work, std::function<void(variant8)> handler, uint8_t strand = 0);
             /// @brief 보통 이미지 파일을 불러와 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
             /// @param fileName 파일 이름
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
@@ -350,6 +364,8 @@ namespace onart {
             static pTexture getTexture(int32_t key);
             /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pMesh getMesh(int32_t key);
+            /// @brief 해제되어야 할 자원을 안전하게 해제합니다. 각 자원의 collect와 이것의 호출 주기는 적절하게 설정할 필요가 있습니다.
+            static void reap();
         private:
             /// @brief 기본 OpenGL 컨텍스트를 생성합니다.
             GLMachine();
@@ -415,6 +431,11 @@ namespace onart {
 
     class GLMachine::RenderPass{
         friend class GLMachine;
+        public:
+            struct ReadBackBuffer {
+                uint8_t* data;
+                int32_t key;
+            };
         public:
             RenderPass& operator=(const RenderPass&) = delete;
             /// @brief 뷰포트를 설정합니다. 기본 상태는 프레임버퍼 생성 당시의 크기들입니다. (즉 @ref reconstructFB 를 사용 시 여기서 수동으로 정한 값은 리셋됩니다.)
@@ -487,8 +508,19 @@ namespace onart {
             bool wait(uint64_t timeout = UINT64_MAX);
             /// @brief 렌더타겟의 크기를 일괄 변경합니다.
             void resize(int width, int height, bool linearSampled = true);
+            /// @brief 렌더타겟에 직전 execute 이후 그려진 내용을 별도의 텍스처로 복사합니다.
+            /// @param key 텍스처 키입니다.
+            pTexture copy2Texture(int32_t key, const RenderTarget2TextureOptions& opts = {});
+            /// @brief OpenGL API에서는 렌더타겟의 비동기 텍스처 복사를 지원하지 않습니다. 실제로는 호출 즉시 동기적으로 수행되며, 응용단 호환을 위해 함수가 존재합니다. 핸들러에 전달되는 값은 bytedata[0] key, bytedata[1] 성공 여부(0이 성공, 그 외 실패)
+            void asyncCopy2Texture(int32_t key, std::function<void(variant8)> handler, const RenderTarget2TextureOptions& opts = {});
+            /// @brief 렌더타겟에 직전 execute 이후 그려진 내용을 CPU 메모리에 작성합니다. 포맷은 렌더타겟과 동일합니다. 현재 depth/stencil 버퍼는 항상 24/8 포맷임에 유의해 주세요.
+            std::unique_ptr<uint8_t[]> readBack(uint32_t index);
+            /// @brief 렌더타겟에 그려진 내용을 CPU 메모리에 비동기로 작성합니다. asyncReadBack 호출 시점보다 뒤에 그려진 내용이 캡처될 수 있으며 이 사양은 추후 변할 수 있습니다. 포맷은 렌더타겟과 동일합니다.
+            /// @param key 핸들러에 전달될 키입니다.
+            /// @param handler 비동기 핸들러입니다. ReadBackBuffer의 포인터가 전달되며 해당 메모리는 핸들러에서 delete로 해제해야 합니다.
+            void asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler);
         private:
-            RenderPass(uint16_t stageCount); // 이후 다수의 서브패스를 쓸 수 있도록 변경
+            RenderPass(uint16_t stageCount, bool canBeRead); // 이후 다수의 서브패스를 쓸 수 있도록 변경
             ~RenderPass();
             const uint16_t stageCount;
             std::vector<Pipeline*> pipelines;
@@ -507,6 +539,7 @@ namespace onart {
             struct {
                 int x, y, width, height;
             }scissor;
+            const bool canBeRead;
     };
 
     /// @brief 큐브맵 대상의 렌더패스입니다.

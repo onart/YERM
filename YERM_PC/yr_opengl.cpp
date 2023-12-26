@@ -158,6 +158,10 @@ namespace onart {
         else return pMesh();
     }
 
+    void GLMachine::reap() {
+
+    }
+
     GLMachine::UniformBuffer* GLMachine::getUniformBuffer(int32_t name){
         auto it = singleton->uniformBuffers.find(name);
         if(it != singleton->uniformBuffers.end()) return it->second;
@@ -253,6 +257,10 @@ namespace onart {
 
     void GLMachine::handle() {
         singleton->loadThread.handleCompleted();
+    }
+
+    void GLMachine::post(std::function<variant8(void)> exec, std::function<void(variant8)> handler, uint8_t strand) {
+        singleton->loadThread.post(exec, handler, strand);
     }
 
     GLMachine::~GLMachine(){
@@ -1141,7 +1149,7 @@ namespace onart {
             }
         }
 
-        RenderPass* ret = new RenderPass(opts.subpassCount);
+        RenderPass* ret = new RenderPass(opts.subpassCount, false);
         ret->targets = std::move(targets);
         ret->setViewport((float)window->width, (float)window->height, 0.0f, 0.0f);
         ret->setScissor(window->width, window->height, 0, 0);
@@ -1168,7 +1176,7 @@ namespace onart {
             }
         }
 
-        RenderPass* ret = new RenderPass(opts.subpassCount);
+        RenderPass* ret = new RenderPass(opts.subpassCount, opts.canCopy);
         ret->targets = std::move(targets);
         ret->setViewport(opts.width, opts.height, 0.0f, 0.0f);
         ret->setScissor(opts.width, opts.height, 0, 0);
@@ -1273,7 +1281,7 @@ namespace onart {
         singleton->meshes.erase(name);
     }
 
-    GLMachine::RenderPass::RenderPass(uint16_t stageCount): stageCount(stageCount), pipelines(stageCount), targets(stageCount){}
+    GLMachine::RenderPass::RenderPass(uint16_t stageCount, bool canBeRead) : stageCount(stageCount), pipelines(stageCount), targets(stageCount), canBeRead(canBeRead) {}
 
     GLMachine::RenderPass::~RenderPass(){
         for (RenderTarget* targ : targets) {
@@ -1622,6 +1630,119 @@ namespace onart {
         glViewport(viewport.x, viewport.y, viewport.width, viewport.height);
         glDepthRange(viewport.minDepth, viewport.maxDepth);
         glScissor(scissor.x, scissor.y, scissor.width, scissor.height);
+    }
+
+    /// @brief 렌더타겟에 직전 execute 이후 그려진 내용을 별도의 텍스처로 복사합니다.
+    /// @param key 텍스처 키입니다.
+    GLMachine::pTexture GLMachine::RenderPass::copy2Texture(int32_t key, const RenderTarget2TextureOptions& opts) {
+        if (getTexture(key)) {
+            LOGWITH("Invalid key");
+            return {};
+        }
+        if (!canBeRead) {
+            LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
+            return {};
+        }
+        RenderTarget* targ = targets.back();
+        if (!targ) {
+            LOGWITH("Reading back from pass to screen is currently not available");
+            return {};
+        }
+        unsigned src = 0;
+        if (opts.index < 3) {
+            unsigned sources[] = { targ->color1, targ->color2, targ->color3 };
+            src = sources[opts.index];
+        }
+        if (!src) {
+            LOGWITH("Invalid index");
+            return {};
+        }
+        unsigned newTex = 0;
+        glCreateTextures(GL_TEXTURE_2D, 1, &newTex);
+        if (!newTex) {
+            LOGWITH("Failed to create copy target texture");
+            return {};
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, targ->framebuffer);
+        glReadBuffer(GL_COLOR_ATTACHMENT0 + opts.index);
+        glBindTexture(GL_TEXTURE_2D, newTex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, targ->width, targ->height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, opts.linearSampled ? GL_LINEAR : GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, opts.linearSampled ? GL_LINEAR : GL_NEAREST);
+
+        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, targ->width, targ->height);
+
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        struct txtr :public Texture { inline txtr(uint32_t _1, uint16_t _2, uint16_t _3) :Texture(_1, _2, _3) {} };
+        pTexture ret = std::make_shared<txtr>(newTex, targ->width, targ->height);
+        if (key != INT32_MIN) { singleton->textures[key] = ret; }
+        return ret;
+    }
+
+    void GLMachine::RenderPass::asyncCopy2Texture(int32_t key, std::function<void(variant8)> handler, const RenderTarget2TextureOptions& opts) {
+        LOGWITH("Warning: Currently there is no async copy in OpenGL API; This call will be executed now");
+        if (key == INT32_MIN) {
+            LOGWITH("INT32_MIN can\'t be used in OpenGL API for consistency with other Graphics API bases");
+            return;
+        }
+        pTexture newTex = copy2Texture(key, opts);
+        bool succeeded = newTex.operator bool();
+        singleton->loadThread.post([key, succeeded]() {
+            variant8 ret;
+            ret.bytedata4[0] = key;
+            ret.bytedata4[1] = !succeeded;
+            return ret;
+        }, handler);
+    }
+
+    std::unique_ptr<uint8_t[]> GLMachine::RenderPass::readBack(uint32_t index) {
+        if (!canBeRead) {
+            LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
+            return {};
+        }
+        RenderTarget* targ = targets.back();
+        if (!targ) {
+            LOGWITH("Reading back from pass to screen is currently not available");
+            return {};
+        }
+        unsigned src = 0;
+        if (index < 4) {
+            unsigned sources[] = { targ->color1, targ->color2, targ->color3, targ->depthStencil };
+            src = sources[index];
+        }
+        if (!src) {
+            LOGWITH("Invalid index");
+            return {};
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, targ->framebuffer);
+        if (index <= 2) {
+            glReadBuffer(GL_COLOR_ATTACHMENT0 + index);
+        }
+        else {
+            glReadBuffer(GL_DEPTH_ATTACHMENT);
+        }
+
+        std::unique_ptr<uint8_t[]> ret(new uint8_t[targ->width * targ->height * 4]);
+
+        glReadPixels(0, 0, targ->width, targ->height, index == 3 ? GL_DEPTH_COMPONENT : GL_RGBA, GL_UNSIGNED_INT, ret.get());
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return ret;
+    }
+
+    void GLMachine::RenderPass::asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler) {
+        LOGWITH("Warning: Currently there is no async copy in OpenGL API; This call will be executed now");
+        std::unique_ptr<uint8_t[]> up = readBack(index);
+        uint8_t* dat = up.release();
+        singleton->loadThread.post([key, dat]() {
+            ReadBackBuffer* ret = new ReadBackBuffer;
+            ret->key = key;
+            ret->data = dat;
+            return variant8(ret);
+        }, handler);
     }
 
     GLMachine::RenderPass2Cube::~RenderPass2Cube(){
