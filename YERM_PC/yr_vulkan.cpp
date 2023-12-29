@@ -473,7 +473,7 @@ namespace onart {
         singleton->loadThread.handleCompleted();
     }
 
-    void VkMachine::post(std::function<variant8(void)> exec, std::function<void(variant8)> handler, uint8_t strand = 0) {
+    void VkMachine::post(std::function<variant8(void)> exec, std::function<void(variant8)> handler, uint8_t strand) {
         singleton->loadThread.post(exec, handler, strand);
     }
 
