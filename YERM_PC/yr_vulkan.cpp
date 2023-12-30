@@ -3849,103 +3849,49 @@ namespace onart {
 
     bool VkMachine::RenderPass2Screen::reconstructFB(uint32_t width, uint32_t height){
         for(VkFramebuffer& fb: fbs) { vkDestroyFramebuffer(singleton->device, fb, nullptr); fb = VK_NULL_HANDLE; }
-        const bool SHOULD_RECREATE_IMG = (this->width != width) || (this->height != height);
-        if(SHOULD_RECREATE_IMG){
-            this->width = width;
-            this->height = height;
-            vkDestroyImageView(singleton->device, dsView, nullptr);
-            vmaDestroyImage(singleton->allocator, dsImage, dsAlloc);
-            bool useFinalDepth = dsView != VK_NULL_HANDLE;
-            dsView = VK_NULL_HANDLE;
-            dsImage = VK_NULL_HANDLE;
-            dsAlloc = nullptr;
+        this->width = width;
+        this->height = height;
+        vkDestroyImageView(singleton->device, dsView, nullptr);
+        vmaDestroyImage(singleton->allocator, dsImage, dsAlloc);
+        bool useFinalDepth = dsView != VK_NULL_HANDLE;
+        dsView = VK_NULL_HANDLE;
+        dsImage = VK_NULL_HANDLE;
+        dsAlloc = nullptr;
 
-            // ^^^ 스왑이 있으므로 위 파트는 이론상 없어도 알아서 해제되지만 있는 편이 메모리 때문에 더 좋을 것 같음
-            RenderPassCreationOptions opts{};
-            opts.subpassCount = pipelines.size();
-            opts.screenDepthStencil = RenderTargetType(useFinalDepth ? RenderTargetType::RTT_DEPTH | RenderTargetType::RTT_STENCIL : RenderTargetType::RTT_COLOR1);
+        // ^^^ 스왑이 있으므로 위 파트는 이론상 없어도 알아서 해제되지만 있는 편이 메모리 때문에 더 좋을 것 같음
+        RenderPassCreationOptions opts{};
+        opts.subpassCount = pipelines.size();
+        opts.screenDepthStencil = RenderTargetType(useFinalDepth ? RenderTargetType::RTT_DEPTH | RenderTargetType::RTT_STENCIL : RenderTargetType::RTT_COLOR1);
 
-            std::vector<RenderTargetType> types(targets.size());
-            struct bool8{bool b;};
-            std::vector<bool8> useDepth(targets.size());
-            for(uint32_t i = 0; i < targets.size(); i++){
-                types[i] = targets[i]->type;
-                useDepth[i].b = bool((int)targets[i]->type & 0b1000);
-                delete targets[i];
-            }
-            targets.clear();
-            opts.depthInput = (bool*)useDepth.data();
+        std::vector<RenderTargetType> types(targets.size());
+        struct bool8 { bool b; };
+        std::vector<bool8> useDepth(targets.size());
+        for (uint32_t i = 0; i < targets.size(); i++) {
+            types[i] = targets[i]->type;
+            useDepth[i].b = bool((int)targets[i]->type & 0b1000);
+            delete targets[i];
+        }
+        targets.clear();
+        opts.depthInput = (bool*)useDepth.data();
 
-            RenderPass2Screen* newDat = singleton->createRenderPass2Screen(INT32_MIN, windowIdx, opts);
-            if(!newDat) {
-                this->~RenderPass2Screen();
-                return false;
-            }
-            // 얕은 복사
-            fbs.swap(newDat->fbs);
-            targets.swap(newDat->targets);
-            // 파이프라인과 레이아웃은 유지
+        RenderPass2Screen* newDat = singleton->createRenderPass2Screen(INT32_MIN, windowIdx, opts);
+        if (!newDat) {
+            this->~RenderPass2Screen();
+            return false;
+        }
+        // 얕은 복사
+        fbs.swap(newDat->fbs);
+        targets.swap(newDat->targets);
+        // 파이프라인과 레이아웃은 유지
 #define SHALLOW_SWAP(a) std::swap(a, newDat->a)
-            SHALLOW_SWAP(dsImage);
-            SHALLOW_SWAP(dsView);
-            SHALLOW_SWAP(dsAlloc);
-            SHALLOW_SWAP(viewport);
-            SHALLOW_SWAP(scissor);
+        SHALLOW_SWAP(dsImage);
+        SHALLOW_SWAP(dsView);
+        SHALLOW_SWAP(dsAlloc);
+        SHALLOW_SWAP(viewport);
+        SHALLOW_SWAP(scissor);
 #undef SHALLOW_SWAP
-            delete newDat; // 문제점: 의미없이 펜스, 세마포어 등이 생성되었다 없어짐
-            return true;
-        }
-        else{ // 새 스왑체인으로 프레임버퍼만 재생성
-            // 수정 필요함
-            WindowSystem* window = singleton->windowSystems[windowIdx];
-            fbs.resize(window->swapchain.imageView.size());
-            std::vector<VkImageView> ivs;
-            ivs.reserve(pipelines.size()*4);
-            uint32_t totalAttachments = 0;
-            for(RenderTarget* targ: targets) {
-                if(targ->color1) {
-                    ivs.push_back(targ->color1->view);
-                    totalAttachments++;
-                    if(targ->color2) {
-                        ivs.push_back(targ->color2->view);
-                        totalAttachments++;
-                        if(targ->color3){
-                            ivs.push_back(targ->color3->view);
-                            totalAttachments++;
-                        }
-                    }
-                }
-                if(targ->depthstencil) {
-                    ivs.push_back(targ->depthstencil->view);
-                    totalAttachments++;
-                }
-            }
-            VkImageView& swapchainImageViewPlace = ivs[totalAttachments];
-            totalAttachments++;
-            ivs[totalAttachments] = dsView;
-            if(dsView) {
-                totalAttachments++;
-            }
-
-            VkFramebufferCreateInfo fbInfo{};
-            fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            fbInfo.attachmentCount = totalAttachments;
-            fbInfo.pAttachments = ivs.data();
-            fbInfo.renderPass = rp;
-            fbInfo.width = width;
-            fbInfo.height = height;
-            fbInfo.layers = 1;
-            uint32_t i = 0;
-            for(VkFramebuffer& fb: fbs){
-                swapchainImageViewPlace = window->swapchain.imageView[i++];
-                if((reason = vkCreateFramebuffer(singleton->device, &fbInfo, nullptr, &fb)) != VK_SUCCESS){
-                    LOGWITH("Failed to create framebuffer:",reason,resultAsString(reason));
-                    this->~RenderPass2Screen();
-                    return false;
-                }
-            }
-            return true;
-        }
+        delete newDat; // 문제점: 의미없이 펜스, 세마포어 등이 생성되었다 없어짐
+        return true;
     }
 
     void VkMachine::RenderPass2Screen::setViewport(float width, float height, float x, float y, bool applyNow){
@@ -4093,6 +4039,11 @@ namespace onart {
             LOGWITH("Swapchain not ready. This message can be ignored safely if the rendering goes fine after now");
             return;
         }
+        if (window->swapchain.extent.width != viewport.width || window->swapchain.extent.height != viewport.height) {
+            LOGWITH("Swapchain not synchronized with render pass:", window->swapchain.extent.width, window->swapchain.extent.height);
+            window->window->setSize(viewport.width, viewport.height);
+            return;
+        }
         currentPass++;
         if(!pipelines[currentPass]) {
             LOGWITH("Pipeline not set.");
@@ -4147,7 +4098,6 @@ namespace onart {
             rpInfo.renderArea.offset = {0,0};
             rpInfo.renderArea.extent = window->swapchain.extent;
             rpInfo.renderPass = rp;
-
             vkCmdBeginRenderPass(cbs[currentCB], &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
         }
         else{
