@@ -628,6 +628,45 @@ namespace onart {
         return texture;
     }
 
+    GLMachine::pTexture GLMachine::createTextureFromColor(int32_t key, const uint8_t* color, uint32_t width, uint32_t height, const TextureCreationOptions& opts) {
+        if (auto tex = getTexture(key)) { return tex; }
+        ktxTexture2* texture = createKTX2FromImage(color, width, height, opts.nChannels, opts.srgb, opts.opts);
+        if (!texture) {
+            LOGHERE;
+            return {};
+        }
+        return singleton->createTexture(texture, key, opts);
+    }
+
+    void GLMachine::aysncCreateTextureFromColor(int32_t key, const uint8_t* color, uint32_t width, uint32_t height, std::function<void(variant8)> handler, const TextureCreationOptions& opts) {
+        if (key == INT32_MIN) {
+            LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
+            return;
+        }
+        if (getTexture(key)) {
+            variant8 _k;
+            _k.bytedata4[0] = key;
+            handler(_k);
+            return;
+        }
+        TextureCreationOptions options = opts;
+        singleton->loadThread.post([key, color, width, height, options]() {
+            pTexture ret = singleton->createTextureFromColor(INT32_MIN, color, width, height, options);
+            if (!ret) {
+                variant8 _k;
+                _k.bytedata4[0] = key;
+                _k.bytedata4[1] = reason;
+                return _k;
+            }
+            singleton->textureGuard.lock();
+            singleton->textures[key] = std::move(ret);
+            singleton->textureGuard.unlock();
+            variant8 _k;
+            _k.bytedata4[0] = key;
+            return _k;
+            }, handler, vkm_strand::GENERAL);
+    }
+
     GLMachine::pTexture GLMachine::createTextureFromImage(int32_t key, const char* fileName, const TextureCreationOptions& opts) {
         int x, y, nChannels;
         uint8_t* pix = stbi_load(fileName, &x, &y, &nChannels, 4);

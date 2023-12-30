@@ -104,7 +104,7 @@ namespace onart {
                 RTT_STENCIL = 0b10000,
             };
 
-            /// @brief 이미지 파일로부터 텍스처를 생성할 때 줄 수 있는 옵션입니다. 비트 OR로 여러 조건을 조합할 수 있습니다.
+            /// @brief 이미지 파일로부터 텍스처를 생성할 때 줄 수 있는 옵션입니다.
             enum TextureFormatOptions {
                 /// @brief 원본이 BasisU인 경우: 품질을 우선으로 트랜스코드합니다. 그 외: 그대로 사용합니다.
                 IT_PREFER_QUALITY = 0,
@@ -276,6 +276,22 @@ namespace onart {
             /// @param handler 호출되는 것
             /// @param strand 이 값이 값은 것들끼리는(0 제외) 동시에 다른 스레드에서 실행되지 않습니다. 그래픽스에 관련된 내용을 수행할 경우 1을 입력해 주세요.
             static void post(std::function<variant8(void)> work, std::function<void(variant8)> handler, uint8_t strand = 0);
+            /// @brief 픽셀 데이터를 통해 텍스처 객체를 생성합니다. 밉 수준은 반드시 1입니다.
+            /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 입력과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
+            /// @param color 픽셀 데이터입니다.
+            /// @param width 가로 길이(px)이며, 패딩은 없음으로 가정합니다.
+            /// @param height 세로 길이(px)
+            /// @param opts @ref TextureCreationOptions
+            /// @return 만들어진 텍스처 혹은 이미 있던 해당 key의 텍스처
+            static pTexture createTextureFromColor(int32_t key, const uint8_t* color, uint32_t width, uint32_t height, const TextureCreationOptions& opts = {});
+            /// @brief 픽셀 데이터를 통해 텍스처 객체를 생성합니다. 밉 수준은 반드시 1입니다.
+            /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 입력과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
+            /// @param color 픽셀 데이터입니다.
+            /// @param width 가로 길이(px)이며, 패딩은 없음으로 가정합니다.
+            /// @param height 세로 길이(px)
+            /// @param opts @ref TextureCreationOptions
+            /// @return 만들어진 텍스처 혹은 이미 있던 해당 key의 텍스처
+            static void aysncCreateTextureFromColor(int32_t key, const uint8_t* color, uint32_t width, uint32_t height, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
             /// @brief 보통 이미지 파일을 불러와 텍스처를 생성합니다. 밉 수준은 반드시 1이며 그 이상을 원하는 경우 ktx2 형식을 이용해 주세요.
             /// @param key 프로그램 내부에서 사용할 이름으로, 이것이 기존의 것과 겹치면 파일과 관계 없이 기존에 불러왔던 객체를 리턴합니다.
             /// @param fileName 파일 이름

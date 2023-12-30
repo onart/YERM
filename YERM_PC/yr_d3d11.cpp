@@ -159,7 +159,7 @@ namespace onart {
         it->second->resizeSwapchain();
         uint32_t width = it->second->swapchain.width;
         uint32_t height = it->second->swapchain.height;
-        if (width & height) { // 값이 0이면 크기 0이라 스왑체인 재생성 실패한 것
+        if (width && height) { // 값이 0이면 크기 0이라 스왑체인 재생성 실패한 것
             for (auto& fpass : singleton->finalPasses) {
                 if (fpass.second->windowIdx == key) {
                     fpass.second->reconstructFB(width, height);
@@ -834,6 +834,45 @@ namespace onart {
         }
 
         return singleton->createTexture(texture, key, options);
+    }
+
+    D3D11Machine::pTexture D3D11Machine::createTextureFromColor(int32_t key, const uint8_t* color, uint32_t width, uint32_t height, const TextureCreationOptions& opts) {
+        if (auto tex = getTexture(key)) { return tex; }
+        ktxTexture2* texture = createKTX2FromImage(color, width, height, opts.nChannels, opts.srgb, opts.opts);
+        if (!texture) {
+            LOGHERE;
+            return {};
+        }
+        return singleton->createTexture(texture, key, opts);
+    }
+
+    void D3D11Machine::aysncCreateTextureFromColor(int32_t key, const uint8_t* color, uint32_t width, uint32_t height, std::function<void(variant8)> handler, const TextureCreationOptions& opts) {
+        if (key == INT32_MIN) {
+            LOGWITH("Key INT32_MIN is not allowed in this async function to provide simplicity of handler. If you really want to do that, you should use thread pool manually.");
+            return;
+        }
+        if (getTexture(key)) {
+            variant8 _k;
+            _k.bytedata4[0] = key;
+            handler(_k);
+            return;
+        }
+        TextureCreationOptions options = opts;
+        singleton->loadThread.post([key, color, width, height, options]() {
+            pTexture ret = singleton->createTextureFromColor(INT32_MIN, color, width, height, options);
+            if (!ret) {
+                variant8 _k;
+                _k.bytedata4[0] = key;
+                _k.bytedata4[1] = reason;
+                return _k;
+            }
+            singleton->textureGuard.lock();
+            singleton->textures[key] = std::move(ret);
+            singleton->textureGuard.unlock();
+            variant8 _k;
+            _k.bytedata4[0] = key;
+            return _k;
+            }, handler, vkm_strand::GENERAL);
     }
 
     D3D11Machine::pTexture D3D11Machine::createTextureFromImage(int32_t key, const char* fileName, const TextureCreationOptions& opts) {
