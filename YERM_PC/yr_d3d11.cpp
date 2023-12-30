@@ -166,7 +166,9 @@ namespace onart {
         if (width && height) { // 값이 0이면 크기 0이라 스왑체인 재생성 실패한 것
             for (auto& fpass : singleton->finalPasses) {
                 if (fpass.second->windowIdx == key) {
-                    fpass.second->reconstructFB(width, height);
+                    //fpass.second->reconstructFB(width, height);
+                    fpass.second->setViewport(width, height, 0.5f, 0.5f, true);
+                    fpass.second->setScissor(width, height, 0, 0, true);
                 }
             }
         }
@@ -282,6 +284,11 @@ namespace onart {
     void D3D11Machine::WindowSystem::resizeSwapchain() {
         int w, h;
         window->getFramebufferSize(&w, &h);
+        for (auto& targ : screenTargets) {
+            targ.first->Release();
+            targ.second->Release();
+        }
+        screenTargets.clear();
         HRESULT result = swapchain.handle->ResizeBuffers(1, w, h, DXGI_FORMAT_UNKNOWN, 0);
         screenDSView->Release();
         screenDSView = nullptr;
@@ -294,6 +301,9 @@ namespace onart {
             reason = result;
             return;
         }
+
+        swapchain.width = w;
+        swapchain.height = h;
 
         ID3D11Texture2D* dsTex{};
 
@@ -1730,7 +1740,7 @@ namespace onart {
             return;
         }
         D3D11_MAPPED_SUBRESOURCE mappedResource;
-        if (singleton->context->Map(ubo, 0, D3D11_MAP_WRITE_NO_OVERWRITE, 0, &mappedResource) == S_OK) // cpu ���̵� ������ �ְ� discard�� ���� ����
+        if (singleton->context->Map(ubo, 0, D3D11_MAP_WRITE_NO_OVERWRITE, 0, &mappedResource) == S_OK)
         {
             std::memcpy((uint8_t*)mappedResource.pData + offset, input, size);
             singleton->context->Unmap(ubo, 0);
