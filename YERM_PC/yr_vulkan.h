@@ -383,6 +383,8 @@ namespace onart {
             static pMesh getMesh(int32_t key);
             /// @brief 해제되어야 할 자원을 안전하게 해제합니다. 각 자원의 collect와 이것의 호출 주기는 적절하게 설정할 필요가 있습니다.
             static void reap();
+            /// @brief 모든 창의 수직 동기화 여부를 설정합니다.
+            static void setVsync(bool vsyncOn);
             /// @brief Vulkan 인스턴스를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
             inline static VkInstance getInstance() { return singleton->instance; }
             /// @brief Vulkan 물리 장치를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
@@ -443,6 +445,7 @@ namespace onart {
             VkInstance instance = VK_NULL_HANDLE;
             class WindowSystem;
             std::map<int32_t, WindowSystem*> windowSystems;
+            bool vsync = true;
             VkFormat baseSurfaceRendertargetFormat = VK_FORMAT_R8G8B8A8_UNORM;
             struct{
                 VkPhysicalDevice card = VK_NULL_HANDLE;
@@ -528,6 +531,7 @@ namespace onart {
             std::vector<VkImageView> imageView;
         }swapchain;
         Window* window = nullptr;
+        bool needReset = false;
         
         /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
         inline bool isSurfaceSRGB() { return surface.format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR; }

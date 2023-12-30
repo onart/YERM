@@ -510,8 +510,16 @@ namespace onart{
 #endif
     }
 
+    void Window::glRefreshInterval(int count) {
+#ifdef YR_USE_OPENGL
+        glfwSwapInterval(count);
+#endif
+    }
+
     void Window::glPresent() {
+#ifdef YR_USE_OPENGL
         glfwSwapBuffers((GLFWwindow*)window);
+#endif
     }
 
     std::vector<const char*> Window::requiredInstanceExentsions(){

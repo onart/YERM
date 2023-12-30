@@ -101,6 +101,8 @@ namespace onart{
             VkResult createWindowSurface(VkInstance instance, VkSurfaceKHR* surface);
             /// @brief win32 핸들을 리턴합니다. windows 이외의 플랫폼에서는 nullptr를 리턴합니다.
             void* getWin32Handle();
+            /// @brief opengl에 한하여 동기화 주기를 설정합니다.
+            void glRefreshInterval(int count);
             /// @brief opengl에 한하여 0번 프레임버퍼의 내용를 화면에 보여줍니다.
             void glPresent();
             /// @brief 창이 최소화되거나 비활성화될 때 호출될 함수입니다.

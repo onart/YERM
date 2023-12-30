@@ -132,6 +132,15 @@ namespace onart {
         singleton = this;
     }
 
+    void VkMachine::setVsync(bool vsync) {
+        if (singleton->vsync != vsync) {
+            singleton->vsync = vsync;
+            for (auto& w : singleton->windowSystems) {
+                w.second->needReset = true;
+            }
+        }
+    }
+
     bool VkMachine::addWindow(int32_t key, Window* window) {
         if (windowSystems.find(key) != windowSystems.end()) { return true; }
         auto w = new WindowSystem(window);
@@ -352,6 +361,7 @@ namespace onart {
         if (swapchain.handle) {
             destroySwapchain();
         }
+        needReset = false;
         int width, height;
         window->getFramebufferSize(&width, &height);
         swapchain.extent.width = width;
@@ -371,7 +381,7 @@ namespace onart {
         scInfo.minImageCount = std::min(3u, surface.caps.maxImageCount == 0 ? 3u : surface.caps.maxImageCount);
         scInfo.imageFormat = surface.format.format;
         scInfo.imageColorSpace = surface.format.colorSpace;
-        scInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+        scInfo.presentMode = singleton->vsync ? VK_PRESENT_MODE_FIFO_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
         scInfo.imageArrayLayers = 1;
         scInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         scInfo.preTransform = VkSurfaceTransformFlagBitsKHR::VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR; // pretransform 대신 항상 surface 재생성으로 처리
@@ -4078,9 +4088,8 @@ namespace onart {
             LOGWITH("Swapchain not ready. This message can be ignored safely if the rendering goes fine after now");
             return;
         }
-        if (window->swapchain.extent.width != viewport.width || window->swapchain.extent.height != viewport.height) {
-            LOGWITH("Swapchain not synchronized with render pass:", window->swapchain.extent.width, window->swapchain.extent.height);
-            window->window->setSize(viewport.width, viewport.height);
+        if (window->needReset) {
+            singleton->resetWindow(windowIdx);
             return;
         }
         currentPass++;

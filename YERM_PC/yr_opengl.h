@@ -382,6 +382,8 @@ namespace onart {
             static pMesh getMesh(int32_t key);
             /// @brief 해제되어야 할 자원을 안전하게 해제합니다. 각 자원의 collect와 이것의 호출 주기는 적절하게 설정할 필요가 있습니다.
             static void reap();
+            /// @brief 모든 창의 수직 동기화 여부를 설정합니다.
+            static void setVsync(bool vsyncOn);
         private:
             /// @brief 기본 OpenGL 컨텍스트를 생성합니다.
             GLMachine();
@@ -414,6 +416,7 @@ namespace onart {
             std::map<int32_t, pStreamTexture> streamTextures;
             std::map<int32_t, pTextureSet> textureSets;
             std::map<int32_t, WindowSystem*> windowSystems;
+            bool vsync = true;
 
             std::mutex textureGuard;
 

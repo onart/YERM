@@ -226,6 +226,15 @@ namespace onart {
         windowSystems.erase(key);
     }
 
+    void GLMachine::setVsync(bool vsync) {
+        if (singleton->vsync != vsync) {
+            singleton->vsync = vsync;
+            for (auto& w : singleton->windowSystems) {
+                w.second->window->glRefreshInterval(vsync ? 1 : 0);
+            }
+        }
+    }
+
     void GLMachine::resetWindow(int32_t key, bool) {
         auto it = singleton->windowSystems.find(key);
         if (it == singleton->windowSystems.end()) { return; }
@@ -1766,7 +1775,7 @@ namespace onart {
 
         std::unique_ptr<uint8_t[]> ret(new uint8_t[targ->width * targ->height * 4]);
 
-        glReadPixels(0, 0, targ->width, targ->height, index == 3 ? GL_DEPTH_COMPONENT : GL_RGBA, GL_UNSIGNED_INT, ret.get());
+        glReadPixels(0, 0, targ->width, targ->height, index == 3 ? GL_DEPTH_COMPONENT : GL_RGBA, GL_UNSIGNED_BYTE, ret.get());
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         return ret;

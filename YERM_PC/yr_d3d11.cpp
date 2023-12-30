@@ -126,6 +126,10 @@ namespace onart {
         }
     }
 
+    void D3D11Machine::setVsync(bool vsync) {
+        singleton->vsync = vsync ? 1 : 0;
+    }
+
     bool D3D11Machine::addWindow(int32_t key, Window* window) {
         if (windowSystems.find(key) != windowSystems.end()) { return true; }
         auto w = new WindowSystem(window);
@@ -2032,7 +2036,7 @@ namespace onart {
             return;
         }
         if (targets.back() == nullptr) {
-            singleton->windowSystems[windowIdx]->swapchain.handle->Present(1, 0);
+            singleton->windowSystems[windowIdx]->swapchain.handle->Present(singleton->vsync, 0);
         }
         currentPass = -1;
         currentRenderPass = 0;

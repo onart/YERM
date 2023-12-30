@@ -400,6 +400,8 @@ namespace onart {
         static pMesh getMesh(int32_t key);
         /// @brief 해제되어야 할 자원을 안전하게 해제합니다. 각 자원의 collect와 이것의 호출 주기는 적절하게 설정할 필요가 있습니다.
         static void reap();
+        /// @brief 모든 창의 수직 동기화 여부를 설정합니다.
+        static void setVsync(bool vsyncOn);
         /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
         inline static bool isSurfaceSRGB() { return false; }
         /// @brief 아무 것도 하지 않습니다.
@@ -432,6 +434,7 @@ namespace onart {
         ID3D11DeviceContext* context{};
         class WindowSystem;
         std::map<int32_t, WindowSystem*> windowSystems;
+        int vsync = 1;
 
         bool canUseBC7 = false;
 
