@@ -1714,11 +1714,16 @@ namespace onart {
         glBindFramebuffer(GL_FRAMEBUFFER, targ->framebuffer);
         glReadBuffer(GL_COLOR_ATTACHMENT0 + opts.index);
         glBindTexture(GL_TEXTURE_2D, newTex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, targ->width, targ->height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, opts.linearSampled ? GL_LINEAR : GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, opts.linearSampled ? GL_LINEAR : GL_NEAREST);
-
-        glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, targ->width, targ->height);
+        if (opts.area.width && opts.area.height) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, opts.area.width, opts.area.height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+            glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, opts.area.x, targ->height - opts.area.y - opts.area.height, opts.area.width, opts.area.height);
+        }
+        else {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, targ->width, targ->height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+            glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, targ->width, targ->height);
+        }
 
         glBindTexture(GL_TEXTURE_2D, 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1745,7 +1750,7 @@ namespace onart {
         }, handler);
     }
 
-    std::unique_ptr<uint8_t[]> GLMachine::RenderPass::readBack(uint32_t index) {
+    std::unique_ptr<uint8_t[]> GLMachine::RenderPass::readBack(uint32_t index, const TextureArea2D& area) {
         if (!canBeRead) {
             LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
             return {};
@@ -1773,17 +1778,29 @@ namespace onart {
             glReadBuffer(GL_DEPTH_ATTACHMENT);
         }
 
-        std::unique_ptr<uint8_t[]> ret(new uint8_t[targ->width * targ->height * 4]);
+        uint32_t width, height, x, y;
+        if (area.width && area.height) {
+            width = area.width;
+            height = area.height;
+            x = area.x;
+            y = targ->height - area.y - area.height;
+        }
+        else {
+            width = targ->width;
+            height = targ->height;
+            x = y = 0;
+        }
+        std::unique_ptr<uint8_t[]> ret(new uint8_t[width * height * 4]);
 
-        glReadPixels(0, 0, targ->width, targ->height, index == 3 ? GL_DEPTH_COMPONENT : GL_RGBA, GL_UNSIGNED_BYTE, ret.get());
+        glReadPixels(x, y, width, height, index == 3 ? GL_DEPTH_COMPONENT : GL_RGBA, GL_UNSIGNED_BYTE, ret.get());
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         return ret;
     }
 
-    void GLMachine::RenderPass::asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler) {
+    void GLMachine::RenderPass::asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler, const TextureArea2D& area) {
         LOGWITH("Warning: Currently there is no async copy in OpenGL API; This call will be executed now");
-        std::unique_ptr<uint8_t[]> up = readBack(index);
+        std::unique_ptr<uint8_t[]> up = readBack(index, area);
         uint8_t* dat = up.release();
         ReadBackBuffer ret;
         ret.key = key;

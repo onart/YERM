@@ -292,11 +292,25 @@ namespace onart {
             size_t vsByteCodeSize = 0;
         };
 
+        /// @brief 복사 영역을 지정합니다.
+        struct TextureArea2D {
+            /// @brief 복사 영역의 x좌표(px)를 설정합니다. 왼쪽이 0입니다. 기본값 0
+            uint32_t x = 0;
+            /// @brief 복사 영역의 y좌표(px)를 설정합니다. 위쪽이 0입니다. 기본값 0
+            uint32_t y = 0;
+            /// @brief 복사 영역의 가로 길이(px)를 설정합니다. 0이면 x, y, height에 무관하게 전체가 복사됩니다. 기본값 0
+            uint32_t width = 0;
+            /// @brief 복사 영역의 세로 길이(px)를 설정합니다. 0이면 x, y, width에 무관하게 전체가 복사됩니다. 기본값 0
+            uint32_t height = 0;
+        };
+
         struct RenderTarget2TextureOptions {
             /// @brief 0~2: 타겟의 해당 번호의 색 버퍼를 복사합니다. 3~: 현재 지원하지 않습니다. 기본값 0
             uint32_t index = 0;
-            /// @brief true 결과 텍스처의 샘플링 방식이 linear로 수행됩니다. 기본값 false
+            /// @brief true인 경우 결과 텍스처의 샘플링 방식이 linear로 수행됩니다. 기본값 false
             bool linearSampled = false;
+            /// @brief 복사 영역을 지정합니다. @ref TextureArea2D
+            TextureArea2D area;
         };
 
         /// @brief 픽셀 데이터를 통해 텍스처 객체를 생성합니다. 밉 수준은 반드시 1입니다.
@@ -626,11 +640,11 @@ namespace onart {
         /// @brief 렌더타겟에 직전 execute 이후 그려진 내용을 별도의 텍스처로 복사합니다. 동기화의 편의를 위해 DEFAULT usage로 생성되며, IMMUTABLE을 원하는 경우 readBack의 결과를 이용하여 텍스처 생성 함수를 별도로 호출해 주세요.
         void asyncCopy2Texture(int32_t key, std::function<void(variant8)> handler, const RenderTarget2TextureOptions& opts = {});
         /// @brief 렌더타겟에 직전 execute 이후 그려진 내용을 CPU 메모리에 작성합니다. 포맷은 렌더타겟과 동일합니다. 현재 depth/stencil 버퍼는 항상 24/8 포맷임에 유의해 주세요.
-        std::unique_ptr<uint8_t[]> readBack(uint32_t index);
+        std::unique_ptr<uint8_t[]> readBack(uint32_t index, const TextureArea2D& area = {});
         /// @brief 렌더타겟에 그려진 내용을 CPU 메모리에 비동기로 작성합니다. asyncReadBack 호출 시점보다 뒤에 그려진 내용이 캡처될 수 있으며 이 사양은 추후 변할 수 있습니다. 포맷은 렌더타겟과 동일합니다. 동기화 편의를 위하여 handle() 여러 번에 걸쳐 수행됩니다.
         /// @param key 핸들러에 전달될 키입니다.
         /// @param handler 비동기 핸들러입니다. @ref ReadBackBuffer의 포인터가 전달되며 해당 메모리는 자동으로 해제되므로 핸들러에서는 읽기만 가능합니다.
-        void asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler);
+        void asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler, const TextureArea2D& area = {});
     private:
         RenderPass(uint16_t stageCount, bool canBeRead); // 이후 다수의 서브패스를 쓸 수 있도록 변경
         ~RenderPass();

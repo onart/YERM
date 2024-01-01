@@ -2103,8 +2103,14 @@ namespace onart {
         texInfo.BindFlags = D3D11_BIND_SHADER_RESOURCE;
         texInfo.SampleDesc.Count = 1;
         texInfo.MipLevels = 1;
-        texInfo.Width = targ->width;
-        texInfo.Height = targ->height;
+        if (opts.area.width && opts.area.height) {
+            texInfo.Width = opts.area.width;
+            texInfo.Height = opts.area.height;
+        }
+        else {
+            texInfo.Width = targ->width;
+            texInfo.Height = targ->height;
+        }
         texInfo.Usage = D3D11_USAGE_DEFAULT;
 
         ID3D11Texture2D* newTex{};
@@ -2114,7 +2120,20 @@ namespace onart {
             reason = result;
             return {};
         }
-        singleton->context->CopyResource(newTex, srcSet->tex);
+
+        if (opts.area.width && opts.area.height) {
+            D3D11_BOX srcBox;
+            srcBox.left = opts.area.x;
+            srcBox.top = opts.area.y;
+            srcBox.front = 0;
+            srcBox.back = 1;
+            srcBox.right = opts.area.x + opts.area.width;
+            srcBox.bottom = opts.area.y + opts.area.height;
+            singleton->context->CopySubresourceRegion(newTex, 0, 0, 0, 0, srcSet->tex, 0, &srcBox);
+        }
+        else {
+            singleton->context->CopyResource(newTex, srcSet->tex);
+        }
         D3D11_SHADER_RESOURCE_VIEW_DESC srvInfo{};
         srvInfo.Format = texInfo.Format;
         srvInfo.Texture2D.MipLevels = 1;
@@ -2205,8 +2224,8 @@ namespace onart {
                 if(handler) handler(par2);
          });
     }
-
-    std::unique_ptr<uint8_t[]> D3D11Machine::RenderPass::readBack(uint32_t index) {
+    
+    std::unique_ptr<uint8_t[]> D3D11Machine::RenderPass::readBack(uint32_t index, const TextureArea2D& area) {
         if (!canBeRead) {
             LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
             return {};
@@ -2221,14 +2240,28 @@ namespace onart {
             LOGWITH("Invalid index");
             return {};
         }
+        bool subArea = area.width && area.height;
+        uint32_t width, height, x, y;
+        if (subArea) {
+            width = area.width;
+            height = area.height;
+            x = area.x;
+            y = area.y;
+        }
+        else {
+            width = targ->width;
+            height = targ->height;
+            x = 0;
+            y = 0;
+        }
         D3D11_TEXTURE2D_DESC texInfo{};
         texInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
         texInfo.ArraySize = 1;
         texInfo.BindFlags = 0;
         texInfo.SampleDesc.Count = 1;
         texInfo.MipLevels = 1;
-        texInfo.Width = targ->width;
-        texInfo.Height = targ->height;
+        texInfo.Width = width;
+        texInfo.Height = height;
         texInfo.Usage = D3D11_USAGE_STAGING;
         texInfo.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
 
@@ -2239,8 +2272,20 @@ namespace onart {
             reason = result;
             return {};
         }
-        singleton->context->CopyResource(newTex, srcSet->tex);
-        std::unique_ptr<uint8_t[]> up(new uint8_t[targ->width * targ->height * 4]);
+        if (subArea) {
+            D3D11_BOX srcBox;
+            srcBox.left = x;
+            srcBox.top = y;
+            srcBox.front = 0;
+            srcBox.back = 1;
+            srcBox.right = x + width;
+            srcBox.bottom = y + height;
+            singleton->context->CopySubresourceRegion(newTex, 0, 0, 0, 0, srcSet->tex, 0, &srcBox);
+        }
+        else {
+            singleton->context->CopyResource(newTex, srcSet->tex);
+        }
+        std::unique_ptr<uint8_t[]> up(new uint8_t[width * height * 4]);
         D3D11_MAPPED_SUBRESOURCE mapped{};
         result = singleton->context->Map(newTex, 0, D3D11_MAP_READ, 0, &mapped);
         if (!SUCCEEDED(result)) {
@@ -2251,16 +2296,17 @@ namespace onart {
         }
         uint8_t* srcPos = (uint8_t*)mapped.pData;
         uint8_t* dstPos = up.get();
-        for (uint32_t i = 0; i < targ->height; i++) {
-            std::memcpy(dstPos, srcPos, targ->width * 4);
+        for (uint32_t i = 0; i < height; i++) {
+            std::memcpy(dstPos, srcPos, width * 4);
             srcPos += mapped.RowPitch;
-            dstPos += targ->width * 4;
+            dstPos += width * 4;
         }
         singleton->context->Unmap(newTex, 0);
+        newTex->Release();
         return up;
     }
 
-    void D3D11Machine::RenderPass::asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler) {
+    void D3D11Machine::RenderPass::asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler, const TextureArea2D& area) {
         if (!canBeRead) {
             LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
             return;
@@ -2275,18 +2321,30 @@ namespace onart {
             LOGWITH("Invalid index");
             return;
         }
-        uint32_t w = targ->width, h = targ->height;
-        uint32_t dataSize = targ->width * targ->height * 4;
-        singleton->loadThread.post([this]() {
-            RenderTarget* targ = targets.back();
+        bool subArea = area.width && area.height;
+        uint32_t w, h, x, y;
+        if (subArea) {
+            w = area.width;
+            h = area.height;
+            x = area.x;
+            y = area.y;
+        }
+        else {
+            w = targ->width;
+            h = targ->height;
+            x = 0;
+            y = 0;
+        }
+        uint32_t dataSize = w * h * 4;
+        singleton->loadThread.post([this, w, h]() {
             D3D11_TEXTURE2D_DESC texInfo{};
             texInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
             texInfo.ArraySize = 1;
             texInfo.BindFlags = 0;
             texInfo.SampleDesc.Count = 1;
             texInfo.MipLevels = 1;
-            texInfo.Width = targ->width;
-            texInfo.Height = targ->height;
+            texInfo.Width = w;
+            texInfo.Height = h;
             texInfo.Usage = D3D11_USAGE_STAGING;
             texInfo.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
             ID3D11Texture2D* newTex{};
@@ -2297,7 +2355,7 @@ namespace onart {
                 return variant8(nullptr);
             }
             return variant8(newTex);
-            }, [this, key, srcSet, handler, dataSize, w, h](variant8 param) {
+            }, [this, key, srcSet, handler, dataSize, w, h, x, y](variant8 param) {
                 ID3D11Texture2D* newTex = (ID3D11Texture2D*)param.vp;
                 if (!newTex) {
                     variant8 par2;
@@ -2306,11 +2364,17 @@ namespace onart {
                     handler(par2);
                     return;
                 }
-                singleton->context->CopyResource(newTex, srcSet->tex);
-                D3D11_MAPPED_SUBRESOURCE* mapped = new D3D11_MAPPED_SUBRESOURCE;
-                HRESULT result = singleton->context->Map(newTex, 0, D3D11_MAP_READ, 0, mapped);
+                D3D11_BOX srcBox;
+                srcBox.left = x;
+                srcBox.top = y;
+                srcBox.front = 0;
+                srcBox.back = 1;
+                srcBox.right = x + w;
+                srcBox.bottom = y + h;
+                singleton->context->CopySubresourceRegion(newTex, 0, 0, 0, 0, srcSet->tex, 0, &srcBox);
+                D3D11_MAPPED_SUBRESOURCE mapped;
+                HRESULT result = singleton->context->Map(newTex, 0, D3D11_MAP_READ, 0, &mapped);
                 if (!SUCCEEDED(result)) {
-                    delete mapped;
                     newTex->Release();
                     variant8 par2;
                     par2.bytedata4[0] = key;
@@ -2320,20 +2384,20 @@ namespace onart {
                 }
                 singleton->loadThread.post([key, mapped, newTex, dataSize, w, h]() {
                     uint8_t* up = new uint8_t[dataSize];
-                    uint8_t* srcPos = (uint8_t*)mapped->pData;
+                    uint8_t* srcPos = (uint8_t*)mapped.pData;
                     uint8_t* dstPos = up;
                     for (uint32_t i = 0; i < h; i++) {
                         std::memcpy(dstPos, srcPos, w * 4);
-                        srcPos += mapped->RowPitch;
+                        srcPos += mapped.RowPitch;
                         dstPos += w * 4;
                     }
-                    delete mapped;
                     ReadBackBuffer* result = new ReadBackBuffer;
                     result->data = up;
                     result->key = key;
                     return variant8(result);
                 }, [newTex, handler](variant8 param) {
                     singleton->context->Unmap(newTex, 0);
+                    newTex->Release();
                     if (handler) handler(param);
                     ReadBackBuffer* result = (ReadBackBuffer*)param.vp;
                     delete result;

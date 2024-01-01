@@ -2968,8 +2968,14 @@ namespace onart {
         VkImageCreateInfo imgInfo{};
         imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imgInfo.imageType = VkImageType::VK_IMAGE_TYPE_2D;
-        imgInfo.extent.width = targets.back()->width;
-        imgInfo.extent.height = targets.back()->height;
+        if (opts.area.width && opts.area.height) {
+            imgInfo.extent.width = opts.area.width;
+            imgInfo.extent.height = opts.area.height;
+        }
+        else {
+            imgInfo.extent.width = targets.back()->width;
+            imgInfo.extent.height = targets.back()->height;
+        }
         imgInfo.extent.depth = 1;
         imgInfo.mipLevels = 1;
         imgInfo.arrayLayers = 1;
@@ -3041,9 +3047,11 @@ namespace onart {
         copyArea.dstSubresource.mipLevel = 0;
         copyArea.dstSubresource.baseArrayLayer = 0;
         copyArea.dstSubresource.layerCount = 1;
-        copyArea.extent.width = targ->width;
-        copyArea.extent.height = targ->height;
-        copyArea.extent.depth = 1;
+        copyArea.extent = imgInfo.extent;
+        if (opts.area.width && opts.area.height) {
+            copyArea.srcOffset.x = opts.area.x;
+            copyArea.srcOffset.y = opts.area.y;
+        }
 
         vkCmdCopyImage(tcb, srcSet->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyArea);
 
@@ -3170,7 +3178,7 @@ namespace onart {
         }, handler, vkm_strand::GENERAL);
     }
 
-    std::unique_ptr<uint8_t[]> VkMachine::RenderPass::readBack(uint32_t index) {
+    std::unique_ptr<uint8_t[]> VkMachine::RenderPass::readBack(uint32_t index, const TextureArea2D& area) {
         if (!canBeRead) {
             LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
             return {};
@@ -3190,7 +3198,12 @@ namespace onart {
         bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        bufInfo.size = targ->width * targ->height * 4;
+        if (area.width && area.height) {
+            bufInfo.size = area.width * area.height * 4;
+        }
+        else {
+            bufInfo.size = targ->width * targ->height * 4;
+        }
 
         VmaAllocationCreateInfo allocInfo{};
         allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
@@ -3237,13 +3250,21 @@ namespace onart {
         vkCmdPipelineBarrier(tcb, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imgBarrier);
 
         VkBufferImageCopy copyArea{};
-        copyArea.imageExtent.width = targ->width;
-        copyArea.imageExtent.height = targ->height;
         copyArea.imageExtent.depth = 1;
         copyArea.imageSubresource.aspectMask = imgBarrier.subresourceRange.aspectMask;
         copyArea.imageSubresource.baseArrayLayer = 0;
         copyArea.imageSubresource.mipLevel = 0;
         copyArea.imageSubresource.layerCount = 1;
+        if (area.width && area.height) {
+            copyArea.imageOffset.x = area.x;
+            copyArea.imageOffset.y = area.y;
+            copyArea.imageExtent.width = area.width;
+            copyArea.imageExtent.height = area.height;
+        }
+        else {
+            copyArea.imageExtent.width = targ->width;
+            copyArea.imageExtent.height = targ->height;
+        }
         // buffer 관련을 0으로 비워 두면 피치 없음으로 간주. 값을 주는 경우 단위는 텍셀
         vkCmdCopyImageToBuffer(tcb, srcSet->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buf, 1, &copyArea);
 
@@ -3271,7 +3292,7 @@ namespace onart {
             return {};
         }
 
-        std::unique_ptr<uint8_t[]> ptr(new uint8_t[targ->width * targ->height * 4]);
+        std::unique_ptr<uint8_t[]> ptr(new uint8_t[bufInfo.size]);
         
         result = vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, UINT64_MAX);
         vkDestroyFence(singleton->device, fence, nullptr);
@@ -3281,23 +3302,26 @@ namespace onart {
         result = vmaMapMemory(singleton->allocator, alloc, &mapped);
         if (result != VK_SUCCESS) {
             LOGWITH("Failed to map buffer memory");
+            vmaDestroyBuffer(singleton->allocator, buf, alloc);
+            return {};
         }
-        std::memcpy(ptr.get(), mapped, targ->width * targ->height * 4);
+        std::memcpy(ptr.get(), mapped, bufInfo.size);
         vmaUnmapMemory(singleton->allocator, alloc);
 
         vmaDestroyBuffer(singleton->allocator, buf, alloc);
         return ptr;
     }
 
-    void VkMachine::RenderPass::asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler) {
+    void VkMachine::RenderPass::asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler, const TextureArea2D& area) {
         if (!canBeRead) {
             LOGWITH("Can\'t copy the target. Create this render pass with canCopy flag");
             return;
         }
-        singleton->loadThread.post([key, index, this]() {
+        TextureArea2D _area = area;
+        singleton->loadThread.post([key, index, this, _area]() {
             ReadBackBuffer* ret = new ReadBackBuffer;
             ret->key = key;
-            std::unique_ptr<uint8_t[]> p = readBack(index);
+            std::unique_ptr<uint8_t[]> p = readBack(index, _area);
             ret->data = p.release();
             return variant8(ret);
             }, [handler](variant8 param) {
