@@ -203,7 +203,7 @@ namespace onart {
         return ret;
     }
 
-    VkPipeline VkMachine::getPipeline(int32_t name){
+    VkMachine::Pipeline* VkMachine::getPipeline(int32_t name){
         auto it = singleton->pipelines.find(name);
         if(it != singleton->pipelines.end()) return it->second;
         else return VK_NULL_HANDLE;
@@ -426,7 +426,7 @@ namespace onart {
         for(auto& rp: renderPasses) { delete rp.second; }
         for(auto& rt: renderTargets){ delete rt.second; }
         for(auto& sh: shaders) { vkDestroyShaderModule(device, sh.second, nullptr); }
-        for(auto& pp: pipelines) { vkDestroyPipeline(device, pp.second, nullptr); }
+        for(auto& pp: pipelines) { vkDestroyPipeline(device, pp.second->pipeline, nullptr); }
         for(auto& pp: pipelineLayouts) { vkDestroyPipelineLayout(device, pp.second, nullptr); }
 
         descriptorSetLayouts.clear();
@@ -2464,8 +2464,8 @@ namespace onart {
         return singleton->renderPasses[key] = ret;
     }
 
-    VkPipeline VkMachine::createPipeline(int32_t key, const PipelineCreationOptions& opts) {
-        if (VkPipeline ret = getPipeline(key)) { return ret; }
+    VkMachine::Pipeline* VkMachine::createPipeline(int32_t key, const PipelineCreationOptions& opts) {
+        if (auto ret = getPipeline(key)) { return ret; }
         if (!(opts.vertexShader && opts.fragmentShader)) {
             LOGWITH("Vertex and fragment shader should be provided.");
             return VK_NULL_HANDLE;
@@ -2616,19 +2616,23 @@ namespace onart {
         VkPipelineColorBlendAttachmentState blendStates[3]{};
         for (VkPipelineColorBlendAttachmentState& blendInfo : blendStates) {
             blendInfo.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-            blendInfo.colorBlendOp = VK_BLEND_OP_ADD;
-            blendInfo.alphaBlendOp = VK_BLEND_OP_ADD;
-            blendInfo.blendEnable = VK_TRUE;
-            blendInfo.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-            blendInfo.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-            blendInfo.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-            blendInfo.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            blendInfo.colorBlendOp = (VkBlendOp)opts.alphaBlend.colorOp;
+            blendInfo.alphaBlendOp = (VkBlendOp)opts.alphaBlend.alphaOp;
+            blendInfo.blendEnable = opts.alphaBlend != AlphaBlend::overwrite();
+            blendInfo.srcColorBlendFactor = (VkBlendFactor)opts.alphaBlend.srcColorFactor;
+            blendInfo.dstColorBlendFactor = (VkBlendFactor)opts.alphaBlend.dstColorFactor;
+            blendInfo.srcAlphaBlendFactor = (VkBlendFactor)opts.alphaBlend.srcAlphaFactor;
+            blendInfo.dstAlphaBlendFactor = (VkBlendFactor)opts.alphaBlend.dstAlphaFactor;
         }
 
         VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
         colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
         colorBlendStateCreateInfo.attachmentCount = OPT_COLOR_COUNT;
         colorBlendStateCreateInfo.pAttachments = blendStates;
+        colorBlendStateCreateInfo.blendConstants[0] = opts.alphaBlend.blendConstant[0];
+        colorBlendStateCreateInfo.blendConstants[1] = opts.alphaBlend.blendConstant[1];
+        colorBlendStateCreateInfo.blendConstants[2] = opts.alphaBlend.blendConstant[2];
+        colorBlendStateCreateInfo.blendConstants[3] = opts.alphaBlend.blendConstant[3];
 
         VkDynamicState dynStates[2] = { VkDynamicState::VK_DYNAMIC_STATE_VIEWPORT, VkDynamicState::VK_DYNAMIC_STATE_SCISSOR };
         VkPipelineDynamicStateCreateInfo dynInfo{};
@@ -2665,19 +2669,22 @@ namespace onart {
         if (opts.tessellationEvaluationShader) pInfo.pTessellationState = &tessInfo;
         if (OPT_COLOR_COUNT) { pInfo.pColorBlendState = &colorBlendStateCreateInfo; }
         if (opts.depthStencil.depthTest || opts.depthStencil.stencilTest) { pInfo.pDepthStencilState = &dsInfo; }
-        VkPipeline ret;
-        VkResult result = vkCreateGraphicsPipelines(singleton->device, VK_NULL_HANDLE, 1, &pInfo, nullptr, &ret);
+        VkPipeline pipeline{};
+        VkResult result = vkCreateGraphicsPipelines(singleton->device, VK_NULL_HANDLE, 1, &pInfo, nullptr, &pipeline);
         if (result != VK_SUCCESS) {
             LOGWITH("Failed to create pipeline:", result, resultAsString(result));
             return {};
             VkMachine::reason = result;
         }
+        Pipeline* ret = new Pipeline;
+        ret->pipeline = pipeline;
+        ret->pipelineLayout = layout;
         VkMachine::reason = result;
         if (opts.pass) { 
-            opts.pass->usePipeline(ret, layout, opts.subpassIndex);
+            opts.pass->usePipeline(ret, opts.subpassIndex);
         }
         else if (opts.pass2screen) {
-            opts.pass2screen->usePipeline(ret, layout, opts.subpassIndex);
+            opts.pass2screen->usePipeline(ret, opts.subpassIndex);
         }
         return singleton->pipelines[key] = ret;
     }
@@ -2900,7 +2907,7 @@ namespace onart {
         singleton->meshes.erase(name);
     }
 
-    VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount, bool canBeRead) : rp(rp), fb(fb), stageCount(stageCount), pipelines(stageCount), pipelineLayouts(stageCount), targets(stageCount), canBeRead(canBeRead) {
+    VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount, bool canBeRead) : rp(rp), fb(fb), stageCount(stageCount), pipelines(stageCount), targets(stageCount), canBeRead(canBeRead) {
         fence = singleton->createFence(true);
         semaphore = singleton->createSemaphore();
         singleton->allocateCommandBuffers(1, true, true, &cb);
@@ -2917,14 +2924,13 @@ namespace onart {
         }
     }
 
-    void VkMachine::RenderPass::usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass){
+    void VkMachine::RenderPass::usePipeline(Pipeline* pipeline, uint32_t subpass){
         if(subpass >= stageCount){
             LOGWITH("Invalid subpass. This renderpass has", stageCount, "subpasses but", subpass, "given");
             return;
         }
         pipelines[subpass] = pipeline;
-        pipelineLayouts[subpass] = layout;
-        if(currentPass == subpass) { vkCmdBindPipeline(cb, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline); }
+        if(currentPass == subpass) { vkCmdBindPipeline(cb, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipeline); }
     }
 
     void VkMachine::RenderPass::resize(int width, int height, bool linear) {
@@ -3400,7 +3406,7 @@ namespace onart {
         }
         ub->sync();
         uint32_t off = ub->offset(ubPos);
-        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &ub->dset, ub->isDynamic, &off);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &ub->dset, ub->isDynamic, &off);
     }
 
     void VkMachine::RenderPass::bind(uint32_t pos, const pTexture& tx) {
@@ -3408,7 +3414,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
     }
 
     void VkMachine::RenderPass::bind(uint32_t pos, const pStreamTexture& tx) {
@@ -3416,7 +3422,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
     }
 
     void VkMachine::RenderPass::bind(uint32_t pos, const pTextureSet& tx) {
@@ -3424,7 +3430,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
     }
 
     void VkMachine::RenderPass::bind(uint32_t pos, RenderPass* prevPass){
@@ -3433,7 +3439,7 @@ namespace onart {
             return;
         }
         RenderTarget* target = prevPass->targets.back();
-        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &target->dset, 0, nullptr);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &target->dset, 0, nullptr);
     }
 
     void VkMachine::RenderPass::bind(uint32_t pos, RenderPass2Cube* prevPass) {
@@ -3441,7 +3447,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &prevPass->csamp, 0, nullptr);
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &prevPass->csamp, 0, nullptr);
     }
 
     void VkMachine::RenderPass::push(void* input, uint32_t start, uint32_t end){
@@ -3449,7 +3455,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdPushConstants(cb, pipelineLayouts[currentPass], VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
+        vkCmdPushConstants(cb, pipelines[currentPass]->pipelineLayout, VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
     }
 
     void VkMachine::RenderPass::invoke(const pMesh& mesh, uint32_t start, uint32_t count){
@@ -3617,9 +3623,9 @@ namespace onart {
         }
         else{
             vkCmdNextSubpass(cb, VK_SUBPASS_CONTENTS_INLINE);
-            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &targets[currentPass - 1]->dset, 0, nullptr); // 서브패스는 무조건 0부터 시작해야 이게 유지되긴 할듯..
+            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &targets[currentPass - 1]->dset, 0, nullptr); // 서브패스는 무조건 0부터 시작해야 이게 유지되긴 할듯..
         }
-        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]);
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipeline);
         vkCmdSetViewport(cb, 0, 1, &viewport);
         vkCmdSetScissor(cb, 0, 1, &scissor);
     }
@@ -3663,11 +3669,11 @@ namespace onart {
         ub->sync();
         uint32_t off = ub->offset(ubPos);
         if(pass >= 6) {
-            vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &ub->dset, ub->isDynamic, &off);
+            vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipelineLayout, pos, 1, &ub->dset, ub->isDynamic, &off);
         }
         else{
             beginFacewise(pass);
-            vkCmdBindDescriptorSets(facewise[pass], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &ub->dset, ub->isDynamic, &off);
+            vkCmdBindDescriptorSets(facewise[pass], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipelineLayout, pos, 1, &ub->dset, ub->isDynamic, &off);
             vkEndCommandBuffer(facewise[pass]);
         }
     }
@@ -3677,7 +3683,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
+        vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
     }
 
     void VkMachine::RenderPass2Cube::bind(uint32_t pos, const pStreamTexture& tx) {
@@ -3685,7 +3691,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
+        vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
     }
 
     void VkMachine::RenderPass2Cube::bind(uint32_t pos, RenderPass* prevPass){
@@ -3694,13 +3700,12 @@ namespace onart {
             return;
         }
         RenderTarget* target = prevPass->targets.back();
-        vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, pos, 1, &target->dset, 0, nullptr);
+        vkCmdBindDescriptorSets(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipelineLayout, pos, 1, &target->dset, 0, nullptr);
     }
   
-    void VkMachine::RenderPass2Cube::usePipeline(VkPipeline pipeline, VkPipelineLayout layout){
+    void VkMachine::RenderPass2Cube::usePipeline(Pipeline* pipeline){
         this->pipeline = pipeline;
-        this->pipelineLayout = layout;
-        if(recording) { vkCmdBindPipeline(scb, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline); }
+        if(recording) { vkCmdBindPipeline(scb, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipeline); }
     }
 
     void VkMachine::RenderPass2Cube::push(void* input, uint32_t start, uint32_t end){
@@ -3708,7 +3713,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdPushConstants(scb, pipelineLayout, VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
+        vkCmdPushConstants(scb, pipeline->pipelineLayout, VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
     }
 
     void VkMachine::RenderPass2Cube::invoke(const pMesh& mesh, uint32_t start, uint32_t count){
@@ -3888,7 +3893,7 @@ namespace onart {
             return;
         }
         
-        vkCmdBindPipeline(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        vkCmdBindPipeline(scb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipeline);
         vkCmdSetViewport(scb, 0, 1, &viewport);
         vkCmdSetScissor(scb, 0, 1, &scissor);
     }
@@ -3899,8 +3904,7 @@ namespace onart {
         for(VkSemaphore& semaphore: acquireSm) semaphore = singleton->createSemaphore();
         for(VkSemaphore& semaphore: drawSm) semaphore = singleton->createSemaphore();
         singleton->allocateCommandBuffers(COMMANDBUFFER_COUNT, true, true, cbs);
-        pipelines.resize(this->targets.size() + 1, VK_NULL_HANDLE);
-        pipelineLayouts.resize(this->targets.size() + 1, VK_NULL_HANDLE);
+        pipelines.resize(this->targets.size() + 1, {});
     }
 
     VkMachine::RenderPass2Screen::~RenderPass2Screen(){
@@ -3996,7 +4000,7 @@ namespace onart {
         }
         ub->sync();
         uint32_t off = ub->offset(ubPos);
-        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &ub->dset, ub->isDynamic, &off);
+        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &ub->dset, ub->isDynamic, &off);
     }
 
     void VkMachine::RenderPass2Screen::bind(uint32_t pos, const pTexture& tx) {
@@ -4004,7 +4008,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
+        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
     }
 
     void VkMachine::RenderPass2Screen::bind(uint32_t pos, const pStreamTexture& tx) {
@@ -4012,16 +4016,16 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &tx->dset, 0, nullptr);
+        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
     }
 
-    void VkMachine::RenderPass2Screen::bind(uint32_t pos, RenderPass* prevPass){
-        if(currentPass == -1){
+    void VkMachine::RenderPass2Screen::bind(uint32_t pos, RenderPass* prevPass) {
+        if (currentPass == -1) {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
         RenderTarget* target = prevPass->targets.back();
-        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &target->dset, 0, nullptr);
+        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &target->dset, 0, nullptr);
     }
 
     void VkMachine::RenderPass2Screen::bind(uint32_t pos, RenderPass2Cube* prevPass) {
@@ -4029,7 +4033,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &prevPass->csamp, 0, nullptr);
+        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &prevPass->csamp, 0, nullptr);
     }
 
      void VkMachine::RenderPass2Screen::invoke(const pMesh& mesh, uint32_t start, uint32_t count){
@@ -4174,9 +4178,9 @@ namespace onart {
         }
         else{
             vkCmdNextSubpass(cbs[currentCB], VK_SUBPASS_CONTENTS_INLINE);
-            vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayouts[currentPass], pos, 1, &targets[currentPass - 1]->dset, 0, nullptr);
+            vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &targets[currentPass - 1]->dset, 0, nullptr);
         }
-        vkCmdBindPipeline(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]);
+        vkCmdBindPipeline(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipeline);
         vkCmdSetViewport(cbs[currentCB], 0, 1, &viewport);
         vkCmdSetScissor(cbs[currentCB], 0, 1, &scissor);
     }
@@ -4248,17 +4252,16 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdPushConstants(cbs[currentCB], pipelineLayouts[currentPass], VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스펙: 파이프라인 레이아웃 생성 시 단계마다 가용 푸시상수 범위를 분리할 수 있으며(꼭 할 필요는 없는 듯 하긴 함) 여기서 매개변수로 범위와 STAGEFLAGBIT은 일치해야 함
+        vkCmdPushConstants(cbs[currentCB], pipelines[currentPass]->pipelineLayout, VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스펙: 파이프라인 레이아웃 생성 시 단계마다 가용 푸시상수 범위를 분리할 수 있으며(꼭 할 필요는 없는 듯 하긴 함) 여기서 매개변수로 범위와 STAGEFLAGBIT은 일치해야 함
     }
 
-    void VkMachine::RenderPass2Screen::usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass){
+    void VkMachine::RenderPass2Screen::usePipeline(Pipeline* pipeline, uint32_t subpass){
         if(subpass > targets.size()){
             LOGWITH("Invalid subpass. This renderpass has", targets.size() + 1, "subpasses but", subpass, "given");
             return;
         }
         pipelines[subpass] = pipeline;
-        pipelineLayouts[subpass] = layout;
-        if(currentPass == subpass) { vkCmdBindPipeline(cbs[currentCB], VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline); }
+        if(currentPass == subpass) { vkCmdBindPipeline(cbs[currentCB], VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipeline); }
     }
 
     bool VkMachine::RenderPass2Screen::wait(uint64_t timeout){

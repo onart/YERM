@@ -78,6 +78,7 @@ namespace onart {
             using pTexture = std::shared_ptr<Texture>;
             class TextureSet;
             using pTextureSet = std::shared_ptr<TextureSet>;
+            class Pipeline;
             /// @brief 메모리 맵으로 고정된 텍스처입니다. 실시간으로 CPU단에서 데이터를 수정할 수 있습니다. 동영상이나 다른 창의 화면 등을 텍스처로 사용할 때 적합합니다.
             class StreamTexture;
             using pStreamTexture = std::shared_ptr<StreamTexture>;
@@ -240,6 +241,55 @@ namespace onart {
                     uint32_t compareMask = 0xff;
                 }stencilFront, stencilBack;
             };
+            
+            enum class BlendOperator {
+                ADD = VK_BLEND_OP_ADD,
+                SUBTRACT = VK_BLEND_OP_SUBTRACT,
+                REVERSE_SUBTRACT = VK_BLEND_OP_REVERSE_SUBTRACT,
+                MINIMUM = 3,
+                MAXIMUM = 4,
+            };
+
+            enum class BlendFactor {
+                ZERO = VK_BLEND_FACTOR_ZERO,
+                ONE = VK_BLEND_FACTOR_ONE,
+                SRC_COLOR = VK_BLEND_FACTOR_SRC_COLOR,
+                ONE_MINUS_SRC_COLOR = VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR,
+                DST_COLOR = VK_BLEND_FACTOR_DST_COLOR,
+                ONE_MINUS_DST_COLOR = VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR,
+                SRC_ALPHA = VK_BLEND_FACTOR_SRC_ALPHA,
+                ONE_MINUS_SRC_ALPHA = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                DST_ALPHA = VK_BLEND_FACTOR_DST_ALPHA,
+                ONE_MINUS_DST_ALPHA = VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA,
+                CONSTANT_COLOR = VK_BLEND_FACTOR_CONSTANT_COLOR,
+                ONE_MINUS_CONSTANT_COLOR = VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR,
+                //CONSTANT_ALPHA = VK_BLEND_FACTOR_CONSTANT_ALPHA,
+                //ONE_MINUS_CONSTANT_ALPHA = VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA,
+                SRC_ALPHA_SATURATE = VK_BLEND_FACTOR_SRC_ALPHA_SATURATE,
+                SRC1_COLOR = VK_BLEND_FACTOR_SRC1_COLOR,
+                ONE_MINUS_SRC1_COLOR = VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR,
+                SRC1_ALPHA = VK_BLEND_FACTOR_SRC1_ALPHA,
+                ONE_MINUS_SRC1_ALPHA = VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA,
+            };
+
+            struct AlphaBlend {
+                BlendOperator colorOp = BlendOperator::ADD;
+                BlendOperator alphaOp = BlendOperator::ADD;
+                BlendFactor srcColorFactor = BlendFactor::ONE;
+                BlendFactor dstColorFactor = BlendFactor::ZERO;
+                BlendFactor srcAlphaFactor = BlendFactor::ONE;
+                BlendFactor dstAlphaFactor = BlendFactor::ZERO;
+                float blendConstant[4]{};
+                inline constexpr bool operator== (const AlphaBlend& other) const { 
+#define COMP_ATTR(name) (name == other.name)
+                    return COMP_ATTR(colorOp) && COMP_ATTR(alphaOp) && COMP_ATTR(srcColorFactor) && COMP_ATTR(dstColorFactor) && COMP_ATTR(srcAlphaFactor) && COMP_ATTR(dstAlphaFactor);
+#undef COMP_ATTR
+                }
+                inline constexpr bool operator!=(const AlphaBlend& other) const { return !operator==(other); }
+                inline static constexpr AlphaBlend overwrite() { return AlphaBlend{}; }
+                inline static constexpr AlphaBlend normal() { return AlphaBlend{ BlendOperator::ADD, BlendOperator::ADD, BlendFactor::SRC_ALPHA, BlendFactor::ONE_MINUS_SRC_ALPHA, BlendFactor::ONE, BlendFactor::ONE_MINUS_SRC_ALPHA }; }
+                inline static constexpr AlphaBlend pma() { return AlphaBlend{ BlendOperator::ADD, BlendOperator::ADD, BlendFactor::ONE, BlendFactor::ONE_MINUS_SRC_ALPHA, BlendFactor::ONE, BlendFactor::ONE_MINUS_SRC_ALPHA }; }
+            };
 
             struct PipelineCreationOptions {
                 PipelineInputVertexSpec* vertexSpec = nullptr;
@@ -258,6 +308,7 @@ namespace onart {
                 VkShaderModule tessellationEvaluationShader = nullptr;
                 PipelineLayoutOptions shaderResources;
                 DepthStencilTesting depthStencil;
+                AlphaBlend alphaBlend;
                 void* vsByteCode = nullptr;
                 size_t vsByteCodeSize = 0;
             };
@@ -366,7 +417,7 @@ namespace onart {
             /// @param key 이름입니다. (RenderPass 객체와 같은 집합을 공유하지 않음) 이미 있는 이름을 입력하면 나머지 인수와 관계 없이 기존의 것을 리턴합니다. INT32_MIN, 즉 -2147483648은 예약된 값이기 때문에 사용할 수 없습니다.
             static RenderPass2Screen* createRenderPass2Screen(int32_t key, int32_t windowIdx, const RenderPassCreationOptions& opts);
             /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 불러올 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
-            static VkPipeline createPipeline(int32_t key, const PipelineCreationOptions& opts);
+            static Pipeline* createPipeline(int32_t key, const PipelineCreationOptions& opts);
             /// @brief 정점 버퍼를 생성합니다.
             /// @param key 사용할 이름입니다. 중복된 이름을 입력하는 경우 기존의 Mesh를 리턴합니다.
             /// @param opts @ref MeshCreationOptions
@@ -382,7 +433,7 @@ namespace onart {
             /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.
             static RenderPass2Cube* getRenderPass2Cube(int32_t key);
             /// @brief 만들어 둔 파이프라인을 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static VkPipeline getPipeline(int32_t key);
+            static Pipeline* getPipeline(int32_t key);
             /// @brief 만들어 둔 공유 버퍼를 리턴합니다. 없으면 nullptr를 리턴합니다.
             static UniformBuffer* getUniformBuffer(int32_t key);
             /// @brief 만들어 둔 셰이더 모듈을 리턴합니다. 없으면 nullptr를 리턴합니다.
@@ -489,7 +540,7 @@ namespace onart {
             std::map<int32_t, VkShaderModule> shaders;
             std::map<int32_t, UniformBuffer*> uniformBuffers;
             std::map<int64_t, VkPipelineLayout> pipelineLayouts;
-            std::map<int32_t, VkPipeline> pipelines;
+            std::map<int32_t, Pipeline*> pipelines;
             std::map<int32_t, pMesh> meshes;
             std::map<int32_t, pTexture> textures;
             std::map<int32_t, pTextureSet> textureSets;
@@ -577,6 +628,13 @@ namespace onart {
             ~RenderTarget();
     };
 
+    class VkMachine::Pipeline {
+        friend class VkMachine;
+    private:
+        VkPipeline pipeline;
+        VkPipelineLayout pipelineLayout;
+    };
+
     class VkMachine::RenderPass{
         friend class VkMachine;
         public:
@@ -631,7 +689,7 @@ namespace onart {
             /// @param pipeline 파이프라인
             /// @param layout 파이프라인 레이아웃
             /// @param subpass 서브패스 번호
-            void usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass);
+            void usePipeline(Pipeline* pipeline, uint32_t subpass);
             /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
             void push(void* input, uint32_t start, uint32_t end);
             /// @brief 메시를 그립니다. 정점 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
@@ -676,8 +734,7 @@ namespace onart {
             const uint16_t stageCount;
             VkFramebuffer fb = VK_NULL_HANDLE;
             VkRenderPass rp = VK_NULL_HANDLE;
-            std::vector<VkPipeline> pipelines;
-            std::vector<VkPipelineLayout> pipelineLayouts;
+            std::vector<Pipeline*> pipelines;
             std::vector<RenderTarget*> targets;
             int currentPass = -1;
             VkViewport viewport{};
@@ -722,7 +779,7 @@ namespace onart {
             /// @param tx 바인드할 텍스처
             void bind(uint32_t pos, const pStreamTexture& tx);
             /// @brief 주어진 파이프라인을 사용합니다. 지오메트리 셰이더를 사용하도록 만들어진 패스인지 아닌지를 잘 보고 바인드해 주세요.
-            void usePipeline(VkPipeline pipeline, VkPipelineLayout layout);
+            void usePipeline(Pipeline*);
             /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
             void push(void* input, uint32_t start, uint32_t end);
             /// @brief 메시를 그립니다. 정점 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
@@ -750,8 +807,7 @@ namespace onart {
 
             VkRenderPass rp = VK_NULL_HANDLE;
             VkFramebuffer fbs[6] = {};
-            VkPipeline pipeline = VK_NULL_HANDLE;
-            VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+            Pipeline* pipeline = {};
 
             VkImage colorTarget = VK_NULL_HANDLE, depthTarget = VK_NULL_HANDLE;
             VmaAllocation colorAlloc = {}, depthAlloc = {};
@@ -817,9 +873,8 @@ namespace onart {
             void bind(uint32_t pos, const pStreamTexture& tx);
             /// @brief 주어진 파이프라인을 주어진 서브패스에 사용하게 합니다. 이 함수는 매번 호출할 필요는 없지만, 해당 서브패스 진행 중에 사용하면 그때부터 바로 새로 주어진 파이프라인을 사용합니다.
             /// @param pipeline 파이프라인
-            /// @param layout 파이프라인 레이아웃
             /// @param subpass 서브패스 번호
-            void usePipeline(VkPipeline pipeline, VkPipelineLayout layout, uint32_t subpass);
+            void usePipeline(Pipeline* pipeline, uint32_t subpass);
             /// @brief 푸시 상수를 세팅합니다. 서브패스 진행중이 아니면 실패합니다.
             void push(void* input, uint32_t start, uint32_t end);
             /// @brief 메시를 그립니다. 정점 사양은 파이프라인과 맞아야 하며, 현재 바인드된 파이프라인이 그렇지 않은 경우 usePipeline으로 다른 파이프라인을 등록해야 합니다.
@@ -854,8 +909,7 @@ namespace onart {
 
             std::vector<VkFramebuffer> fbs; // 스왑체인 이미지마다 하나씩
             std::vector<RenderTarget*> targets; // 마지막 단계 제외 서브패스마다 하나씩
-            std::vector<VkPipeline> pipelines; // 서브패스마다 하나씩
-            std::vector<VkPipelineLayout> pipelineLayouts; // 서브패스마다 하나씩
+            std::vector<Pipeline*> pipelines; // 서브패스마다 하나씩
 
             VkImage dsImage;
             VkImageView dsView;

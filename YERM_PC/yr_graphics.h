@@ -50,7 +50,7 @@ namespace onart{
 #include "yr_vulkan.h"
 namespace onart{
     using YRGraphics = VkMachine;
-    using pipeline_t = VkPipeline;
+    using pipeline_t = VkMachine::Pipeline*;
     using shader_t = VkShaderModule;
 }
 #endif
