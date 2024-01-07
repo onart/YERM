@@ -473,29 +473,37 @@ namespace onart {
     static ktx_error_code_e tryTranscode(ktxTexture2* texture, uint32_t nChannels, bool srgb, bool hq) {
         if (ktxTexture2_NeedsTranscoding(texture)) {
             ktx_transcode_fmt_e tf;
+            uint32_t vkf{};
             switch (textureFormatFallback(nChannels, srgb, hq))
             {
             case GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR:
             case GL_COMPRESSED_RGBA_ASTC_4x4_KHR:
                 tf = KTX_TTF_ASTC_4x4_RGBA;
+                vkf = srgb ? VK_FORMAT_ASTC_4x4_SRGB_BLOCK : VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
                 break;
             case GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB:
             case GL_COMPRESSED_RGBA_BPTC_UNORM_ARB:
                 tf = KTX_TTF_BC7_RGBA;
+                vkf = srgb ? VK_FORMAT_BC7_SRGB_BLOCK : VK_FORMAT_BC7_UNORM_BLOCK;
                 break;
             case GL_COMPRESSED_SRGB8_ALPHA8_ETC2_EAC:
             case GL_COMPRESSED_RGBA8_ETC2_EAC:
                 tf = KTX_TTF_ETC2_RGBA;
+                vkf = srgb ? VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK : VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK;
                 break;
             case GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT:
             case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
                 tf = KTX_TTF_BC3_RGBA;
+                vkf = srgb ? VK_FORMAT_BC3_SRGB_BLOCK : VK_FORMAT_BC3_UNORM_BLOCK;
                 break;
             default:
                 tf = KTX_TTF_RGBA32;
+                vkf = srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
                 break;
             }
-            return ktxTexture2_TranscodeBasis(texture, tf, 0);
+            ktx_error_code_e ret = ktxTexture2_TranscodeBasis(texture, tf, 0);
+            texture->vkFormat = vkf;
+            return ret;
         }
         return KTX_SUCCESS;
     }
