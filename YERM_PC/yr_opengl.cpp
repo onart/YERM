@@ -1215,7 +1215,7 @@ namespace onart {
             }
         }
 
-        RenderPass* ret = new RenderPass(opts.subpassCount, false);
+        RenderPass* ret = new RenderPass(opts.subpassCount, false, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
         ret->targets = std::move(targets);
         ret->setViewport((float)window->width, (float)window->height, 0.0f, 0.0f);
         ret->setScissor(window->width, window->height, 0, 0);
@@ -1242,7 +1242,7 @@ namespace onart {
             }
         }
 
-        RenderPass* ret = new RenderPass(opts.subpassCount, opts.canCopy);
+        RenderPass* ret = new RenderPass(opts.subpassCount, opts.canCopy, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
         ret->targets = std::move(targets);
         ret->setViewport(opts.width, opts.height, 0.0f, 0.0f);
         ret->setScissor(opts.width, opts.height, 0, 0);
@@ -1350,7 +1350,12 @@ namespace onart {
         singleton->meshes.erase(name);
     }
 
-    GLMachine::RenderPass::RenderPass(uint16_t stageCount, bool canBeRead) : stageCount(stageCount), pipelines(stageCount), targets(stageCount), canBeRead(canBeRead) {}
+    GLMachine::RenderPass::RenderPass(uint16_t stageCount, bool canBeRead, float* autoclear) : stageCount(stageCount), pipelines(stageCount), targets(stageCount), canBeRead(canBeRead), autoclear(false) {
+        if (autoclear) {
+            this->autoclear = true;
+            std::memcpy(clearColor, autoclear, sizeof(clearColor));
+        }
+    }
 
     GLMachine::RenderPass::~RenderPass(){
         for (RenderTarget* targ : targets) {
@@ -1379,12 +1384,12 @@ namespace onart {
             if (targets[subpass]->color1) {
                 glBlendColor(pipeline->blendConstant[0], pipeline->blendConstant[1], pipeline->blendConstant[2], pipeline->blendConstant[3]);
                 setBlendParam(0, pipeline->blendOperation[0]);
-            }
-            if (targets[subpass]->color2) {
-                setBlendParam(1, pipeline->blendOperation[1]);
-            }
-            if (targets[subpass]->color3) {
-                setBlendParam(2, pipeline->blendOperation[2]);
+                if (targets[subpass]->color2) {
+                    setBlendParam(1, pipeline->blendOperation[1]);
+                    if (targets[subpass]->color3) {
+                        setBlendParam(2, pipeline->blendOperation[2]);
+                    }
+                }
             }
         }
     }
@@ -1662,6 +1667,61 @@ namespace onart {
         setScissor(width, height, 0, 0);
     }
 
+    void GLMachine::RenderPass::clear(RenderTargetType toClear, float* colors) {
+        if (currentPass < 0) {
+            LOGWITH("This renderPass is currently not running");
+            return;
+        }
+        if (toClear == 0) {
+            LOGWITH("no-op");
+            return;
+        }
+        int type = targets[currentPass] ? targets[currentPass]->type : (RTT_COLOR1 | RTT_DEPTH | RTT_STENCIL);
+        if ((toClear & type) != toClear) {
+            LOGWITH("Invalid target selected");
+            return;
+        }
+        if (autoclear) {
+            LOGWITH("Autoclear specified. Maybe this call is a mistake?");
+        }
+
+        GLenum clearTarg[4]{};
+        int clearCount = 0;
+        if (toClear & 0b1) {
+            clearTarg[clearCount++] = GL_COLOR_ATTACHMENT0;
+        }
+        if (toClear & 0b10) {
+            clearTarg[clearCount++] = GL_COLOR_ATTACHMENT1;
+        }
+        if (toClear & 0b100) {
+            clearTarg[clearCount++] = GL_COLOR_ATTACHMENT2;
+        }
+        if (toClear & 0b11000) {
+            glClear(GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        }
+        if (targets[currentPass]) {
+            glDrawBuffers(clearCount, clearTarg);
+            for (int i = 0; i < clearCount; i++) {
+                glClearBufferfv(GL_COLOR, i, colors);
+                colors += 4;
+            }
+            clearCount = 0;
+            if (type & 0b1) {
+                clearTarg[clearCount++] = GL_COLOR_ATTACHMENT0;
+                if (type & 0b10) {
+                    clearTarg[clearCount++] = GL_COLOR_ATTACHMENT1;
+                    if (type & 0b100) {
+                        clearTarg[clearCount++] = GL_COLOR_ATTACHMENT2;
+                    }
+                }
+            }
+            glDrawBuffers(clearCount, clearTarg);
+        }
+        else {
+            if (toClear & 0b1) glClear(GL_COLOR_BUFFER_BIT);
+        }
+    }
+
     void GLMachine::RenderPass::start(uint32_t pos){
         if(currentPass == stageCount - 1) {
             LOGWITH("Invalid call. The last subpass already started");
@@ -1715,9 +1775,27 @@ namespace onart {
                 glBindTexture(GL_TEXTURE_2D, prev->depthStencil);
             }
         }
-
-        glUseProgram(pipelines[currentPass]->program);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        auto pp = pipelines[currentPass];
+        glUseProgram(pp->program);
+        if (targets[currentPass]) {
+            if (targets[currentPass]->color1) {
+                glBlendColor(pp->blendConstant[0], pp->blendConstant[1], pp->blendConstant[2], pp->blendConstant[3]);
+                setBlendParam(0, pp->blendOperation[0]);
+                if (targets[currentPass]->color2) {
+                    setBlendParam(1, pp->blendOperation[1]);
+                    if (targets[currentPass]->color3) {
+                        setBlendParam(2, pp->blendOperation[2]);
+                    }
+                }
+            }
+        }
+        else {
+            glBlendColor(pp->blendConstant[0], pp->blendConstant[1], pp->blendConstant[2], pp->blendConstant[3]);
+            setBlendParam(0, pp->blendOperation[0]);
+        }
+        if (autoclear) {
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        }
         glViewport(viewport.x, viewport.y, viewport.width, viewport.height);
         glDepthRange(viewport.minDepth, viewport.maxDepth);
         glScissor(scissor.x, scissor.y, scissor.width, scissor.height);

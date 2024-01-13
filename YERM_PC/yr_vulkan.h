@@ -172,6 +172,11 @@ namespace onart {
                 RenderTargetType screenDepthStencil = RenderTargetType::RTT_COLOR1;
                 /// @brief true일 경우 내용을 CPU 메모리로 읽어오거나 텍스처로 추출할 수 있습니다. RenderPass2Screen 및 RenderPass2Cube 생성 시에는 무시됩니다. 기본값 false
                 bool canCopy = false;
+                /// @brief 렌더패스 시작 시 모든 서브패스 타겟(색/깊이/스텐실)을 주어진 색으로 클리어합니다. 깊이/스텐실은 항상 1, 0으로 클리어합니다. vulkan API의 경우 autoclear를 사용하는 것이 더 성능이 높을 수 있습니다.
+                struct {
+                    bool use = true;
+                    float color[4]{};
+                }autoclear;
             };
             struct ShaderModuleCreationOptions {
                 /// @brief SPIR-V 바이너리입니다. 기본값 없음
@@ -406,7 +411,7 @@ namespace onart {
             /// @brief 렌더 패스를 생성합니다. 렌더 패스는 렌더 타겟과 유의어로 보아도 되나, 여러 개의 서브패스로 구성됩니다.
             /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
             static RenderPass* createRenderPass(int32_t key, const RenderPassCreationOptions& opts);
-            /// @brief 큐브맵 대상의 렌더패스를 생성합니다.
+            /// @brief 큐브맵 대상의 렌더패스를 생성합니다. 큐브맵 대상의 렌더패스는 항상 자동 클리어(0,0,0,0)됩니다.
             /// @param width 타겟으로 생성되는 각 이미지의 가로 길이입니다.
             /// @param height 타겟으로 생성되는 각 이미지의 세로 길이입니다.
             /// @param key 이름입니다.
@@ -618,7 +623,7 @@ namespace onart {
         private:
             /// @brief 이 타겟을 위한 첨부물을 기술합니다.
             /// @return 색 첨부물의 수(최대 3)
-            uint32_t attachmentRefs(VkAttachmentDescription* descr, bool forSample);
+            uint32_t attachmentRefs(VkAttachmentDescription* descr, bool forSample, bool autoclear);
             VkMachine::ImageSet* color1, *color2, *color3, *depthstencil;
             VkDescriptorSet dset = VK_NULL_HANDLE;
             unsigned width, height;
@@ -707,6 +712,10 @@ namespace onart {
             /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다. 주어진 파이프라인이 없으면 동작이 실패합니다.
             /// @param pos 이전 서브패스의 결과인 입력 첨부물을 바인드할 위치의 시작점입니다. 예를 들어, pos=0이고 이전 타겟이 색 첨부물 2개, 깊이 첨부물 1개였으면 0, 1, 2번에 바인드됩니다. 셰이더를 그에 맞게 만들어야 합니다.
             void start(uint32_t pos = 0);
+            /// @brief 현재 서브패스의 타겟을 클리어합니다.
+            /// @param toClear 실제로 클리어할 타겟을 명시합니다.
+            /// @param colors 초기화할 색상을 앞에서부터 차례대로 (r, g, b, a) 명시합니다. depth/stencil 타겟은 각각 고정 1 / 0으로 클리어됩니다.
+            void clear(RenderTargetType toClear, float* colors);
             /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
             /// @param other 이 패스가 시작하기 전에 기다릴 다른 렌더패스입니다. 전후 의존성이 존재할 경우 사용하는 것이 좋습니다. (Vk세마포어 동기화를 사용) 현재 버전에서 기다리는 단계는 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT 하나로 고정입니다.
             void execute(RenderPass* other = nullptr);
@@ -728,7 +737,7 @@ namespace onart {
             /// @param handler 비동기 핸들러입니다. @ref ReadBackBuffer의 포인터가 전달되며 해당 메모리는 자동으로 해제되므로 핸들러에서는 읽기만 가능합니다.
             void asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler, const TextureArea2D& area = {});
         private:
-            RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount, bool canBeRead); // 이후 다수의 서브패스를 쓸 수 있도록 변경
+            RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount, bool canBeRead, float* autoclear); // 이후 다수의 서브패스를 쓸 수 있도록 변경
             ~RenderPass();
             void reconstructFB(RenderTarget** targets);
             const uint16_t stageCount;
@@ -742,6 +751,8 @@ namespace onart {
             VkCommandBuffer cb = VK_NULL_HANDLE;
             const Mesh* bound = nullptr;
             const bool canBeRead;
+            bool autoclear;
+            float clearColor[4];
             
             VkFence fence = VK_NULL_HANDLE;
             VkSemaphore semaphore = VK_NULL_HANDLE;
@@ -884,6 +895,10 @@ namespace onart {
             /// @param instanceInfo 
             /// @param instanceCount 
             void invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart = 0, uint32_t start = 0, uint32_t count = 0);
+            /// @brief 현재 서브패스의 타겟을 클리어합니다.
+            /// @param toClear 실제로 클리어할 타겟을 명시합니다.
+            /// @param colors 초기화할 색상을 앞에서부터 차례대로 (r, g, b, a) 명시합니다. depth/stencil 타겟은 각각 고정 1 / 0으로 클리어됩니다.
+            void clear(RenderTargetType toClear, float* colors);
             /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다. 주어진 파이프라인이 없으면 동작이 실패합니다.
             /// @param pos 이전 서브패스의 결과인 입력 첨부물을 바인드할 위치의 시작점입니다. 예를 들어, pos=0이고 이전 타겟이 색 첨부물 2개, 깊이 첨부물 1개였으면 0, 1, 2번에 바인드됩니다. 셰이더를 그에 맞게 만들어야 합니다.
             void start(uint32_t pos = 0);
@@ -902,7 +917,7 @@ namespace onart {
             /// @param height 세로 길이
             /// @return 성공 여부 (실패 시 내부의 모든 데이터는 해제됨)
             bool reconstructFB(uint32_t width, uint32_t height);
-            RenderPass2Screen(VkRenderPass rp, std::vector<RenderTarget*>&& targets, std::vector<VkFramebuffer>&& fbs, VkImage dsImage, VkImageView dsView, VmaAllocation dsAlloc);
+            RenderPass2Screen(VkRenderPass rp, std::vector<RenderTarget*>&& targets, std::vector<VkFramebuffer>&& fbs, VkImage dsImage, VkImageView dsView, VmaAllocation dsAlloc, float* autoclear);
             ~RenderPass2Screen();
             constexpr static uint32_t COMMANDBUFFER_COUNT = 4; // 트리플버퍼링 상정
             VkRenderPass rp = VK_NULL_HANDLE;
@@ -930,6 +945,9 @@ namespace onart {
             uint32_t imgIndex;
             VkViewport viewport;
             VkRect2D scissor;
+
+            bool autoclear;
+            float clearColor[4];
     };
 
     class VkMachine::Texture{

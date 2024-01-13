@@ -1834,12 +1834,13 @@ namespace onart {
         return singleton->uniformBuffers[name] = new UniformBuffer(opts.count, individual, buffer, layout, dset, alloc, mmap, 0);
     }
 
-    uint32_t VkMachine::RenderTarget::attachmentRefs(VkAttachmentDescription* arr, bool forSample){
+    uint32_t VkMachine::RenderTarget::attachmentRefs(VkAttachmentDescription* arr, bool forSample, bool autoclear){
         uint32_t colorCount = 0;
+        VkAttachmentLoadOp loadOp = autoclear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
         if(color1) {
             arr[0].format = singleton->baseSurfaceRendertargetFormat;
             arr[0].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
-            arr[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            arr[0].loadOp = loadOp;
             arr[0].storeOp = sampled ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
             arr[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             arr[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -1858,7 +1859,7 @@ namespace onart {
         if(depthstencil) {
             arr[colorCount].format = VkFormat::VK_FORMAT_D24_UNORM_S8_UINT;
             arr[colorCount].samples = VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
-            arr[colorCount].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            arr[colorCount].loadOp = loadOp;
             arr[colorCount].storeOp = sampled ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE; // 그림자맵에서야 필요하고 그 외에는 필요없음
             arr[colorCount].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
             arr[colorCount].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -2210,7 +2211,7 @@ namespace onart {
         uint32_t inputAttachmentCount = 0;
 
         for (uint32_t i = 0; i < opts.subpassCount - 1; i++) {
-            uint32_t colorCount = targets[i]->attachmentRefs(&attachments[totalAttachments], false);
+            uint32_t colorCount = targets[i]->attachmentRefs(&attachments[totalAttachments], false, opts.autoclear.use);
             subpasses[i].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
             subpasses[i].colorAttachmentCount = colorCount;
             subpasses[i].pColorAttachments = &colorRefs[totalAttachments];
@@ -2338,7 +2339,7 @@ namespace onart {
                 return nullptr;
             }
         }
-        RenderPass2Screen* ret = new RenderPass2Screen(newPass, std::move(targets), std::move(fbs), dsImage, dsImageView, dsAlloc);
+        RenderPass2Screen* ret = new RenderPass2Screen(newPass, std::move(targets), std::move(fbs), dsImage, dsImageView, dsAlloc, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
         ret->setViewport((float)window->swapchain.extent.width, (float)window->swapchain.extent.height, 0.0f, 0.0f);
         ret->setScissor(window->swapchain.extent.width, window->swapchain.extent.height, 0, 0);
         ret->width = window->swapchain.extent.width;
@@ -2378,7 +2379,7 @@ namespace onart {
         uint32_t inputAttachmentCount = 0;
 
         for (uint32_t i = 0; i < opts.subpassCount; i++) {
-            uint32_t colorCount = targets[i]->attachmentRefs(&attachments[totalAttachments], i == (opts.subpassCount - 1));
+            uint32_t colorCount = targets[i]->attachmentRefs(&attachments[totalAttachments], i == (opts.subpassCount - 1), opts.autoclear.use);
             subpasses[i].pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
             subpasses[i].colorAttachmentCount = colorCount;
             subpasses[i].pColorAttachments = &colorRefs[totalAttachments];
@@ -2457,7 +2458,7 @@ namespace onart {
             return nullptr;
         }
 
-        RenderPass* ret = new RenderPass(newPass, fb, opts.subpassCount, opts.canCopy);
+        RenderPass* ret = new RenderPass(newPass, fb, opts.subpassCount, opts.canCopy, opts.autoclear.use ? (float*)opts.autoclear.color : (float*)nullptr);
         for (uint32_t i = 0; i < opts.subpassCount; i++) { ret->targets[i] = targets[i]; }
         ret->setViewport((float)targets[0]->width, (float)targets[0]->height, 0.0f, 0.0f);
         ret->setScissor(targets[0]->width, targets[0]->height, 0, 0);
@@ -2908,7 +2909,11 @@ namespace onart {
         singleton->meshes.erase(name);
     }
 
-    VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount, bool canBeRead) : rp(rp), fb(fb), stageCount(stageCount), pipelines(stageCount), targets(stageCount), canBeRead(canBeRead) {
+    VkMachine::RenderPass::RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount, bool canBeRead, float* autoclear) : rp(rp), fb(fb), stageCount(stageCount), pipelines(stageCount), targets(stageCount), canBeRead(canBeRead), autoclear(false) {
+        if (autoclear) {
+            std::memcpy(clearColor, autoclear, sizeof(clearColor));
+            this->autoclear = true;
+        }
         fence = singleton->createFence(true);
         semaphore = singleton->createSemaphore();
         singleton->allocateCommandBuffers(1, true, true, &cb);
@@ -3570,6 +3575,61 @@ namespace onart {
         return vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, timeout) == VK_SUCCESS; // VK_TIMEOUT이나 VK_ERROR_DEVICE_LOST
     }
 
+    void VkMachine::RenderPass::clear(RenderTargetType toClear, float* colors) {
+        if (currentPass < 0) {
+            LOGWITH("This renderPass is currently not running");
+            return;
+        }
+        if (toClear == 0) {
+            LOGWITH("no-op");
+            return;
+        }
+        if ((toClear & targets[currentPass]->type) != toClear) {
+            LOGWITH("Invalid target selected");
+            return;
+        }
+        if (autoclear) {
+            LOGWITH("Autoclear specified. Maybe this call is a mistake?");
+        }
+
+        VkClearRect rect{};
+        rect.baseArrayLayer = 0;
+        rect.layerCount = 1;
+        rect.rect.extent.width = targets[0]->width;
+        rect.rect.extent.height = targets[0]->height;
+        VkClearAttachment clearParam[4];
+        int clearCount = 0;
+        if (toClear & 0b1) {
+            VkClearAttachment& pr = clearParam[clearCount++];
+            pr.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            pr.colorAttachment = 0;
+            std::memcpy(pr.clearValue.color.float32, colors, sizeof(pr.clearValue.color.float32));
+            colors += 4;
+        }
+        if (toClear & 0b10) {
+            VkClearAttachment& pr = clearParam[clearCount++];
+            pr.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            pr.colorAttachment = 1;
+            std::memcpy(pr.clearValue.color.float32, colors, sizeof(pr.clearValue.color.float32));
+            colors += 4;
+        }
+        if (toClear & 0b100) {
+            VkClearAttachment& pr = clearParam[clearCount++];
+            pr.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            pr.colorAttachment = 2;
+            std::memcpy(pr.clearValue.color.float32, colors, sizeof(pr.clearValue.color.float32));
+        }
+        if (toClear & 0b11000) {
+            VkClearAttachment& pr = clearParam[clearCount++];
+            pr.aspectMask = 0;
+            if (toClear & 0b1000) pr.aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
+            if (toClear & 0b10000) pr.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+            pr.clearValue.depthStencil.depth = 1.0f;
+            pr.clearValue.depthStencil.stencil = 0;
+        }
+        vkCmdClearAttachments(cb, clearCount, clearParam, 1, &rect);
+    }
+
     void VkMachine::RenderPass::start(uint32_t pos){
         if(currentPass == stageCount - 1) {
             LOGWITH("Invalid call. The last subpass already started");
@@ -3596,22 +3656,27 @@ namespace onart {
                 return;
             }
             VkRenderPassBeginInfo rpInfo{};
-            std::vector<VkClearValue> clearValues; // TODO: 이건 렌더타겟이 갖고 있는 게 자유도 면에서 나을 것 같음
-            clearValues.reserve(stageCount * 4);
-            for(RenderTarget* targ: targets){
-                if((int)targ->type & 0b1) {
-                    clearValues.push_back({0.03f, 0.03f, 0.03f, 0.0f});
-                    if((int)targ->type & 0b10){
-                        clearValues.push_back({0.03f, 0.03f, 0.03f, 0.0f});
-                        if((int)targ->type & 0b100){
-                            clearValues.push_back({0.03f, 0.03f, 0.03f, 0.0f});
+            std::vector<VkClearValue> clearValues;
+            if (autoclear) {
+                VkClearValue colorClear;
+                std::memcpy(colorClear.color.float32, clearColor, sizeof(clearColor));
+                clearValues.reserve(stageCount * 4);
+                for (RenderTarget* targ : targets) {
+                    if ((int)targ->type & 0b1) {
+                        clearValues.push_back(colorClear);
+                        if ((int)targ->type & 0b10) {
+                            clearValues.push_back(colorClear);
+                            if ((int)targ->type & 0b100) {
+                                clearValues.push_back(colorClear);
+                            }
                         }
                     }
-                }
-                if((int)targ->type & 0b1000){
-                    clearValues.push_back({1.0f, 0u});
+                    if ((int)targ->type & 0b1000) {
+                        clearValues.push_back({ 1.0f, 0u });
+                    }
                 }
             }
+
             rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
             rpInfo.framebuffer = fb;
             rpInfo.pClearValues = clearValues.data();
@@ -3899,8 +3964,12 @@ namespace onart {
         vkCmdSetScissor(scb, 0, 1, &scissor);
     }
 
-    VkMachine::RenderPass2Screen::RenderPass2Screen(VkRenderPass rp, std::vector<RenderTarget*>&& targets, std::vector<VkFramebuffer>&& fbs, VkImage dsImage, VkImageView dsView, VmaAllocation dsAlloc)
-    : targets(targets), fbs(fbs), dsImage(dsImage), dsView(dsView), dsAlloc(dsAlloc), rp(rp){
+    VkMachine::RenderPass2Screen::RenderPass2Screen(VkRenderPass rp, std::vector<RenderTarget*>&& targets, std::vector<VkFramebuffer>&& fbs, VkImage dsImage, VkImageView dsView, VmaAllocation dsAlloc, float* autoclear)
+        : targets(targets), fbs(fbs), dsImage(dsImage), dsView(dsView), dsAlloc(dsAlloc), rp(rp), autoclear(false) {
+        if (autoclear) {
+            std::memcpy(clearColor, autoclear, sizeof(clearColor));
+            this->autoclear = true;
+        }
         for(VkFence& fence: fences) fence = singleton->createFence(true);
         for(VkSemaphore& semaphore: acquireSm) semaphore = singleton->createSemaphore();
         for(VkSemaphore& semaphore: drawSm) semaphore = singleton->createSemaphore();
@@ -4107,6 +4176,63 @@ namespace onart {
         bound = nullptr;
     }
 
+    void VkMachine::RenderPass2Screen::clear(RenderTargetType toClear, float* colors) {
+        if (currentPass < 0) {
+            LOGWITH("This renderPass is currently not running");
+            return;
+        }
+        if (toClear == 0) {
+            LOGWITH("no-op");
+            return;
+        }
+        int type = (currentPass == targets.size()) ?
+            (dsImage ? (RenderTargetType::RTT_COLOR1 | RenderTargetType::RTT_DEPTH | RenderTargetType::RTT_STENCIL) : RenderTargetType::RTT_COLOR1)
+            : targets[currentPass]->type;
+        if ((toClear & type) != toClear) {
+            LOGWITH("Invalid target selected");
+            return;
+        }
+        if (autoclear) {
+            LOGWITH("Autoclear specified. Maybe this call is a mistake?");
+        }
+
+        VkClearRect rect{};
+        rect.baseArrayLayer = 0;
+        rect.layerCount = 1;
+        rect.rect.extent = singleton->windowSystems[windowIdx]->swapchain.extent;
+        VkClearAttachment clearParam[4];
+        int clearCount = 0;
+        if (toClear & 0b1) {
+            VkClearAttachment& pr = clearParam[clearCount++];
+            pr.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            pr.colorAttachment = 0;
+            std::memcpy(pr.clearValue.color.float32, colors, sizeof(pr.clearValue.color.float32));
+            colors += 4;
+        }
+        if (toClear & 0b10) {
+            VkClearAttachment& pr = clearParam[clearCount++];
+            pr.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            pr.colorAttachment = 1;
+            std::memcpy(pr.clearValue.color.float32, colors, sizeof(pr.clearValue.color.float32));
+            colors += 4;
+        }
+        if (toClear & 0b100) {
+            VkClearAttachment& pr = clearParam[clearCount++];
+            pr.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            pr.colorAttachment = 2;
+            std::memcpy(pr.clearValue.color.float32, colors, sizeof(pr.clearValue.color.float32));
+        }
+        if (toClear & 0b11000) {
+            VkClearAttachment& pr = clearParam[clearCount++];
+            pr.aspectMask = 0;
+            if (toClear & 0b1000) pr.aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
+            if (toClear & 0b10000) pr.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+            pr.clearValue.depthStencil.depth = 1.0f;
+            pr.clearValue.depthStencil.stencil = 0;
+        }
+        vkCmdClearAttachments(cbs[currentCB], clearCount, clearParam, 1, &rect);
+    }
+
     void VkMachine::RenderPass2Screen::start(uint32_t pos){
         if(currentPass == targets.size()) {
             LOGWITH("Invalid call. The last subpass already started");
@@ -4147,26 +4273,29 @@ namespace onart {
                 return;
             }
             VkRenderPassBeginInfo rpInfo{};
-
-            std::vector<VkClearValue> clearValues; // TODO: 이건 렌더타겟이 갖고 있는 게 자유도 면에서 나을 것 같음
-            clearValues.reserve(targets.size() * 4 + 2);
-            for(RenderTarget* targ: targets){
-                if((int)targ->type & 0b1) {
-                    clearValues.push_back({0.03f, 0.03f, 0.03f, 0.0f});
-                    if((int)targ->type & 0b10){
-                        clearValues.push_back({0.03f, 0.03f, 0.03f, 0.0f});
-                        if((int)targ->type & 0b100){
-                            clearValues.push_back({0.03f, 0.03f, 0.03f, 0.0f});
+            std::vector<VkClearValue> clearValues;
+            if (autoclear) {
+                clearValues.reserve(targets.size() * 4 + 2);
+                VkClearValue colorClear;
+                std::memcpy(colorClear.color.float32, clearColor, sizeof(clearColor));
+                for (RenderTarget* targ : targets) {
+                    if ((int)targ->type & 0b1) {
+                        clearValues.push_back(colorClear);
+                        if ((int)targ->type & 0b10) {
+                            clearValues.push_back(colorClear);
+                            if ((int)targ->type & 0b100) {
+                                clearValues.push_back(colorClear);
+                            }
                         }
                     }
+                    if ((int)targ->type & 0b1000) {
+                        clearValues.push_back({ 1.0f, 0u });
+                    }
                 }
-                if((int)targ->type & 0b1000){
-                    clearValues.push_back({1.0f, 0u});
-                }
-            }
 
-            clearValues.push_back({0.03f, 0.03f, 0.03f, 1.0f});
-            if(dsImage) clearValues.push_back({1.0f, 0u});
+                clearValues.push_back(colorClear);
+                if (dsImage) clearValues.push_back({ 1.0f, 0u });
+            }
 
             rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
             rpInfo.framebuffer = fbs[imgIndex];

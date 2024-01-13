@@ -1042,7 +1042,7 @@ namespace onart {
             }
         }
 
-        RenderPass* ret = new RenderPass(opts.subpassCount, false);
+        RenderPass* ret = new RenderPass(opts.subpassCount, false, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
         ret->targets = std::move(targs);
         ret->setViewport((float)window->swapchain.width, (float)window->swapchain.height, 0.0f, 0.0f);
         ret->setScissor(window->swapchain.width, window->swapchain.height, 0, 0);
@@ -1067,7 +1067,7 @@ namespace onart {
             }
         }
 
-        RenderPass* ret = new RenderPass(opts.subpassCount, opts.canCopy);
+        RenderPass* ret = new RenderPass(opts.subpassCount, opts.canCopy, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
         ret->targets = std::move(targs);
         ret->setViewport((float)opts.width, (float)opts.height, 0.0f, 0.0f);
         ret->setScissor(opts.width, opts.height, 0, 0);
@@ -1693,7 +1693,7 @@ namespace onart {
             alphaBlendInfo.RenderTarget[i].BlendEnable = blendop != AlphaBlend::overwrite();
             alphaBlendInfo.RenderTarget[i].BlendOp = (D3D11_BLEND_OP)blendop.colorOp;
             alphaBlendInfo.RenderTarget[i].BlendOpAlpha = (D3D11_BLEND_OP)blendop.alphaOp;
-            alphaBlendInfo.RenderTarget[i].RenderTargetWriteMask = 0xff;
+            alphaBlendInfo.RenderTarget[i].RenderTargetWriteMask = 0xf;
             alphaBlendInfo.RenderTarget[i].SrcBlend = (D3D11_BLEND)blendop.srcColorFactor;
             alphaBlendInfo.RenderTarget[i].DestBlend = (D3D11_BLEND)blendop.dstColorFactor;
             alphaBlendInfo.RenderTarget[i].SrcBlendAlpha = (D3D11_BLEND)blendop.srcAlphaFactor;
@@ -1708,11 +1708,11 @@ namespace onart {
             return {};
         }
 
-        return singleton->pipelines[key] = new Pipeline(layout, vert, tctrl, teval, geom, frag, dsState, opts.depthStencil.stencilFront.reference, {}, blendState);
+        return singleton->pipelines[key] = new Pipeline(layout, vert, tctrl, teval, geom, frag, dsState, opts.depthStencil.stencilFront.reference, blendState);
     }
 
-    D3D11Machine::Pipeline::Pipeline(ID3D11InputLayout* layout, ID3D11VertexShader* v, ID3D11HullShader* h, ID3D11DomainShader* d, ID3D11GeometryShader* g, ID3D11PixelShader* p, ID3D11DepthStencilState* dss, UINT stencilRef, vec4 clearColor, ID3D11BlendState* blend)
-        :vs(v), tcs(h), tes(d), gs(g), fs(p), dsState(dss), stencilRef(stencilRef), clearColor(clearColor), layout(layout), blendState(blend) {
+    D3D11Machine::Pipeline::Pipeline(ID3D11InputLayout* layout, ID3D11VertexShader* v, ID3D11HullShader* h, ID3D11DomainShader* d, ID3D11GeometryShader* g, ID3D11PixelShader* p, ID3D11DepthStencilState* dss, UINT stencilRef, ID3D11BlendState* blend)
+        :vs(v), tcs(h), tes(d), gs(g), fs(p), dsState(dss), stencilRef(stencilRef), layout(layout), blendState(blend) {
     }
     
     D3D11Machine::Pipeline::~Pipeline() {
@@ -1797,9 +1797,12 @@ namespace onart {
         delete ds;
     }
 
-    D3D11Machine::RenderPass::RenderPass(uint16_t stageCount, bool canBeRead)
-        :stageCount(stageCount), targets(stageCount), pipelines(stageCount), canBeRead(canBeRead) {
-
+    D3D11Machine::RenderPass::RenderPass(uint16_t stageCount, bool canBeRead, float* autoclear)
+        :stageCount(stageCount), targets(stageCount), pipelines(stageCount), canBeRead(canBeRead), autoclear(false) {
+        if (autoclear) {
+            this->autoclear = true;
+            std::memcpy(clearColor, autoclear, sizeof(clearColor));
+        }
     }
 
     D3D11Machine::RenderPass::~RenderPass() {
@@ -1808,7 +1811,55 @@ namespace onart {
         }
     }
 
-    void D3D11Machine::RenderPass::start(uint32_t pos, bool clearTarget) {
+    void D3D11Machine::RenderPass::clear(RenderTargetType toClear, float* colors) {
+        if (currentPass < 0) {
+            LOGWITH("This renderPass is currently not running");
+            return;
+        }
+        if (toClear == 0) {
+            LOGWITH("no-op");
+            return;
+        }
+        int type = targets[currentPass] ? targets[currentPass]->type : (RTT_COLOR1 | RTT_DEPTH | RTT_STENCIL);
+        if ((toClear & type) != toClear) {
+            LOGWITH("Invalid target selected");
+            return;
+        }
+        if (autoclear) {
+            LOGWITH("Autoclear specified. Maybe this call is a mistake?");
+        }
+        
+        int clearCount = 0;
+        if (toClear & 0b1) {
+            if (targets[currentPass]) {
+                singleton->context->ClearRenderTargetView(targets[currentPass]->dset1, colors);
+            }
+            else {
+                singleton->context->ClearRenderTargetView(singleton->windowSystems[windowIdx]->getSwapchainTarget(), colors);
+            }
+            colors += 4;
+        }
+        if (toClear & 0b10) {
+            singleton->context->ClearRenderTargetView(targets[currentPass]->dset2, colors);
+            colors += 4;
+        }
+        if (toClear & 0b100) {
+            singleton->context->ClearRenderTargetView(targets[currentPass]->dset3, colors);
+        }
+        if (toClear & 0b11000) {
+            if (targets[currentPass]) {
+                UINT clearFlags = 0;
+                if (toClear & 0b1000) clearFlags |= D3D11_CLEAR_DEPTH;
+                if (toClear & 0b10000) clearFlags |= D3D11_CLEAR_STENCIL;
+                singleton->context->ClearDepthStencilView(targets[currentPass]->dsetDS, clearFlags, 1.0f, 0);
+            }
+            else {
+                singleton->context->ClearDepthStencilView(singleton->windowSystems[windowIdx]->screenDSView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+            }
+        }
+    }
+
+    void D3D11Machine::RenderPass::start(uint32_t pos) {
         if (currentRenderPass && currentRenderPass != reinterpret_cast<uint64_t>(this)) {
             LOGWITH("You can't make multiple renderpass being started in d3d11machine. Call RendrePass::execute() to end renderpass");
             return;
@@ -1879,24 +1930,20 @@ namespace onart {
         singleton->context->RSSetViewports(1, &viewport);
         singleton->context->RSSetScissorRects(1, &scissor);
         usePipeline(pipelines[currentPass], currentPass);
-        if (clearTarget) {
+        if (autoclear) {
             if (targets[currentPass] == nullptr) {
                 WindowSystem* ws = singleton->windowSystems[windowIdx];
-                singleton->context->ClearRenderTargetView(ws->getSwapchainTarget(), pipelines[currentPass]->clearColor.entry);
+                singleton->context->ClearRenderTargetView(ws->getSwapchainTarget(), clearColor);
+                singleton->context->ClearDepthStencilView(ws->screenDSView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
                 return;
             }
             if(targets[currentPass]->dsetDS) singleton->context->ClearDepthStencilView(targets[currentPass]->dsetDS, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
-            if (pipelines[currentPass]->clearColor.x >= 0 ||
-                pipelines[currentPass]->clearColor.y >= 0 ||
-                pipelines[currentPass]->clearColor.z >= 0 ||
-                pipelines[currentPass]->clearColor.w >= 0 ) {
-                if (targets[currentPass]->dset1) {
-                    singleton->context->ClearRenderTargetView(targets[currentPass]->dset1, pipelines[currentPass]->clearColor.entry);
-                    if (targets[currentPass]->dset2) {
-                        singleton->context->ClearRenderTargetView(targets[currentPass]->dset2, pipelines[currentPass]->clearColor.entry);
-                        if (targets[currentPass]->dset3) {
-                            singleton->context->ClearRenderTargetView(targets[currentPass]->dset3, pipelines[currentPass]->clearColor.entry);
-                        }
+            if (targets[currentPass]->dset1) {
+                singleton->context->ClearRenderTargetView(targets[currentPass]->dset1, clearColor);
+                if (targets[currentPass]->dset2) {
+                    singleton->context->ClearRenderTargetView(targets[currentPass]->dset2, clearColor);
+                    if (targets[currentPass]->dset3) {
+                        singleton->context->ClearRenderTargetView(targets[currentPass]->dset3, clearColor);
                     }
                 }
             }
