@@ -88,17 +88,6 @@ namespace onart {
         device->CreateRasterizerState(&rasterizerInfo, &basicRasterizer);
         context->RSSetState(basicRasterizer);
 
-        D3D11_BLEND_DESC blendInfo{};
-        blendInfo.RenderTarget[0].BlendEnable = true;
-        blendInfo.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
-        blendInfo.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
-        blendInfo.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
-        blendInfo.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-        blendInfo.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
-        blendInfo.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
-        blendInfo.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-        device->CreateBlendState(&blendInfo, &basicBlend);
-
         D3D11_SAMPLER_DESC samplerInfo{};
         samplerInfo.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
         samplerInfo.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
@@ -344,7 +333,6 @@ namespace onart {
 
     void D3D11Machine::free() {
         basicRasterizer->Release();
-        basicBlend->Release();
         linearBorderSampler->Release();
         nearestBorderSampler->Release();
         for (auto& shader : shaders) { shader.second->Release(); }
@@ -1316,7 +1304,7 @@ namespace onart {
             singleton->context->GSSetShader(pipeline->gs, nullptr, 0);
             singleton->context->PSSetShader(pipeline->fs, nullptr, 0);
             singleton->context->OMSetDepthStencilState(pipeline->dsState, pipeline->stencilRef);
-            singleton->context->OMSetBlendState(singleton->basicBlend, nullptr, 0xffffffff);
+            singleton->context->OMSetBlendState(pipeline->blendState, nullptr, 0xffffffff);
         }
     }
 
@@ -1697,14 +1685,38 @@ namespace onart {
             return {};
         }
 
-        return singleton->pipelines[key] = new Pipeline(layout, vert, tctrl, teval, geom, frag, dsState, opts.depthStencil.stencilFront.reference, {});
+        D3D11_BLEND_DESC alphaBlendInfo{};
+        alphaBlendInfo.AlphaToCoverageEnable = false;
+        alphaBlendInfo.IndependentBlendEnable = false;
+        for (int i = 0; i < 3; i++) {
+            auto& blendop = opts.alphaBlend[i];
+            alphaBlendInfo.RenderTarget[i].BlendEnable = blendop != AlphaBlend::overwrite();
+            alphaBlendInfo.RenderTarget[i].BlendOp = (D3D11_BLEND_OP)blendop.colorOp;
+            alphaBlendInfo.RenderTarget[i].BlendOpAlpha = (D3D11_BLEND_OP)blendop.alphaOp;
+            alphaBlendInfo.RenderTarget[i].RenderTargetWriteMask = 0xff;
+            alphaBlendInfo.RenderTarget[i].SrcBlend = (D3D11_BLEND)blendop.srcColorFactor;
+            alphaBlendInfo.RenderTarget[i].DestBlend = (D3D11_BLEND)blendop.dstColorFactor;
+            alphaBlendInfo.RenderTarget[i].SrcBlendAlpha = (D3D11_BLEND)blendop.srcAlphaFactor;
+            alphaBlendInfo.RenderTarget[i].DestBlendAlpha = (D3D11_BLEND)blendop.dstAlphaFactor;
+        }
+        ID3D11BlendState* blendState{};
+        result = singleton->device->CreateBlendState(&alphaBlendInfo, &blendState);
+        
+        if (result != S_OK) {
+            LOGWITH("Failed to create blend state:", result);
+            dsState->Release();
+            return {};
+        }
+
+        return singleton->pipelines[key] = new Pipeline(layout, vert, tctrl, teval, geom, frag, dsState, opts.depthStencil.stencilFront.reference, {}, blendState);
     }
 
-    D3D11Machine::Pipeline::Pipeline(ID3D11InputLayout* layout, ID3D11VertexShader* v, ID3D11HullShader* h, ID3D11DomainShader* d, ID3D11GeometryShader* g, ID3D11PixelShader* p, ID3D11DepthStencilState* dss, UINT stencilRef, vec4 clearColor)
-        :vs(v), tcs(h), tes(d), gs(g), fs(p), dsState(dss), stencilRef(stencilRef), clearColor(clearColor), layout(layout) {
+    D3D11Machine::Pipeline::Pipeline(ID3D11InputLayout* layout, ID3D11VertexShader* v, ID3D11HullShader* h, ID3D11DomainShader* d, ID3D11GeometryShader* g, ID3D11PixelShader* p, ID3D11DepthStencilState* dss, UINT stencilRef, vec4 clearColor, ID3D11BlendState* blend)
+        :vs(v), tcs(h), tes(d), gs(g), fs(p), dsState(dss), stencilRef(stencilRef), clearColor(clearColor), layout(layout), blendState(blend) {
     }
     
     D3D11Machine::Pipeline::~Pipeline() {
+        blendState->Release();
         dsState->Release();
         layout->Release();
     }
@@ -1907,7 +1919,7 @@ namespace onart {
             singleton->context->PSSetShader(pipeline->fs, nullptr, 0);
             auto& currentTarget = targets[currentPass];
             singleton->context->OMSetDepthStencilState(pipelines[currentPass]->dsState, pipeline->stencilRef);
-            singleton->context->OMSetBlendState(singleton->basicBlend, nullptr, 0xffffffff);
+            singleton->context->OMSetBlendState(pipeline->blendState, nullptr, 0xffffffff);
         }
     }
 

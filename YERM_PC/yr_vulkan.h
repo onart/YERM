@@ -279,7 +279,6 @@ namespace onart {
                 BlendFactor dstColorFactor = BlendFactor::ZERO;
                 BlendFactor srcAlphaFactor = BlendFactor::ONE;
                 BlendFactor dstAlphaFactor = BlendFactor::ZERO;
-                float blendConstant[4]{};
                 inline constexpr bool operator== (const AlphaBlend& other) const { 
 #define COMP_ATTR(name) (name == other.name)
                     return COMP_ATTR(colorOp) && COMP_ATTR(alphaOp) && COMP_ATTR(srcColorFactor) && COMP_ATTR(dstColorFactor) && COMP_ATTR(srcAlphaFactor) && COMP_ATTR(dstAlphaFactor);
@@ -308,7 +307,8 @@ namespace onart {
                 VkShaderModule tessellationEvaluationShader = nullptr;
                 PipelineLayoutOptions shaderResources;
                 DepthStencilTesting depthStencil;
-                AlphaBlend alphaBlend;
+                AlphaBlend alphaBlend[3];
+                float blendConstant[4]{};
                 void* vsByteCode = nullptr;
                 size_t vsByteCodeSize = 0;
             };

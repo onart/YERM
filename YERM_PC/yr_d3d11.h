@@ -270,6 +270,54 @@ namespace onart {
             }stencilFront, stencilBack;
         };
 
+        enum class BlendOperator {
+            ADD = D3D11_BLEND_OP_ADD,
+            SUBTRACT = D3D11_BLEND_OP_SUBTRACT,
+            REVERSE_SUBTRACT = D3D11_BLEND_OP_REV_SUBTRACT,
+            MINIMUM = D3D11_BLEND_OP_MIN,
+            MAXIMUM = D3D11_BLEND_OP_MAX,
+        };
+
+        enum class BlendFactor {
+            ZERO = D3D11_BLEND_ZERO,
+            ONE = D3D11_BLEND_ONE,
+            SRC_COLOR = D3D11_BLEND_SRC_COLOR,
+            ONE_MINUS_SRC_COLOR = D3D11_BLEND_INV_SRC_COLOR,
+            DST_COLOR = D3D11_BLEND_DEST_COLOR,
+            ONE_MINUS_DST_COLOR = D3D11_BLEND_INV_DEST_COLOR,
+            SRC_ALPHA = D3D11_BLEND_SRC_ALPHA,
+            ONE_MINUS_SRC_ALPHA = D3D11_BLEND_INV_SRC_ALPHA,
+            DST_ALPHA = D3D11_BLEND_DEST_ALPHA,
+            ONE_MINUS_DST_ALPHA = D3D11_BLEND_INV_DEST_ALPHA,
+            CONSTANT_COLOR = D3D11_BLEND_BLEND_FACTOR,
+            ONE_MINUS_CONSTANT_COLOR = D3D11_BLEND_INV_BLEND_FACTOR,
+            //CONSTANT_ALPHA = D3D11_BLEND_BLEND_FACTOR,
+            //ONE_MINUS_CONSTANT_ALPHA = D3D11_BLEND_INV_BLEND_FACTOR,
+            SRC_ALPHA_SATURATE = D3D11_BLEND_SRC_ALPHA_SAT,
+            SRC1_COLOR = D3D11_BLEND_SRC1_COLOR,
+            ONE_MINUS_SRC1_COLOR = D3D11_BLEND_INV_SRC1_COLOR,
+            SRC1_ALPHA = D3D11_BLEND_SRC1_ALPHA,
+            ONE_MINUS_SRC1_ALPHA = D3D11_BLEND_INV_SRC1_ALPHA,
+        };
+
+        struct AlphaBlend {
+            BlendOperator colorOp = BlendOperator::ADD;
+            BlendOperator alphaOp = BlendOperator::ADD;
+            BlendFactor srcColorFactor = BlendFactor::ONE;
+            BlendFactor dstColorFactor = BlendFactor::ZERO;
+            BlendFactor srcAlphaFactor = BlendFactor::ONE;
+            BlendFactor dstAlphaFactor = BlendFactor::ZERO;
+            inline constexpr bool operator== (const AlphaBlend& other) const {
+#define COMP_ATTR(name) (name == other.name)
+                return COMP_ATTR(colorOp) && COMP_ATTR(alphaOp) && COMP_ATTR(srcColorFactor) && COMP_ATTR(dstColorFactor) && COMP_ATTR(srcAlphaFactor) && COMP_ATTR(dstAlphaFactor);
+#undef COMP_ATTR
+            }
+            inline constexpr bool operator!=(const AlphaBlend& other) const { return !operator==(other); }
+            inline static constexpr AlphaBlend overwrite() { return AlphaBlend{}; }
+            inline static constexpr AlphaBlend normal() { return AlphaBlend{ BlendOperator::ADD, BlendOperator::ADD, BlendFactor::SRC_ALPHA, BlendFactor::ONE_MINUS_SRC_ALPHA, BlendFactor::ONE, BlendFactor::ONE_MINUS_SRC_ALPHA }; }
+            inline static constexpr AlphaBlend pma() { return AlphaBlend{ BlendOperator::ADD, BlendOperator::ADD, BlendFactor::ONE, BlendFactor::ONE_MINUS_SRC_ALPHA, BlendFactor::ONE, BlendFactor::ONE_MINUS_SRC_ALPHA }; }
+        };
+
         struct PipelineCreationOptions {
             PipelineInputVertexSpec* vertexSpec = nullptr;
             uint32_t vertexSize = 0;
@@ -287,6 +335,8 @@ namespace onart {
             ID3D11DeviceChild* tessellationEvaluationShader = nullptr;
             PipelineLayoutOptions shaderResources;
             DepthStencilTesting depthStencil;
+            AlphaBlend alphaBlend[3];
+            float blendConstant[4]{};
             /// @brief 정점 input layout을 생성하기 위한 정점 셰이더 바이트코드입니다. 단, vsByteCodeSize 값이 0으로 주어지는 경우 이 포인터는 "다른 파이프라인"으로 취급되며 해당 파이프라인과 동일한 레이아웃을 사용합니다.
             void* vsByteCode = nullptr;
             size_t vsByteCodeSize = 0;
@@ -464,7 +514,6 @@ namespace onart {
         std::map<int32_t, pTexture> textures;
         std::map<int32_t, pStreamTexture> streamTextures;
 
-        ID3D11BlendState* basicBlend;
         ID3D11SamplerState* linearBorderSampler;
         ID3D11SamplerState* nearestBorderSampler;
         ID3D11RasterizerState* basicRasterizer;
@@ -732,11 +781,11 @@ namespace onart {
     };
 
     /// @brief D3D11 셰이더 객체의 집합입니다. 어떤 멤버도 직접 사용할 수 없습니다.
-    class D3D11Machine::Pipeline {
+    class D3D11Machine::Pipeline: public align16 {
         friend class D3D11Machine;
         friend class RenderPass;
         private:
-            Pipeline(ID3D11InputLayout*, ID3D11VertexShader*, ID3D11HullShader*, ID3D11DomainShader*, ID3D11GeometryShader*, ID3D11PixelShader*, ID3D11DepthStencilState*, UINT stencilRef, vec4 clearColor);
+            Pipeline(ID3D11InputLayout*, ID3D11VertexShader*, ID3D11HullShader*, ID3D11DomainShader*, ID3D11GeometryShader*, ID3D11PixelShader*, ID3D11DepthStencilState*, UINT stencilRef, vec4 clearColor, ID3D11BlendState*);
             ~Pipeline();
             ID3D11InputLayout* layout;
             ID3D11VertexShader* vs;
@@ -745,8 +794,10 @@ namespace onart {
             ID3D11GeometryShader* gs;
             ID3D11PixelShader* fs;
             ID3D11DepthStencilState* dsState;
+            ID3D11BlendState* blendState;
             UINT stencilRef;
             vec4 clearColor;
+            vec4 blendRef;
     };
 
     class D3D11Machine::UniformBuffer {

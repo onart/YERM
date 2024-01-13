@@ -2614,25 +2614,26 @@ namespace onart {
         dsInfo.back.passOp = (VkStencilOp)opts.depthStencil.stencilBack.onPass;
 
         VkPipelineColorBlendAttachmentState blendStates[3]{};
-        for (VkPipelineColorBlendAttachmentState& blendInfo : blendStates) {
+        for (int i = 0; i < OPT_COLOR_COUNT; i++) {
+            auto& blendInfo = blendStates[i];
             blendInfo.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-            blendInfo.colorBlendOp = (VkBlendOp)opts.alphaBlend.colorOp;
-            blendInfo.alphaBlendOp = (VkBlendOp)opts.alphaBlend.alphaOp;
-            blendInfo.blendEnable = opts.alphaBlend != AlphaBlend::overwrite();
-            blendInfo.srcColorBlendFactor = (VkBlendFactor)opts.alphaBlend.srcColorFactor;
-            blendInfo.dstColorBlendFactor = (VkBlendFactor)opts.alphaBlend.dstColorFactor;
-            blendInfo.srcAlphaBlendFactor = (VkBlendFactor)opts.alphaBlend.srcAlphaFactor;
-            blendInfo.dstAlphaBlendFactor = (VkBlendFactor)opts.alphaBlend.dstAlphaFactor;
+            blendInfo.colorBlendOp = (VkBlendOp)opts.alphaBlend[i].colorOp;
+            blendInfo.alphaBlendOp = (VkBlendOp)opts.alphaBlend[i].alphaOp;
+            blendInfo.blendEnable = opts.alphaBlend[i] != AlphaBlend::overwrite();
+            blendInfo.srcColorBlendFactor = (VkBlendFactor)opts.alphaBlend[i].srcColorFactor;
+            blendInfo.dstColorBlendFactor = (VkBlendFactor)opts.alphaBlend[i].dstColorFactor;
+            blendInfo.srcAlphaBlendFactor = (VkBlendFactor)opts.alphaBlend[i].srcAlphaFactor;
+            blendInfo.dstAlphaBlendFactor = (VkBlendFactor)opts.alphaBlend[i].dstAlphaFactor;
         }
 
         VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
         colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
         colorBlendStateCreateInfo.attachmentCount = OPT_COLOR_COUNT;
         colorBlendStateCreateInfo.pAttachments = blendStates;
-        colorBlendStateCreateInfo.blendConstants[0] = opts.alphaBlend.blendConstant[0];
-        colorBlendStateCreateInfo.blendConstants[1] = opts.alphaBlend.blendConstant[1];
-        colorBlendStateCreateInfo.blendConstants[2] = opts.alphaBlend.blendConstant[2];
-        colorBlendStateCreateInfo.blendConstants[3] = opts.alphaBlend.blendConstant[3];
+        colorBlendStateCreateInfo.blendConstants[0] = opts.blendConstant[0];
+        colorBlendStateCreateInfo.blendConstants[1] = opts.blendConstant[1];
+        colorBlendStateCreateInfo.blendConstants[2] = opts.blendConstant[2];
+        colorBlendStateCreateInfo.blendConstants[3] = opts.blendConstant[3];
 
         VkDynamicState dynStates[2] = { VkDynamicState::VK_DYNAMIC_STATE_VIEWPORT, VkDynamicState::VK_DYNAMIC_STATE_SCISSOR };
         VkPipelineDynamicStateCreateInfo dynInfo{};

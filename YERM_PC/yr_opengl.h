@@ -245,6 +245,54 @@ namespace onart {
                 }stencilFront, stencilBack;
             };
 
+            enum class BlendOperator {
+                ADD = 0,
+                SUBTRACT = 1,
+                REVERSE_SUBTRACT = 2,
+                MINIMUM = 3,
+                MAXIMUM = 4,
+            };
+
+            enum class BlendFactor {
+                ZERO = 0,
+                ONE = 1,
+                SRC_COLOR = 2,
+                ONE_MINUS_SRC_COLOR = 3,
+                DST_COLOR = 4,
+                ONE_MINUS_DST_COLOR = 5,
+                SRC_ALPHA = 6,
+                ONE_MINUS_SRC_ALPHA = 7,
+                DST_ALPHA = 8,
+                ONE_MINUS_DST_ALPHA = 9,
+                CONSTANT_COLOR = 10,
+                ONE_MINUS_CONSTANT_COLOR = 11,
+                //CONSTANT_ALPHA = 12,
+                //ONE_MINUS_CONSTANT_ALPHA = 13,
+                SRC_ALPHA_SATURATE = 14,
+                SRC1_COLOR = 15,
+                ONE_MINUS_SRC1_COLOR = 16,
+                SRC1_ALPHA = 17,
+                ONE_MINUS_SRC1_ALPHA = 18,
+            };
+
+            struct AlphaBlend {
+                BlendOperator colorOp = BlendOperator::ADD;
+                BlendOperator alphaOp = BlendOperator::ADD;
+                BlendFactor srcColorFactor = BlendFactor::ONE;
+                BlendFactor dstColorFactor = BlendFactor::ZERO;
+                BlendFactor srcAlphaFactor = BlendFactor::ONE;
+                BlendFactor dstAlphaFactor = BlendFactor::ZERO;
+                inline constexpr bool operator== (const AlphaBlend& other) const {
+#define COMP_ATTR(name) (name == other.name)
+                    return COMP_ATTR(colorOp) && COMP_ATTR(alphaOp) && COMP_ATTR(srcColorFactor) && COMP_ATTR(dstColorFactor) && COMP_ATTR(srcAlphaFactor) && COMP_ATTR(dstAlphaFactor);
+#undef COMP_ATTR
+                }
+                inline constexpr bool operator!=(const AlphaBlend& other) const { return !operator==(other); }
+                inline static constexpr AlphaBlend overwrite() { return AlphaBlend{}; }
+                inline static constexpr AlphaBlend normal() { return AlphaBlend{ BlendOperator::ADD, BlendOperator::ADD, BlendFactor::SRC_ALPHA, BlendFactor::ONE_MINUS_SRC_ALPHA, BlendFactor::ONE, BlendFactor::ONE_MINUS_SRC_ALPHA }; }
+                inline static constexpr AlphaBlend pma() { return AlphaBlend{ BlendOperator::ADD, BlendOperator::ADD, BlendFactor::ONE, BlendFactor::ONE_MINUS_SRC_ALPHA, BlendFactor::ONE, BlendFactor::ONE_MINUS_SRC_ALPHA }; }
+            };
+
             struct PipelineCreationOptions {
                 PipelineInputVertexSpec* vertexSpec = nullptr;
                 uint32_t vertexSize = 0;
@@ -262,6 +310,8 @@ namespace onart {
                 unsigned tessellationEvaluationShader = 0;
                 PipelineLayoutOptions shaderResources;
                 DepthStencilTesting depthStencil;
+                AlphaBlend alphaBlend[3];
+                float blendConstant[4]{};
                 void* vsByteCode = nullptr;
                 size_t vsByteCodeSize = 0;
             };
@@ -706,7 +756,7 @@ namespace onart {
         enum class t { F32 = 0, F64 = 1, I8 = 2, I16 = 3, I32 = 4, U8 = 5, U16 = 6, U32 = 7 } type;
     };
 
-    class GLMachine::Pipeline {
+    class GLMachine::Pipeline: public align16 {
         friend class GLMachine;
         private:
             Pipeline(unsigned program, vec4 clearColor, unsigned vstr, unsigned istr);
@@ -717,6 +767,8 @@ namespace onart {
             const unsigned vertexSize, instanceAttrStride;
             vec4 clearColor;
             DepthStencilTesting depthStencilOperation;
+            AlphaBlend blendOperation[3];
+            float blendConstant[4];
     };
 
     class GLMachine::Mesh{

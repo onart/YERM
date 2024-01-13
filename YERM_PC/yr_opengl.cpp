@@ -48,6 +48,16 @@ namespace onart {
     /// @brief OpenGL 에러 코드를 스트링으로 표현합니다. 리턴되는 문자열은 텍스트(코드) 영역에 존재합니다.
     inline static const char* resultAsString(unsigned);
 
+    static int getGLBlendFactorConstant(GLMachine::BlendFactor factor) {
+        constexpr static int consts[] = { GL_ZERO, GL_ONE, GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR, GL_DST_COLOR, GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA, GL_ONE_MINUS_DST_ALPHA, GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA, GL_SRC_ALPHA_SATURATE, GL_SRC1_COLOR, GL_ONE_MINUS_SRC1_COLOR, GL_SRC1_ALPHA, GL_ONE_MINUS_SRC1_ALPHA };
+        return consts[(int)factor];
+    }
+
+    static int getGLBlendOpConstant(GLMachine::BlendOperator op) {
+        constexpr static int consts[] = { GL_FUNC_ADD, GL_FUNC_SUBTRACT, GL_FUNC_REVERSE_SUBTRACT, GL_MIN, GL_MAX };
+        return consts[(int)op];
+    }
+
     static std::unordered_set<int> availableTextureFormats;
     
     static void checkTextureAvailable() {
@@ -132,7 +142,7 @@ namespace onart {
             glDebugMessageCallback(glOnError,0);
         }
         glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glBlendFunc(GL_ONE, GL_ZERO);
         singleton = this;
 
         UniformBufferCreationOptions uopts;
@@ -1285,6 +1295,9 @@ namespace onart {
             return 0;
         }
         Pipeline* ret = singleton->pipelines[key] = new Pipeline(prog, {}, opts.vertexSize, opts.instanceDataStride);
+        std::memcpy(ret->blendOperation, opts.alphaBlend, sizeof(opts.alphaBlend));
+        std::memcpy(ret->blendConstant, opts.blendConstant, sizeof(opts.blendConstant));
+
         ret->vspec.resize(opts.vertexAttributeCount);
         ret->ispec.resize(opts.instanceAttributeCount);
         std::memcpy(ret->vspec.data(), opts.vertexSpec, sizeof(opts.vertexSpec[0]) * opts.vertexAttributeCount);
@@ -1345,13 +1358,35 @@ namespace onart {
         }
     }
 
+    static void setBlendParam(int idx, const GLMachine::AlphaBlend& blendop) {
+        glBlendEquationSeparatei(idx, getGLBlendOpConstant(blendop.colorOp), getGLBlendOpConstant(blendop.alphaOp));
+        glBlendFuncSeparatei(idx,
+            getGLBlendFactorConstant(blendop.srcColorFactor),
+            getGLBlendFactorConstant(blendop.dstColorFactor),
+            getGLBlendFactorConstant(blendop.srcAlphaFactor),
+            getGLBlendFactorConstant(blendop.dstAlphaFactor)
+        );
+    }
+
     void GLMachine::RenderPass::usePipeline(Pipeline* pipeline, unsigned subpass){
         if(subpass > stageCount){
             LOGWITH("Invalid subpass. This renderpass has", stageCount, "subpasses but", subpass, "given");
             return;
         }
         pipelines[subpass] = pipeline;
-        if(currentPass == subpass) { glUseProgram(pipeline->program); }
+        if(currentPass == subpass) { 
+            glUseProgram(pipeline->program);
+            if (targets[subpass]->color1) {
+                glBlendColor(pipeline->blendConstant[0], pipeline->blendConstant[1], pipeline->blendConstant[2], pipeline->blendConstant[3]);
+                setBlendParam(0, pipeline->blendOperation[0]);
+            }
+            if (targets[subpass]->color2) {
+                setBlendParam(1, pipeline->blendOperation[1]);
+            }
+            if (targets[subpass]->color3) {
+                setBlendParam(2, pipeline->blendOperation[2]);
+            }
+        }
     }
 
     void GLMachine::RenderPass::setViewport(float width, float height, float x, float y, bool applyNow){
