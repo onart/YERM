@@ -1599,7 +1599,7 @@ namespace onart {
         }
         ImageSet* params[] = { color1, color2, color3, ds };
         ID3D11RenderTargetView* params2[] = { rtv1, rtv2, rtv3 };
-        return new RenderTarget(type, width, height, params, params2, rtvds, linear);
+        return new RenderTarget(type, width, height, params, params2, rtvds, linear, useDepthInput);
     }
 
     template<class T>
@@ -1781,8 +1781,8 @@ namespace onart {
         return singleton->uniformBuffers[key] = new UniformBuffer(opts.size, buffer);
     }
 
-    D3D11Machine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet** sets, ID3D11RenderTargetView** rtvs, ID3D11DepthStencilView* dsv, bool linearSampled)
-        :width(width), height(height), type(type), color1(sets[0]), color2(sets[1]), color3(sets[2]), ds(sets[3]), dset1(rtvs[0]), dset2(rtvs[1]), dset3(rtvs[2]), dsetDS(dsv), linearSampled(linearSampled) {
+    D3D11Machine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet** sets, ID3D11RenderTargetView** rtvs, ID3D11DepthStencilView* dsv, bool linearSampled, bool depthInput)
+        :width(width), height(height), type(type), color1(sets[0]), color2(sets[1]), color3(sets[2]), ds(sets[3]), dset1(rtvs[0]), dset2(rtvs[1]), dset3(rtvs[2]), dsetDS(dsv), linearSampled(linearSampled), depthInput(depthInput) {
 
     }
 
@@ -2113,6 +2113,32 @@ namespace onart {
 
     bool D3D11Machine::RenderPass::wait(uint64_t) {
         return true;
+    }
+
+    void D3D11Machine::RenderPass::resize(int width, int height, bool linearSampled) {
+        if (is4Screen) {
+            LOGWITH("RenderPass2Screen cannot be resized with this function. Resize the window for that purpose.");
+            return;
+        }
+        if (targets[0] && targets[0]->width == width && targets[0]->height == height) { // equal size
+            return;
+        }
+        for (uint32_t i = 0; i < stageCount; i++) {            
+            RenderTargetType rtype = targets[i]->type;
+            bool ditype = targets[i]->depthInput;
+            delete targets[i];
+            targets[i] = createRenderTarget2D(width, height, rtype, ditype, true, linearSampled);
+            if (!targets[i]) {
+                LOGHERE;
+                for (RenderTarget*& tg : targets) {
+                    delete tg;
+                    tg = nullptr;
+                }
+                return;
+            }
+        }
+        setViewport(width, height, 0.0f, 0.0f);
+        setScissor(width, height, 0, 0);
     }
 
     void D3D11Machine::RenderPass::setViewport(float width, float height, float x, float y, bool applyNow) {

@@ -1644,6 +1644,10 @@ namespace onart {
     }
 
     void GLMachine::RenderPass::resize(int width, int height, bool linear) {
+        if (is4Screen) {
+            LOGWITH("RenderPass2Screen cannot be resized with this function. Resize the window for that purpose.");
+            return;
+        }
         if (targets[0] && targets[0]->width == width && targets[0]->height == height) { // equal size
             return;
         }

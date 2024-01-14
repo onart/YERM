@@ -649,7 +649,7 @@ namespace onart {
             };
         public:
             RenderPass& operator=(const RenderPass&) = delete;
-            /// @brief 뷰포트를 설정합니다. 기본 상태는 프레임버퍼 생성 당시의 크기들입니다. (즉 @ref reconstructFB 를 사용 시 여기서 수동으로 정한 값은 리셋됩니다.)
+            /// @brief 뷰포트를 설정합니다. 기본 상태는 프레임버퍼 생성 당시의 크기들입니다. (즉 @ref resize 를 사용 시 여기서 수동으로 정한 값은 리셋됩니다.)
             /// 이것은 패스 내의 모든 파이프라인이 공유합니다.
             /// @param width 뷰포트 가로 길이(px)
             /// @param height 뷰포트 세로 길이(px)

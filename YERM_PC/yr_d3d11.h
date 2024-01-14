@@ -589,8 +589,9 @@ namespace onart {
         ImageSet* color1{}, *color2{}, *color3{}, *ds{};
         unsigned width, height;
         const bool linearSampled;
+        const bool depthInput;
         const RenderTargetType type;
-        RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet**, ID3D11RenderTargetView**, ID3D11DepthStencilView*, bool);
+        RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet**, ID3D11RenderTargetView**, ID3D11DepthStencilView*, bool, bool);
         ~RenderTarget();
     };
 
@@ -627,7 +628,7 @@ namespace onart {
         };
     public:
         RenderPass& operator=(const RenderPass&) = delete;
-        /// @brief 뷰포트를 설정합니다. 기본 상태는 프레임버퍼 생성 당시의 크기들입니다. (즉 @ref reconstructFB 를 사용 시 여기서 수동으로 정한 값은 리셋됩니다.)
+        /// @brief 뷰포트를 설정합니다. 기본 상태는 프레임버퍼 생성 당시의 크기들입니다. (즉 @ref resize 를 사용 시 여기서 수동으로 정한 값은 리셋됩니다.)
         /// 이것은 패스 내의 모든 파이프라인이 공유합니다.
         /// @param width 뷰포트 가로 길이(px)
         /// @param height 뷰포트 세로 길이(px)
@@ -690,8 +691,8 @@ namespace onart {
         void execute(RenderPass* other = nullptr);
         /// @brief true를 리턴합니다.
         bool wait(uint64_t timeout = UINT64_MAX);
-        /// @brief 아무것도 하지 않습니다.
-        inline void reconstructFB(...) {}
+        /// @brief 렌더타겟의 크기를 일괄 변경합니다. RenderPass2Screen에 대해서는 사용할 수 없습니다.
+        void resize(int width, int height, bool linearSampled = true);
         /// @brief 렌더타겟에 직전 execute 이후 그려진 내용을 별도의 텍스처로 복사합니다. 텍스처는 DEFAULT usage로 생성되며, IMMUTABLE을 원하는 경우 readBack의 결과를 이용하여 텍스처 생성 함수를 별도로 호출해 주세요.
         /// @param key 텍스처 키입니다.
         pTexture copy2Texture(int32_t key, const RenderTarget2TextureOptions& opts = {});

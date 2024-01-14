@@ -2943,8 +2943,8 @@ namespace onart {
         wait();
         RenderTarget* targets[16]{};
         for (uint32_t i = 0; i < stageCount; i++) {
-            RenderTargetType rtype = targets[i]->type;
-            bool diType = targets[i]->depthInput;
+            RenderTargetType rtype = this->targets[i]->type;
+            bool diType = this->targets[i]->depthInput;
             targets[i] = createRenderTarget2D(width, height, rtype, diType, i == stageCount - 1, linear, canBeRead);
             if (!targets[i]) {
                 LOGHERE;
