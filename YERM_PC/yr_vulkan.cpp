@@ -1325,8 +1325,8 @@ namespace onart {
         bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         bufInfo.size = (VkDeviceSize)width * height * 4;
         bufInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        vmaCreateBuffer(VkMachine::getAllocator(), &bufInfo, &ainfo, &buf, &allocb, nullptr);
-        vmaMapMemory(VkMachine::getAllocator(), allocb, &mmap);
+        vmaCreateBuffer(singleton->allocator, &bufInfo, &ainfo, &buf, &allocb, nullptr);
+        vmaMapMemory(singleton->allocator, allocb, &mmap);
         fence = singleton->createFence(true);
         singleton->allocateCommandBuffers(1, true, false, &cb);
     }
@@ -1752,14 +1752,12 @@ namespace onart {
         UniformBuffer* ret = getUniformBuffer(name);
         if(ret) return ret;
 
-        VkDescriptorSetLayoutBinding uboBinding{};
-        uboBinding.binding = 0;
-        uboBinding.descriptorType = (opts.count == 1) ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-        uboBinding.descriptorCount = 1; // 이 카운트가 늘면 ubo 자체가 배열이 됨, 언젠가는 이를 선택으로 제공할 수도
-        uboBinding.stageFlags = opts.accessibleStages;
-
         uint32_t individual;
-        VkDescriptorSetLayout layout;
+        VkDescriptorSetLayout layout = getDescriptorSetLayout(opts.count == 1 ? ShaderResourceType::UNIFORM_BUFFER_1 : ShaderResourceType::DYNAMIC_UNIFORM_BUFFER_1);;
+        if (!layout) {
+            LOGHERE;
+            return {};
+        }
         VkDescriptorSet dset;
         VkBuffer buffer;
         VmaAllocation alloc;
@@ -1773,22 +1771,9 @@ namespace onart {
             individual = opts.size;
         }
 
-        // ex: layout(set = 1, binding = 1) uniform sampler2D tex[2]; 여기서 descriptor set은 1번 하나, binding은 그냥 정해 두는 번호, descriptor는 2개
-
-        VkDescriptorSetLayoutCreateInfo uboInfo{};
-        uboInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        uboInfo.bindingCount = 1;
-        uboInfo.pBindings = &uboBinding;
-
-        if((reason = vkCreateDescriptorSetLayout(singleton->device, &uboInfo, nullptr, &layout)) != VK_SUCCESS){
-            LOGWITH("Failed to create descriptor set layout:",reason,resultAsString(reason));
-            return nullptr;
-        }
-
         singleton->allocateDescriptorSets(&layout, 1, &dset);
         if(!dset){
             LOGHERE;
-            vkDestroyDescriptorSetLayout(singleton->device, layout, nullptr);
             return nullptr;
         }
 
@@ -1824,14 +1809,14 @@ namespace onart {
         dsNBuffer.range = individual;
         VkWriteDescriptorSet wr{};
         wr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        wr.descriptorType = uboBinding.descriptorType;
-        wr.descriptorCount = uboBinding.descriptorCount;
+        wr.descriptorType = opts.count == 1 ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        wr.descriptorCount = 1;
         wr.dstArrayElement = 0;
-        wr.dstBinding = uboBinding.binding;
+        wr.dstBinding = 0;
         wr.pBufferInfo = &dsNBuffer;
         wr.dstSet = dset;
         vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
-        return singleton->uniformBuffers[name] = new UniformBuffer(opts.count, individual, buffer, layout, dset, alloc, mmap, 0);
+        return singleton->uniformBuffers[name] = new UniformBuffer(opts.count, individual, buffer, layout, dset, alloc, mmap);
     }
 
     uint32_t VkMachine::RenderTarget::attachmentRefs(VkAttachmentDescription* arr, bool forSample, bool autoclear){
@@ -2779,7 +2764,7 @@ namespace onart {
         }
         case onart::VkMachine::ShaderResourceType::INPUT_ATTACHMENT_2:
         {
-            info.bindingCount = 1;
+            info.bindingCount = 2;
             for (int i = 0; i < 1; i++) {
                 bindings[i].binding = i;
                 bindings[i].descriptorCount = 1;
@@ -4401,8 +4386,8 @@ namespace onart {
         return vkWaitForFences(singleton->device, 1, &fences[recently], VK_FALSE, timeout) == VK_SUCCESS; // VK_TIMEOUT이나 VK_ERROR_DEVICE_LOST
     }
 
-    VkMachine::UniformBuffer::UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc, void* mmap, uint32_t binding)
-    :length(length), individual(individual), buffer(buffer), layout(layout), dset(dset), alloc(alloc), isDynamic(length > 1), mmap(mmap), binding(binding) {
+    VkMachine::UniformBuffer::UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc, void* mmap)
+    :length(length), individual(individual), buffer(buffer), layout(layout), dset(dset), alloc(alloc), isDynamic(length > 1), mmap(mmap) {
         staged.resize(individual * length);
         std::vector<uint16_t> inds;
         inds.reserve(length);
@@ -4479,7 +4464,7 @@ namespace onart {
         wr.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         wr.descriptorCount = 1;
         wr.dstArrayElement = 0;
-        wr.dstBinding = binding;
+        wr.dstBinding = 0;
         wr.pBufferInfo = &dsNBuffer;
         vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
 
@@ -4491,7 +4476,6 @@ namespace onart {
 
     VkMachine::UniformBuffer::~UniformBuffer(){
         vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
-        vkDestroyDescriptorSetLayout(singleton->device, layout, nullptr);
         vmaDestroyBuffer(singleton->allocator, buffer, alloc);
     }
 

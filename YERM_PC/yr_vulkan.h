@@ -1058,7 +1058,7 @@ namespace onart {
             inline uint32_t offset(uint32_t index) { return individual * index; }
             /// @brief 임시로 저장되어 있던 내용을 모두 GPU로 올립니다.
             void sync();
-            UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc, void* mmap, uint32_t binding);
+            UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc, void* mmap);
             ~UniformBuffer();
             VkDescriptorSetLayout layout = VK_NULL_HANDLE;
             VkDescriptorSet dset = VK_NULL_HANDLE;
@@ -1066,7 +1066,6 @@ namespace onart {
             VmaAllocation alloc = nullptr;
             const bool isDynamic;
             bool shouldSync = false;
-            uint32_t binding;
             const uint32_t individual; // 동적 공유 버퍼인 경우 (버퍼 업데이트를 위한) 개별 성분의 크기
             uint32_t length;
             std::vector<uint8_t> staged; // 순차접근을 효율적으로 활용하기 위해
