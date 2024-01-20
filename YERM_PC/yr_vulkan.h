@@ -60,6 +60,8 @@ namespace onart {
     class VkMachine{
         friend class Game;
         public:
+            /// @brief 저수준 인터페이스를 이용할 수 있습니다.
+            class LowLevel;
             /// @brief 스레드에서 최근에 호출된 함수의 실패 요인을 일부 확인할 수 있습니다. Vulkan 호출에 의한 실패가 아닌 경우 MAX_ENUM 값이 들어갑니다.
             static thread_local VkResult reason;
             constexpr static bool VULKAN_GRAPHICS = true, D3D12_GRAPHICS = false, D3D11_GRAPHICS = false, OPENGL_GRAPHICS = false, OPENGLES_GRAPHICS = false, METAL_GRAPHICS = false;
@@ -455,14 +457,6 @@ namespace onart {
             static void reap();
             /// @brief 모든 창의 수직 동기화 여부를 설정합니다.
             static void setVsync(bool vsyncOn);
-            /// @brief Vulkan 인스턴스를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
-            inline static VkInstance getInstance() { return singleton->instance; }
-            /// @brief Vulkan 물리 장치를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
-            inline static VkPhysicalDevice getPhysicalDevice() { return singleton->physicalDevice.card; }
-            /// @brief Vulkan 논리 장치를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
-            inline static VkDevice getDevice() { return singleton->device; }
-            /// @brief Vma 할당기를 리턴합니다. 함께 사용하고 싶은 기능이 있는데 구현되어 있지 않은 경우에만 사용하면 됩니다.
-            inline static VmaAllocator getAllocator() { return singleton->allocator; }
         private:
             /// @brief 기본 Vulkan 컨텍스트를 생성합니다. 이 객체를 생성하면 기본적으로 인스턴스, 물리 장치, 가상 장치가 생성됩니다.
             VkMachine();
@@ -964,7 +958,6 @@ namespace onart {
             const uint16_t width, height;
         protected:
             Texture(VkImage img, VkImageView imgView, VmaAllocation alloc, VkDescriptorSet dset, uint16_t width, uint16_t height);
-            VkDescriptorSetLayout getLayout();
             ~Texture();
         private:
             VkImage img;
@@ -1160,6 +1153,91 @@ namespace onart {
          * the member template name must be prefixed by the keyword template.
          * Otherwise the name is assumed to name a non-template.
          * */
+    };
+
+    class VkMachine::LowLevel {
+    public:
+        // base
+        inline static VkInstance getInstance() { return singleton->instance; }
+        inline static VkPhysicalDevice getPhysicalDevice() { return singleton->physicalDevice.card; }
+        inline static VkDevice getDevice() { return singleton->device; }
+        inline static VmaAllocator getAllocator() { return singleton->allocator; }
+        inline static VkSwapchainKHR getSwapchain(int32_t key) { return singleton->windowSystems[key]->swapchain.handle; }
+        inline static VkQueue getGraphicsQueue() { return singleton->graphicsQueue; }
+        inline static VkQueue getTransferQueue() { return singleton->transferQueue; }
+        inline static VkQueue getPresentQueue() { return singleton->presentQueue; }
+        inline static VkCommandPool getGraphicsCommandPool() { return singleton->gCommandPool; }
+        inline static VkCommandPool getTransferCommandPool() { return singleton->tCommandPool; }
+        inline static VkDescriptorPool getDescriptorPool() { return singleton->descriptorPool; }
+
+        // pipeline
+        inline static VkPipeline getPipeline(Pipeline* pp) { return pp->pipeline; }
+        inline static VkPipelineLayout getPipelineLayout(Pipeline* pp) { return pp->pipelineLayout; }
+
+        // renderpass
+        inline static VkRenderPass getRenderPass(RenderPass* rp) { return rp->rp; }
+        inline static VkCommandBuffer getCommandBuffer(RenderPass* rp) { return rp->cb; }
+        inline static VkCommandBuffer getCommandBuffer(RenderPass2Screen* rp) { return rp->cbs[rp->currentCB]; }
+        inline static VkImage getImage(RenderPass* rp, int sub, int targ) { 
+            auto target = rp->targets[sub];
+            switch (targ) {
+            case 0: return target->color1->img;
+            case 1: return target->color2->img;
+            case 2: return target->color3->img;
+            case 3: return target->depthstencil->img;
+            default: return {};
+            }
+        }
+        inline static VkImageView getImageView(RenderPass* rp, int sub, int targ) {
+            auto target = rp->targets[sub];
+            switch (targ)
+            {
+            case 0: return target->color1->view;
+            case 1: return target->color2->view;
+            case 2: return target->color3->view;
+            case 3: return target->depthstencil->view;
+            default: return {};
+            }
+        }
+        inline static VkFence getFence(RenderPass* rp) { return rp->fence; }
+        inline static VkFence getFence(RenderPass2Screen* rp) { return rp->fences[rp->currentCB]; }
+        inline static VkSemaphore getSemaphore(RenderPass* rp) { return rp->semaphore; }
+        inline static VkSemaphore getDrawSemaphore(RenderPass2Screen* rp) { return rp->drawSm[rp->currentCB]; }
+        inline static VkSemaphore getAcquireSemaphore(RenderPass2Screen* rp) { return rp->acquireSm[rp->currentCB]; }
+        inline static VkDescriptorSet getOutputDescriptorSet(RenderPass* rp, int sub) { return rp->targets[sub]->dset; }
+        inline static VkFramebuffer getFramebuffer(RenderPass* rp) { return rp->fb; }
+        inline static VkFramebuffer getFramebuffer(RenderPass2Screen* rp) { return rp->fbs[rp->currentCB]; }
+
+        // texture
+        inline static VkImage getImage(Texture* tx) { return tx->img; }
+        inline static VkImageView getImageView(Texture* tx) { return tx->view; }
+        inline static VmaAllocation getMemory(Texture* tx) { return tx->alloc; }
+        inline static VkDescriptorSet getDescriptorSet(Texture* tx) { return tx->dset; }
+        inline static VkBuffer getBuffer(StreamTexture* tx) { return tx->buf; }
+        inline static VkImage getImage(StreamTexture* tx) { return tx->img; }
+        inline static VkImageView getImageView(StreamTexture* tx) { return tx->view; }
+        inline static VmaAllocation getImageMemory(StreamTexture* tx) { return tx->alloc; }
+        inline static VmaAllocation getBufferMemory(StreamTexture* tx) { return tx->allocb; }
+        inline static VkDescriptorSet getDescriptorSet(StreamTexture* tx) { return tx->dset; }
+        inline static VkFence getFence(StreamTexture* tx) { return tx->fence; }
+        inline static void* getBufferMap(StreamTexture* tx) { return tx->mmap; }
+
+        // mesh
+        inline static VkBuffer getBuffer(Mesh* ms) { return ms->vb; }
+        inline static VmaAllocation getMemory(Mesh* ms) { return ms->vba; }
+        inline static size_t getIndexBufferOffset(Mesh* ms) { return ms->ioff; }
+        inline static void* getBufferMap(Mesh* ms) { return ms->vmap; }
+
+        // uniform buffer
+        inline static VkDescriptorSet getDescriptorSet(UniformBuffer* ub) { return ub->dset; }
+        inline static VkDescriptorSetLayout getDescriptorSetLayout(UniformBuffer* ub) { return ub->layout; }
+        inline static VkBuffer getBuffer(UniformBuffer* ub) { return ub->buffer; }
+        inline static VmaAllocation getMemory(UniformBuffer* ub) { return ub->alloc; }
+        inline static std::vector<uint8_t>& getStagedMemory(UniformBuffer* ub) { return ub->staged; }
+        inline static void* getBufferMap(UniformBuffer* ub) { return ub->mmap; }
+    private:
+        LowLevel() = delete;
+        ~LowLevel() = delete;
     };
 }
 
