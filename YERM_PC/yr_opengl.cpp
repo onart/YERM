@@ -1591,11 +1591,13 @@ namespace onart {
              for (; location < p->vspec.size(); location++) {
                  enableAttribute(p->vertexSize, p->vspec[location]);
              }
-             glBindBuffer(GL_ARRAY_BUFFER, instanceInfo->vb);
-             uint32_t iloc = 0;
-             for (; iloc < p->ispec.size(); iloc++, location++) {
-                 enableAttribute(p->instanceAttrStride, p->ispec[iloc]);
-                 glVertexAttribDivisor(location, 1);
+             if (instanceInfo) {
+                 glBindBuffer(GL_ARRAY_BUFFER, instanceInfo->vb);
+                 uint32_t iloc = 0;
+                 for (; iloc < p->ispec.size(); iloc++, location++) {
+                     enableAttribute(p->instanceAttrStride, p->ispec[iloc]);
+                     glVertexAttribDivisor(location, 1);
+                 }
              }
              glBindBuffer(GL_ARRAY_BUFFER, 0);
              glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);

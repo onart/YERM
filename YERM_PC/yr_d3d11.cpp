@@ -1362,9 +1362,13 @@ namespace onart {
             return;
         }
         ID3D11Buffer* vb[2] = { mesh->vb, instanceInfo->vb };
-        UINT strides[2] = { mesh->vStride,instanceInfo->vStride };
+        UINT strides[2] = { mesh->vStride };
+        if (instanceInfo) {
+            vb[1] = instanceInfo->vb;
+            strides[1] = instanceInfo->vStride;
+        }
         UINT offsets[2]{};
-        singleton->context->IASetVertexBuffers(0, 2, vb, strides, offsets);
+        singleton->context->IASetVertexBuffers(0, instanceInfo ? 2 : 1, vb, strides, offsets);
         if (mesh->icount) {
             singleton->context->IASetIndexBuffer(mesh->ib, mesh->indexFormat, 0);
             if ((uint64_t)start + count > mesh->icount) {
@@ -2080,10 +2084,14 @@ namespace onart {
     }
 
     void D3D11Machine::RenderPass::invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart, uint32_t start, uint32_t count) {
-        ID3D11Buffer* buf[2] = { mesh->vb,instanceInfo->vb };
-        UINT strides[2] = { mesh->vStride,instanceInfo->vStride };
+        ID3D11Buffer* buf[2] = { mesh->vb };
+        UINT strides[2] = { mesh->vStride };
+        if (instanceInfo) {
+            buf[1] = instanceInfo->vb;
+            strides[1] = instanceInfo->vStride;
+        }
         UINT offsets[2]{};
-        singleton->context->IASetVertexBuffers(0, 2, buf, strides, offsets);
+        singleton->context->IASetVertexBuffers(0, instanceInfo ? 2 : 1, buf, strides, offsets);
         bound = nullptr;
         if (mesh->ib) {
             if (count == 0)count = mesh->icount - start;

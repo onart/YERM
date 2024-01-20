@@ -3505,8 +3505,9 @@ namespace onart {
             return;
         }
         VkDeviceSize offs[2] = {0, 0};
-        VkBuffer buffs[2] = {mesh->vb, instanceInfo->vb};
-        vkCmdBindVertexBuffers(cb, 0, 2, buffs, offs);
+        VkBuffer buffs[2] = { mesh->vb };
+        if (instanceInfo->vb) { buffs[1] = instanceInfo->vb; }
+        vkCmdBindVertexBuffers(cb, 0, instanceInfo ? 2 : 1, buffs, offs);
         if(mesh->icount) {
             if((uint64_t)start + count > mesh->icount){
                 LOGWITH("Invalid call: this mesh has",mesh->icount,"indices but",start,"~",(uint64_t)start+count,"requested to be drawn");
@@ -3823,8 +3824,9 @@ namespace onart {
             return;
         }
         VkDeviceSize offs[2] = {0, 0};
-        VkBuffer buffs[2] = {mesh->vb, instanceInfo->vb};
-        vkCmdBindVertexBuffers(scb, 0, 2, buffs, offs);
+        VkBuffer buffs[2] = { mesh->vb };
+        if (instanceInfo) { buffs[1] = instanceInfo->vb; }
+        vkCmdBindVertexBuffers(scb, 0, instanceInfo ? 2 : 1, buffs, offs);
         if(mesh->icount) {
             if((uint64_t)start + count > mesh->icount){
                 LOGWITH("Invalid call: this mesh has",mesh->icount,"indices but",start,"~",(uint64_t)start+count,"requested to be drawn");
@@ -4148,8 +4150,9 @@ namespace onart {
             return;
         }
         VkDeviceSize offs[2] = {0, 0};
-        VkBuffer buffs[2] = {mesh->vb, instanceInfo->vb};
-        vkCmdBindVertexBuffers(cbs[currentCB], 0, 2, buffs, offs);
+        VkBuffer buffs[2] = { mesh->vb };
+        if (instanceInfo) { buffs[1] = instanceInfo->vb; }
+        vkCmdBindVertexBuffers(cbs[currentCB], 0, instanceInfo ? 2 : 1, buffs, offs);
         if(mesh->icount) {
             if((uint64_t)start + count > mesh->icount){
                 LOGWITH("Invalid call: this mesh has",mesh->icount,"indices but",start,"~",(uint64_t)start+count,"requested to be drawn");
