@@ -99,12 +99,17 @@ endmacro()
     set(CMAKE_CONFIGURATION_TYPES "Debug;Release;")
     message(STATUS "Build system: ${CMAKE_GENERATOR}")
     add_subdirectory(externals/glfw)
+    add_compile_definitions(_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
     add_subdirectory(externals/ktx)
 
     get_all_targets(ktx_targets externals/ktx)
     foreach(ktx_target ${ktx_targets})
         set_target_properties(${ktx_target} PROPERTIES FOLDER "LIBKTX")
     endforeach()
+
+    if(NOT CMAKE_VERSION VERSION_LESS "3.26")
+        add_compile_definitions(-D_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
+    endif()
 
     option(YERM_VULKAN "Use Vulkan as the graphics API. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" ON)
     option(YERM_OPENGL "Use OpenGL 4.0 as the graphics API. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" OFF)
