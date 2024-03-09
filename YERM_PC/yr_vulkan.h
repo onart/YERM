@@ -985,12 +985,14 @@ namespace onart {
         public:
             const uint16_t width, height;
             void update(void* img);
+            void updateBy(std::function<void(void*, uint32_t)> function);
             static void drop(int32_t key);
         protected:
             StreamTexture(VkImage img, VkImageView imgView, VmaAllocation alloc, VkDescriptorSet dst, uint32_t binding, uint16_t width, uint16_t height);
             VkDescriptorSetLayout getLayout();
             ~StreamTexture();
         private:
+            void afterCopy();
             VkBuffer buf;
             VkImage img;
             VkImageView view;

@@ -581,23 +581,39 @@ namespace onart {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linearSampler ? GL_LINEAR : GL_NEAREST);
         
+        unsigned pbo{};
+        glGenBuffers(1, &pbo);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, width * height * 4, nullptr, GL_STREAM_DRAW);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
-        struct txtr :public StreamTexture { inline txtr(uint32_t _1, uint16_t _2, uint16_t _3) :StreamTexture(_1, _2, _3) {} };
-        if (key == INT32_MIN) return std::make_shared<txtr>(tex, width, height);
-        return singleton->streamTextures[key] = std::make_shared<txtr>(tex, width, height);
+        struct txtr :public StreamTexture { inline txtr(uint32_t _1, uint32_t _2, uint16_t _3, uint16_t _4) :StreamTexture(_1, _2, _3, _4) {} };
+        if (key == INT32_MIN) return std::make_shared<txtr>(tex, pbo, width, height);
+        return singleton->streamTextures[key] = std::make_shared<txtr>(tex, pbo, width, height);
     }
 
-    GLMachine::StreamTexture::StreamTexture(uint32_t txo, uint16_t width, uint16_t height) :width(width), height(height), txo(txo) {
+    GLMachine::StreamTexture::StreamTexture(uint32_t txo, uint32_t pbo, uint16_t width, uint16_t height) :width(width), height(height), txo(txo), pbo(pbo) {
         
     }
 
     GLMachine::StreamTexture::~StreamTexture() {
+        glDeleteBuffers(1, &pbo);
         glDeleteTextures(1, &txo);
     }
 
     void GLMachine::StreamTexture::update(void* src) {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, src);
     }
+
+    void GLMachine::StreamTexture::updateBy(std::function<void(void*, uint32_t)> function) {
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
+        void* data = glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+        function(data, width * 4);
+        glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    }
+
 
     static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, GLMachine::TextureFormatOptions option){
         ktxTexture2* texture;

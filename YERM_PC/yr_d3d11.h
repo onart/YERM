@@ -69,6 +69,7 @@ namespace onart {
     class D3D11Machine {
         friend class Game;
     public:
+        class LowLevel;
         /// @brief 스레드에서 최근에 호출된 함수의 실패 요인을 일부 확인할 수 있습니다. D3D11 호출에 의한 실패가 아닌 경우 MAX_ENUM 값이 들어갑니다.
         static thread_local HRESULT reason;
         constexpr static bool VULKAN_GRAPHICS = false, D3D12_GRAPHICS = false, D3D11_GRAPHICS = true, OPENGL_GRAPHICS = false, OPENGLES_GRAPHICS = false, METAL_GRAPHICS = false;
@@ -473,10 +474,10 @@ namespace onart {
         static void setVsync(bool vsyncOn);
         /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
         inline static bool isSurfaceSRGB() { return false; }
-        /// @brief 아무 것도 하지 않습니다.
-        inline static int getTextureLayout(uint32_t binding) { return 0; }
-        /// @brief 아무 것도 하지 않습니다.
-        inline static int getInputAttachmentLayout(uint32_t binding) { return 0; }
+        /// @brief d3d11 device를 리턴합니다.
+        static ID3D11Device* getDevice() { return singleton->device; }
+        /// @brief d3d11 기본 컨텍스트를 리턴합니다.
+        static ID3D11DeviceContext* getImmediateContext() { return singleton->context; }
     private:
         /// @brief 기본 OpenGL 컨텍스트를 생성합니다.
         D3D11Machine();
@@ -606,17 +607,16 @@ namespace onart {
         static void drop(int32_t name);
         /// @brief 이미지 데이터를 다시 설정합니다.
         void update(void* img);
+        /// @brief 이미지 데이터를 다시 설정합니다. 매개변수는 목적지 주소, 행 피치입니다.
+        void updateBy(std::function<void(void*, uint32_t)> function);
         const uint16_t width, height;
     protected:
-        StreamTexture(ID3D11Texture2D* txo, ID3D11ShaderResourceView* srv, uint16_t width, uint16_t height, bool linearSampler, void* mmap, uint64_t rowPitch);
+        StreamTexture(ID3D11Texture2D* txo, ID3D11ShaderResourceView* srv, uint16_t width, uint16_t height, bool linearSampler);
         ~StreamTexture();
     private:
         ID3D11Texture2D* txo;
         ID3D11ShaderResourceView* dset;
         bool linearSampled;
-        void* mmap;
-        uint64_t rowPitch;
-        const bool copyFull;
     };
 
     class D3D11Machine::RenderPass {
@@ -939,6 +939,64 @@ namespace onart {
 
     // 테스트를 위한 함수
     ID3DBlob* compileShader(const char* code, size_t size, D3D11Machine::ShaderStage type);
+
+    class D3D11Machine::LowLevel {
+    public:
+        inline static ID3D11Device* getDevice() { return singleton->device; }
+        inline static ID3D11DeviceContext* getDeviceImmediateContext() { return singleton->context; }
+        inline static IDXGISwapChain* getSwapchain(int window) { return singleton->windowSystems[window]->swapchain.handle; }
+
+        inline static ID3D11Resource* getTexture(Texture* tx) { return tx->texture; }
+        inline static ID3D11ShaderResourceView* getShaderResourceView(Texture* tx) { return tx->dset; }
+        inline static ID3D11Resource* getTexture(StreamTexture* tx) { return tx->txo; }
+        inline static ID3D11ShaderResourceView* getShaderResourceView(StreamTexture* tx) { return tx->dset; }
+
+        // pipeline
+        inline static ID3D11VertexShader* getVertexShader(Pipeline* pp) { return pp->vs; }
+        inline static ID3D11HullShader* getHullShader(Pipeline* pp) { return pp->tcs; }
+        inline static ID3D11DomainShader* getDomainShader(Pipeline* pp) { return pp->tes; }
+        inline static ID3D11GeometryShader* getGeometryShader(Pipeline* pp) { return pp->gs; }
+        inline static ID3D11PixelShader* getPixelShader(Pipeline* pp) { return pp->fs; }
+        inline static ID3D11DepthStencilState* getDepthStencilState(Pipeline* pp) { return pp->dsState; }
+        inline static ID3D11BlendState* getBlendState(Pipeline* pp) { return pp->blendState; }
+
+        // renderpass
+        inline static ID3D11ShaderResourceView* getShaderResourceView(RenderPass* rp, int sub, int targ){
+            auto target = rp->targets[sub];
+            switch (targ) {
+            case 0: return target->color1->srv;
+            case 1: return target->color2->srv;
+            case 2: return target->color3->srv;
+            case 3: return target->ds->srv;
+            default: return {};
+            }
+        }
+        inline static ID3D11RenderTargetView* getRenderTargetView(RenderPass* rp, int sub, int targ){
+            auto target = rp->targets[sub];
+            switch (targ) {
+            case 0: return target->dset1;
+            case 1: return target->dset2;
+            case 2: return target->dset3;
+            default: return {};
+            }
+        }
+        inline static ID3D11DepthStencilView* getDepthStencilView(RenderPass* rp, int sub){
+            auto target = rp->targets[sub];
+            return target->dsetDS;
+        }
+
+        // mesh
+        inline static ID3D11Buffer* getVertexBuffer(Mesh* ms) { return ms->vb; }
+        inline static ID3D11Buffer* getIndexBuffer(Mesh* ms) { return ms->ib; }
+        //inline static size_t getIndexBufferOffset(Mesh* ms) { return ms->ioff; }
+
+        // uniform buffer
+        inline static ID3D11Buffer* getHandle(UniformBuffer* ub) { return ub->ubo; }
+        
+    private:
+        LowLevel() = delete;
+        ~LowLevel() = delete;
+    };
 }
 
 #undef VERTEX_FLOAT_TYPES

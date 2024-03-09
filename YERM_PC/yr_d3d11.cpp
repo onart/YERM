@@ -1005,16 +1005,9 @@ namespace onart {
             return {};
         }
 
-        D3D11_MAPPED_SUBRESOURCE mapInfo;
-        result = singleton->context->Map(newTex, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapInfo);
-        if (result != S_OK) {
-            LOGWITH("Failed to map memory", result);
-            memset(&mapInfo, 0, sizeof(mapInfo));
-        }
-
-        struct txtr :public StreamTexture { inline txtr(ID3D11Texture2D* _1, ID3D11ShaderResourceView* _2, uint16_t _3, uint16_t _4, bool _5, void* _6, uint64_t _7) :StreamTexture(_1, _2, _3, _4, _5, _6, _7) {} };
-        if (key == INT32_MIN) return std::make_shared<txtr>(newTex, srv, width, height, linearSampler, mapInfo.pData, mapInfo.RowPitch);
-        return singleton->streamTextures[key] = std::make_shared<txtr>(newTex, srv, width, height, linearSampler, mapInfo.pData, mapInfo.RowPitch);
+        struct txtr :public StreamTexture { inline txtr(ID3D11Texture2D* _1, ID3D11ShaderResourceView* _2, uint16_t _3, uint16_t _4, bool _5) :StreamTexture(_1, _2, _3, _4, _5) {} };
+        if (key == INT32_MIN) return std::make_shared<txtr>(newTex, srv, width, height, linearSampler);
+        return singleton->streamTextures[key] = std::make_shared<txtr>(newTex, srv, width, height, linearSampler);
     }
 
     D3D11Machine::ImageSet::~ImageSet() {
@@ -2527,15 +2520,12 @@ namespace onart {
         singleton->textures.erase(name);
     }
 
-    D3D11Machine::StreamTexture::StreamTexture(ID3D11Texture2D* txo, ID3D11ShaderResourceView* srv, uint16_t width, uint16_t height, bool linearSampler, void* mmap, uint64_t rowPitch)
-        :txo(txo), dset(srv), width(width), height(height), linearSampled(linearSampler), mmap(mmap), rowPitch(rowPitch), copyFull(rowPitch == 4ULL * width) {
+    D3D11Machine::StreamTexture::StreamTexture(ID3D11Texture2D* txo, ID3D11ShaderResourceView* srv, uint16_t width, uint16_t height, bool linearSampler)
+    :txo(txo), dset(srv), width(width), height(height), linearSampled(linearSampler) {
 
     }
 
     D3D11Machine::StreamTexture::~StreamTexture() {
-        if (mmap) {
-            singleton->context->Unmap(txo, 0);
-        }
         dset->Release();
         txo->Release();
     }
@@ -2561,25 +2551,35 @@ namespace onart {
     }
 
     void D3D11Machine::StreamTexture::update(void* img) {
-        uint64_t rowSize = (uint64_t)4 * width;
-        uint64_t size = rowSize * height;
+        D3D11_MAPPED_SUBRESOURCE mapped;
+        HRESULT result = singleton->context->Map(txo, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+        if (!SUCCEEDED(result)) {
+            LOGWITH("Failed to map memory");
+            return;
+        }
+
         uint8_t* src = (uint8_t*)img;
-        uint8_t* dest = (uint8_t*)mmap;
-        if (mmap) {
-            if (copyFull) {
-                std::memcpy(dest, src, size);
-            }
-            else {
-                for (uint16_t i = 0; i < height; i++) {
-                    std::memcpy(mmap, src, rowSize);
-                    src += rowSize;
-                    dest += rowPitch;
-                }
-            }
+        uint8_t* dest = (uint8_t*)mapped.pData;
+        uint64_t rowSize = (uint64_t)4 * width;
+
+        for (uint16_t i = 0; i < height; i++) {
+            std::memcpy(dest, src, rowSize);
+            src += rowSize;
+            dest += mapped.RowPitch;
         }
-        else {
-            singleton->context->UpdateSubresource(txo, 0, nullptr, img, rowSize, 0);
+        singleton->context->Unmap(txo, 0);
+    }
+
+    void D3D11Machine::StreamTexture::updateBy(std::function<void(void*, uint32_t)> function) {
+        D3D11_MAPPED_SUBRESOURCE mapped;
+        HRESULT result = singleton->context->Map(txo, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+        if (!SUCCEEDED(result)) {
+            LOGWITH("Failed to map memory");
+            return;
         }
+
+        function(mapped.pData, mapped.RowPitch);
+        singleton->context->Unmap(txo, 0);
     }
 
     D3D11Machine::Mesh::Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib, DXGI_FORMAT indexFormat, size_t vcount, size_t icount, UINT vStride)

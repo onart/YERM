@@ -1344,6 +1344,15 @@ namespace onart {
 
     void VkMachine::StreamTexture::update(void* src) {
         memcpy(mmap, src, (size_t)width * height * 4);
+        afterCopy();
+    }
+
+    void VkMachine::StreamTexture::updateBy(std::function<void(void*, uint32_t)> function) {
+        function(mmap, width * 4);
+        afterCopy();
+    }
+
+    void VkMachine::StreamTexture::afterCopy() {
         vmaInvalidateAllocation(singleton->allocator, alloc, 0, VK_WHOLE_SIZE);
         vmaFlushAllocation(singleton->allocator, alloc, 0, VK_WHOLE_SIZE);
         VkCommandBuffer cb;

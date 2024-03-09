@@ -56,6 +56,8 @@ namespace onart {
     class GLMachine{
         friend class Game;
         public:
+            /// @brief 저수준 인터페이스를 이용할 수 있습니다.
+            class LowLevel;
             static int32_t currentWindowContext;
             /// @brief 스레드에서 최근에 호출된 함수의 실패 요인을 일부 확인할 수 있습니다. Vulkan 호출에 의한 실패가 아닌 경우 MAX_ENUM 값이 들어갑니다.
             static thread_local unsigned reason;
@@ -752,12 +754,15 @@ namespace onart {
             static void drop(int32_t name);
             /// @brief 이미지 데이터를 다시 설정합니다.
             void update(void* img);
+            /// @brief 이미지 데이터를 다시 설정합니다. 매개변수는 데이터 목적지 / 행 피치입니다.
+            void updateBy(std::function<void(void*, uint32_t)> function);
             const uint16_t width, height;
         protected:
-            StreamTexture(uint32_t txo, uint16_t width, uint16_t height);
+            StreamTexture(uint32_t txo, uint32_t pbo, uint16_t width, uint16_t height);
             ~StreamTexture();
         private:
             unsigned txo;
+            unsigned pbo;
     };
 
     struct GLMachine::PipelineInputVertexSpec {
@@ -922,6 +927,41 @@ namespace onart {
         /// @brief 주어진 번호의 참조를 리턴합니다. 인덱스 초과 시 컴파일되지 않습니다.
         template<unsigned POS, std::enable_if_t<POS <= sizeof...(ATTR), bool> = false>
         constexpr inline auto& get() { return member.template get<POS>(); }
+    };
+
+    class GLMachine::LowLevel {
+    public:
+        // pipeline
+        inline static unsigned getPipeline(Pipeline* pp) { return pp->program; }
+
+        // renderpass
+        inline static unsigned getTexture(RenderPass* rp, int sub, int targ){
+            auto target = rp->targets[sub];
+            switch (targ) {
+            case 0: return target->color1;
+            case 1: return target->color2;
+            case 2: return target->color3;
+            case 3: return target->depthStencil;
+            default: return {};
+            }
+        }
+
+        inline static unsigned getFramebuffer(RenderPass* rp, int sub){ return rp->targets[sub]->framebuffer; }
+
+        // texture
+        inline static unsigned getHandle(Texture* tx) { return tx->txo; } 
+        inline static unsigned getHandle(StreamTexture* tx) { return tx->txo; }
+        inline static unsigned getBuffer(StreamTexture* tx) { return tx->pbo; }
+
+        // mesh
+        inline static unsigned getVertexBuffer(Mesh* ms) { return ms->vb; }
+        inline static unsigned getIndexBuffer(Mesh* ms) { return ms->ib; }
+
+        // uniform buffer
+        inline static unsigned getHandle(UniformBuffer* ub) { return ub->ubo; }
+    private:
+        LowLevel() = delete;
+        ~LowLevel() = delete;
     };
 }
 
