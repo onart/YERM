@@ -848,6 +848,8 @@ namespace onart {
             const size_t vcount, icount;
             const UINT vStride;
     };
+
+    ID3DBlob* compileShader(const char* code, size_t size, D3D11Machine::ShaderStage type);
     
     constexpr LPCSTR VS_SEMANTIC[] = { u8"_0_",u8"_1_",u8"_2_",u8"_3_",u8"_4_",u8"_5_",u8"_6_",u8"_7_",u8"_8_",u8"_9_",u8"_10_",u8"_11_",u8"_12_",u8"_13_",u8"_14_",u8"_15_" };
 
@@ -935,10 +937,73 @@ namespace onart {
          * the member template name must be prefixed by the keyword template.
          * Otherwise the name is assumed to name a non-template.
          * */
+    private:
+        template<class F>
+        inline static constexpr const char* getFormatHLSLType() {
+            if constexpr (is_one_of<F, VERTEX_FLOAT_TYPES>) {
+                if constexpr (sizeof(F) / sizeof(float) == 1) return u8"float1";
+                if constexpr (std::is_same_v<F, vec2> || sizeof(F) / sizeof(float) == 2) return u8"float2";
+                if constexpr (std::is_same_v<F, vec3> || sizeof(F) / sizeof(float) == 3) return u8"float3";
+                return u8"float4";
+            }
+            else if constexpr (is_one_of<F, VERTEX_INT8_TYPES>) {
+                if constexpr (sizeof(F) == 1) return u8"int1";
+                if constexpr (sizeof(F) == 2) return u8"int2";
+                if constexpr (sizeof(F) == 3) return u8"int3";
+                return u8"int4";
+            }
+            else if constexpr (is_one_of<F, VERTEX_UINT8_TYPES>) {
+                if constexpr (sizeof(F) == 1) return u8"uint1";
+                if constexpr (sizeof(F) == 2) return u8"uint2";
+                if constexpr (sizeof(F) == 3) return u8"uint3";
+                return u8"uint4";
+            }
+            else if constexpr (is_one_of<F, VERTEX_INT16_TYPES>) {
+                if constexpr (sizeof(F) == 2) return u8"int1";
+                if constexpr (sizeof(F) == 4) return u8"int2";
+                if constexpr (sizeof(F) == 6) return u8"int3";
+                return u8"int4";
+            }
+            else if constexpr (is_one_of<F, VERTEX_UINT16_TYPES>) {
+                if constexpr (sizeof(F) == 2) return u8"uint1";
+                if constexpr (sizeof(F) == 4) return u8"uint2";
+                if constexpr (sizeof(F) == 6) return u8"uint3";
+                return u8"uint4";
+            }
+            else if constexpr (is_one_of<F, VERTEX_INT32_TYPES>) {
+                if constexpr (sizeof(F) / sizeof(int32_t) == 1) return u8"int1";
+                if constexpr (std::is_same_v<F, ivec2> || sizeof(F) / sizeof(int32_t) == 2) return u8"int2";
+                if constexpr (std::is_same_v<F, ivec3> || sizeof(F) / sizeof(int32_t) == 3) return u8"int3";
+                return u8"int4";
+            }
+            else if constexpr (is_one_of<F, VERTEX_UINT32_TYPES>) {
+                if constexpr (sizeof(F) / sizeof(uint32_t) == 1) return u8"uint1";
+                if constexpr (std::is_same_v<F, uvec2> || sizeof(F) / sizeof(uint32_t) == 2) return u8"uint2";
+                if constexpr (std::is_same_v<F, uvec3> || sizeof(F) / sizeof(uint32_t) == 3) return u8"uint3";
+                return u8"uint4";
+            }
+            return ""; // UNREACHABLE
+        }
+        template<unsigned LOCATION = 0>
+        inline static constexpr void produceHLSLHead(std::ostream& str) {
+            using A_TYPE = std::remove_reference_t<decltype(Vertex().get<LOCATION>())>;
+            str << getFormatHLSLType<A_TYPE>() << ' ' << VS_SEMANTIC[LOCATION] << ':' << VS_SEMANTIC[LOCATION] << ';';
+            if constexpr (LOCATION < sizeof...(ATTR)) produceHLSLHead<LOCATION + 1>(str);
+        }
+        inline static std::string produceHLSL() {
+            std::stringstream hlsl;
+            hlsl << u8"struct VIN{";
+            produceHLSLHead(hlsl);
+            hlsl << u8"};\nfloat4 main(VIN i):SV_POSITION{return float4(0,0,0,0);}";
+            return hlsl.str();
+        }
+    public:
+        inline static ID3DBlob* produceBytecode() {
+            std::string hlsl = produceHLSL();
+            ID3DBlob* assm = compileShader(hlsl.data(), hlsl.size(), D3D11Machine::ShaderStage::VERTEX);
+            return assm;
+        }
     };
-
-    // 테스트를 위한 함수
-    ID3DBlob* compileShader(const char* code, size_t size, D3D11Machine::ShaderStage type);
 
     class D3D11Machine::LowLevel {
     public:
