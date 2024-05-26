@@ -192,13 +192,13 @@ namespace onart{
                 }
                 off->start();
                 off->invoke(vb);
-                off->execute();
+                off->execute(1);
                 rp2s->start();
                 rp2s->push(&rot, 0, 64);
                 rp2s->push(&thr, 64, 68);
                 rp2s->bind(0, off);
                 rp2s->invoke(vb);
-                rp2s->execute(off);
+                    rp2s->execute(1, &off);
             }
 #if !YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
         });

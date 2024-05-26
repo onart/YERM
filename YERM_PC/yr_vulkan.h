@@ -544,6 +544,31 @@ namespace onart {
             std::map<int32_t, pTexture> textures;
             std::map<int32_t, pTextureSet> textureSets;
             std::map<int32_t, pStreamTexture> streamTextures;
+            
+            class CommandBuffer;
+            using cbindex_t = uint16_t;
+            struct _managedCommandBuffer {
+                uint32_t serialNumber;
+                cbindex_t cbIndex;
+                ~_managedCommandBuffer();
+            };
+            std::vector<CommandBuffer*> gCommandBuffers;
+            std::vector<CommandBuffer*> tCommandBuffers;
+            std::vector<cbindex_t> idleGCommandBuffers;
+            std::vector<cbindex_t> idleTCommandBuffers;
+            std::vector<VkSemaphore> semaphorePool;
+            
+            /// @brief 렌더패스용 커맨드 버퍼 래퍼 객체 인덱스를 할당합니다.
+            cbindex_t allocateRenderPassCommandBuffer();
+
+            /// @brief 전송용 커맨드 버퍼 래퍼 객체 인덱스를 할당합니다.
+            cbindex_t allocateTransferCommandBuffer();
+
+            /// @brief 사용 중이 아닌 세마포어 객체를 할당합니다.
+            void allocateSemaphore(VkSemaphore* ar, size_t count);
+
+            /// @brief 할당한 세마포어 객체를 되돌립니다.
+            void freeSemaphore(VkSemaphore* ar, size_t count);
 
             struct __reaper{
             private:
@@ -579,6 +604,21 @@ namespace onart {
         private:
             /// @brief 렌더 타겟에 부여된 이미지 셋을 제거합니다.
             void removeImageSet(ImageSet*);
+    };
+
+    class VkMachine::CommandBuffer {
+        friend class VkMachine;
+    public:
+        ~CommandBuffer();
+    private:
+        bool wait(uint32_t serialNumber, uint64_t time = UINT64_MAX);
+        void reset();
+        std::atomic_uint32_t resetCount = 0;
+        VkCommandBuffer commandBuffer{};
+        VkFence fence{};
+        std::vector<VkSemaphore> semaphores;
+        unsigned semaphoreHead = 0;
+        bool isGQ;
     };
 
     class VkMachine::WindowSystem {
@@ -705,14 +745,16 @@ namespace onart {
             void invoke(const pMesh& mesh, const pMesh& instanceInfo, uint32_t instanceCount, uint32_t istart = 0, uint32_t start = 0, uint32_t count = 0);
             /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다. 주어진 파이프라인이 없으면 동작이 실패합니다.
             /// @param pos 이전 서브패스의 결과인 입력 첨부물을 바인드할 위치의 시작점입니다. 예를 들어, pos=0이고 이전 타겟이 색 첨부물 2개, 깊이 첨부물 1개였으면 0, 1, 2번에 바인드됩니다. 셰이더를 그에 맞게 만들어야 합니다.
-            void start(uint32_t pos = 0);
+            void start(uint32_t pos = 0, bool waitOnZero = true);
             /// @brief 현재 서브패스의 타겟을 클리어합니다.
             /// @param toClear 실제로 클리어할 타겟을 명시합니다.
             /// @param colors 초기화할 색상을 앞에서부터 차례대로 (r, g, b, a) 명시합니다. depth/stencil 타겟은 각각 고정 1 / 0으로 클리어됩니다.
             void clear(RenderTargetType toClear, float* colors);
             /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
-            /// @param other 이 패스가 시작하기 전에 기다릴 다른 렌더패스입니다. 전후 의존성이 존재할 경우 사용하는 것이 좋습니다. (Vk세마포어 동기화를 사용) 현재 버전에서 기다리는 단계는 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT 하나로 고정입니다.
-            void execute(RenderPass* other = nullptr);
+            /// @param successorCount 이 패스보다 다음 실행되어야 할 명령의 수입니다. 다른 렌더패스 실행뿐 아니라 copy2Texture, readBack도 포함됩니다.
+            /// @param predecessorCount 이 패스가 기다려야 할 렌더패스의 수입니다. (others 배열의 길이)
+            /// @param other 이 패스가 시작하기 전에 기다릴 다른 렌더패스들입니다. 전후 의존성이 존재할 경우 사용하는 것이 좋습니다. (Vk세마포어 동기화를 사용) 현재 버전에서 기다리는 단계는 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT 하나로 고정입니다.
+            void execute(size_t successorCount = 0, size_t predecessorCount = 0, RenderPass** others = nullptr);
             /// @brief draw 수행 이후에 호출되면 그리기가 끝나고 나서 리턴합니다. 그 외의 경우는 그냥 리턴합니다.
             /// @param timeout 기다릴 최대 시간(ns), UINT64_MAX (~0) 값이 입력되면 무한정 기다립니다.
             /// @return 렌더패스 동작이 실제로 끝나서 리턴했으면 true입니다.
@@ -734,7 +776,11 @@ namespace onart {
             RenderPass(VkRenderPass rp, VkFramebuffer fb, uint16_t stageCount, bool canBeRead, float* autoclear); // 이후 다수의 서브패스를 쓸 수 있도록 변경
             ~RenderPass();
             void reconstructFB(RenderTarget** targets);
+            VkCommandBuffer& getCommandBuffer();
+            VkFence& getFence();
+            VkSemaphore getSemaphore4Wait();
             const uint16_t stageCount;
+            std::vector<_managedCommandBuffer> commandBuffers;
             VkFramebuffer fb = VK_NULL_HANDLE;
             VkRenderPass rp = VK_NULL_HANDLE;
             std::vector<Pipeline*> pipelines;
@@ -742,14 +788,10 @@ namespace onart {
             int currentPass = -1;
             VkViewport viewport{};
             VkRect2D scissor{};
-            VkCommandBuffer cb = VK_NULL_HANDLE;
             const Mesh* bound = nullptr;
             const bool canBeRead;
             bool autoclear;
             float clearColor[4];
-            
-            VkFence fence = VK_NULL_HANDLE;
-            VkSemaphore semaphore = VK_NULL_HANDLE;
     };
 
     /// @brief 큐브맵 대상의 렌더패스입니다.
@@ -898,7 +940,7 @@ namespace onart {
             void start(uint32_t pos = 0);
             /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
             /// @param other 이 패스가 시작하기 전에 기다릴 다른 렌더패스입니다. 전후 의존성이 존재할 경우 사용하는 것이 좋습니다. (Vk세마포어 동기화를 사용) 현재 버전에서 기다리는 단계는 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT 하나로 고정입니다.
-            void execute(RenderPass* other = nullptr);
+            void execute(size_t predecessorCount = 0, RenderPass** other = nullptr);
             /// @brief draw 수행 이후에 호출되면 가장 최근에 제출된 그리기 및 화면 표시 명령이 끝나고 나서 리턴합니다. 그 외의 경우는 그냥 리턴합니다.
             /// @param timeout 기다릴 최대 시간(ns), UINT64_MAX (~0) 값이 입력되면 무한정 기다립니다.
             /// @return 렌더패스 동작이 실제로 끝나서 리턴했으면 true입니다.
@@ -1178,7 +1220,7 @@ namespace onart {
 
         // renderpass
         inline static VkRenderPass getRenderPass(RenderPass* rp) { return rp->rp; }
-        inline static VkCommandBuffer getCommandBuffer(RenderPass* rp) { return rp->cb; }
+        inline static VkCommandBuffer getCommandBuffer(RenderPass* rp) { return rp->getCommandBuffer(); }
         inline static VkCommandBuffer getCommandBuffer(RenderPass2Screen* rp) { return rp->cbs[rp->currentCB]; }
         inline static VkImage getImage(RenderPass* rp, int sub, int targ) { 
             auto target = rp->targets[sub];
@@ -1201,9 +1243,9 @@ namespace onart {
             default: return {};
             }
         }
-        inline static VkFence getFence(RenderPass* rp) { return rp->fence; }
+        inline static VkFence getFence(RenderPass* rp) { return rp->getFence(); }
         inline static VkFence getFence(RenderPass2Screen* rp) { return rp->fences[rp->currentCB]; }
-        inline static VkSemaphore getSemaphore(RenderPass* rp) { return rp->semaphore; }
+        //inline static VkSemaphore getSemaphore(RenderPass* rp) { return rp->semaphore; }
         inline static VkSemaphore getDrawSemaphore(RenderPass2Screen* rp) { return rp->drawSm[rp->currentCB]; }
         inline static VkSemaphore getAcquireSemaphore(RenderPass2Screen* rp) { return rp->acquireSm[rp->currentCB]; }
         inline static VkDescriptorSet getOutputDescriptorSet(RenderPass* rp, int sub) { return rp->targets[sub]->dset; }

@@ -685,10 +685,9 @@ namespace onart {
         void clear(RenderTargetType toClear, float* colors);
         /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다. 주어진 파이프라인이 없으면 동작이 실패합니다.
         /// @param pos 이전 서브패스의 결과인 입력 첨부물을 바인드할 위치의 시작점입니다. 예를 들어, pos=0이고 이전 타겟이 색 첨부물 2개, 깊이 첨부물 1개였으면 0, 1, 2번에 바인드됩니다. 셰이더를 그에 맞게 만들어야 합니다.
-        void start(uint32_t pos = 0);
-        /// @brief 기록된 명령을 모두 수행합니다. 동작이 완료되지 않아도 즉시 리턴합니다.
-        /// @param other 이 패스가 시작하기 전에 기다릴 다른 렌더패스입니다. 전후 의존성이 존재할 경우 사용하는 것이 좋습니다. (Vk세마포어 동기화를 사용) 현재 버전에서 기다리는 단계는 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT 하나로 고정입니다.
-        void execute(RenderPass* other = nullptr);
+        inline void start(uint32_t pos = 0, bool = false);
+        /// @brief 패스 렌더링을 완료합니다.
+        void execute(...);
         /// @brief true를 리턴합니다.
         bool wait(uint64_t timeout = UINT64_MAX);
         /// @brief 렌더타겟의 크기를 일괄 변경합니다. RenderPass2Screen에 대해서는 사용할 수 없습니다.

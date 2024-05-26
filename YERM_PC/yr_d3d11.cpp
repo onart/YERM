@@ -1856,7 +1856,7 @@ namespace onart {
         }
     }
 
-    void D3D11Machine::RenderPass::start(uint32_t pos) {
+    void D3D11Machine::RenderPass::start(uint32_t pos, bool) {
         if (currentRenderPass && currentRenderPass != reinterpret_cast<uint64_t>(this)) {
             LOGWITH("You can't make multiple renderpass being started in d3d11machine. Call RendrePass::execute() to end renderpass");
             return;
@@ -2097,7 +2097,7 @@ namespace onart {
         }
     }
 
-    void D3D11Machine::RenderPass::execute(RenderPass* other) {
+    void D3D11Machine::RenderPass::execute(...) {
         if (reinterpret_cast<uint64_t>(this) != currentRenderPass) {
             return;
         }

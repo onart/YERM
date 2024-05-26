@@ -1646,7 +1646,7 @@ namespace onart {
          bound = nullptr;
     }
 
-    void GLMachine::RenderPass::execute(RenderPass* other){
+    void GLMachine::RenderPass::execute(...){
         if(currentPass != pipelines.size() - 1){
             LOGWITH("Renderpass not started. This message can be ignored safely if the rendering goes fine after now");
             return;
@@ -1744,7 +1744,7 @@ namespace onart {
         }
     }
 
-    void GLMachine::RenderPass::start(uint32_t pos){
+    void GLMachine::RenderPass::start(uint32_t pos, bool) {
         if(currentPass == stageCount - 1) {
             LOGWITH("Invalid call. The last subpass already started");
             return;
