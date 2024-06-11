@@ -685,7 +685,7 @@ namespace onart {
         void clear(RenderTargetType toClear, float* colors);
         /// @brief 서브패스를 시작합니다. 이미 서브패스가 시작된 상태라면 다음 서브패스를 시작하며, 다음 것이 없으면 아무 동작도 하지 않습니다. 주어진 파이프라인이 없으면 동작이 실패합니다.
         /// @param pos 이전 서브패스의 결과인 입력 첨부물을 바인드할 위치의 시작점입니다. 예를 들어, pos=0이고 이전 타겟이 색 첨부물 2개, 깊이 첨부물 1개였으면 0, 1, 2번에 바인드됩니다. 셰이더를 그에 맞게 만들어야 합니다.
-        inline void start(uint32_t pos = 0, bool = false);
+        void start(uint32_t pos = 0, bool = false);
         /// @brief 패스 렌더링을 완료합니다.
         void execute(...);
         /// @brief true를 리턴합니다.
