@@ -2992,7 +2992,7 @@ namespace onart {
             return;
         }
         pipelines[subpass] = pipeline;
-        if(currentPass == subpass) { vkCmdBindPipeline(getCommandBuffer(), VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipeline); }
+        if(currentPass == subpass) { vkCmdBindPipeline(recentCommandBuffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipeline); }
     }
 
     void VkMachine::RenderPass::resize(int width, int height, bool linear) {
@@ -3466,7 +3466,7 @@ namespace onart {
         viewport.x = x;
         viewport.y = y;
         if(applyNow && currentPass != -1) {
-            vkCmdSetViewport(getCommandBuffer(), 0, 1, &viewport);
+            vkCmdSetViewport(recentCommandBuffer, 0, 1, &viewport);
         }
     }
 
@@ -3476,7 +3476,7 @@ namespace onart {
         scissor.offset.x = x;
         scissor.offset.y = y;
         if(applyNow && currentPass != -1) {
-            vkCmdSetScissor(getCommandBuffer(), 0, 1, &scissor);
+            vkCmdSetScissor(recentCommandBuffer, 0, 1, &scissor);
         }
     }
 
@@ -3487,7 +3487,7 @@ namespace onart {
         }
         ub->sync();
         uint32_t off = ub->offset(ubPos);
-        vkCmdBindDescriptorSets(getCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &ub->dset, ub->isDynamic, &off);
+        vkCmdBindDescriptorSets(recentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &ub->dset, ub->isDynamic, &off);
     }
 
     void VkMachine::RenderPass::bind(uint32_t pos, const pTexture& tx) {
@@ -3495,7 +3495,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdBindDescriptorSets(getCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
+        vkCmdBindDescriptorSets(recentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
     }
 
     void VkMachine::RenderPass::bind(uint32_t pos, const pStreamTexture& tx) {
@@ -3503,7 +3503,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdBindDescriptorSets(getCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
+        vkCmdBindDescriptorSets(recentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
     }
 
     void VkMachine::RenderPass::bind(uint32_t pos, const pTextureSet& tx) {
@@ -3511,7 +3511,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdBindDescriptorSets(getCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
+        vkCmdBindDescriptorSets(recentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
     }
 
     void VkMachine::RenderPass::bind(uint32_t pos, RenderPass* prevPass) {
@@ -3520,7 +3520,7 @@ namespace onart {
             return;
         }
         RenderTarget* target = prevPass->targets.back();
-        vkCmdBindDescriptorSets(getCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &target->dset, 0, nullptr);
+        vkCmdBindDescriptorSets(recentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &target->dset, 0, nullptr);
     }
 
     void VkMachine::RenderPass::bind(uint32_t pos, RenderPass2Cube* prevPass) {
@@ -3528,7 +3528,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdBindDescriptorSets(getCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &prevPass->csamp, 0, nullptr);
+        vkCmdBindDescriptorSets(recentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &prevPass->csamp, 0, nullptr);
     }
 
     void VkMachine::RenderPass::push(void* input, uint32_t start, uint32_t end) {
@@ -3536,7 +3536,7 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        vkCmdPushConstants(getCommandBuffer(), pipelines[currentPass]->pipelineLayout, VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
+        vkCmdPushConstants(recentCommandBuffer, pipelines[currentPass]->pipelineLayout, VkShaderStageFlagBits::VK_SHADER_STAGE_ALL_GRAPHICS, start, end - start, input); // TODO: 스테이지 플래그를 살려야 함
     }
 
     void VkMachine::RenderPass::invoke(const pMesh& mesh, uint32_t start, uint32_t count) {
@@ -3546,8 +3546,8 @@ namespace onart {
         }
         if ((bound != mesh.get()) && (mesh->vb != VK_NULL_HANDLE)) {
             VkDeviceSize offs = 0;
-            vkCmdBindVertexBuffers(getCommandBuffer(), 0, 1, &mesh->vb, &offs);
-            if (mesh->icount) vkCmdBindIndexBuffer(getCommandBuffer(), mesh->vb, mesh->ioff, mesh->idxType);
+            vkCmdBindVertexBuffers(recentCommandBuffer, 0, 1, &mesh->vb, &offs);
+            if (mesh->icount) vkCmdBindIndexBuffer(recentCommandBuffer, mesh->vb, mesh->ioff, mesh->idxType);
         }
         if (mesh->icount) {
             if ((uint64_t)start + count > mesh->icount) {
@@ -3558,7 +3558,7 @@ namespace onart {
             if (count == 0) {
                 count = uint32_t(mesh->icount - start);
             }
-            vkCmdDrawIndexed(getCommandBuffer(), count, 1, start, 0, 0);
+            vkCmdDrawIndexed(recentCommandBuffer, count, 1, start, 0, 0);
         }
         else {
             if ((uint64_t)start + count > mesh->vcount) {
@@ -3569,7 +3569,7 @@ namespace onart {
             if (count == 0) {
                 count = (uint32_t)(mesh->vcount - start);
             }
-            vkCmdDraw(getCommandBuffer(), count, 1, start, 0);
+            vkCmdDraw(recentCommandBuffer, count, 1, start, 0);
         }
         bound = mesh.get();
     }
@@ -3582,7 +3582,7 @@ namespace onart {
         VkDeviceSize offs[2] = { 0, 0 };
         VkBuffer buffs[2] = { mesh->vb };
         if (instanceInfo->vb) { buffs[1] = instanceInfo->vb; }
-        vkCmdBindVertexBuffers(getCommandBuffer(), 0, instanceInfo ? 2 : 1, buffs, offs);
+        vkCmdBindVertexBuffers(recentCommandBuffer, 0, instanceInfo ? 2 : 1, buffs, offs);
         if (mesh->icount) {
             if ((uint64_t)start + count > mesh->icount) {
                 LOGWITH("Invalid call: this mesh has", mesh->icount, "indices but", start, "~", (uint64_t)start + count, "requested to be drawn");
@@ -3592,8 +3592,8 @@ namespace onart {
             if (count == 0) {
                 count = uint32_t(mesh->icount - start);
             }
-            vkCmdBindIndexBuffer(getCommandBuffer(), mesh->vb, mesh->ioff, mesh->idxType);
-            vkCmdDrawIndexed(getCommandBuffer(), count, instanceCount, start, 0, istart);
+            vkCmdBindIndexBuffer(recentCommandBuffer, mesh->vb, mesh->ioff, mesh->idxType);
+            vkCmdDrawIndexed(recentCommandBuffer, count, instanceCount, start, 0, istart);
         }
         else {
             if ((uint64_t)start + count > mesh->vcount) {
@@ -3604,7 +3604,7 @@ namespace onart {
             if (count == 0) {
                 count = uint32_t(mesh->vcount - start);
             }
-            vkCmdDraw(getCommandBuffer(), count, instanceCount, start, istart);
+            vkCmdDraw(recentCommandBuffer, count, instanceCount, start, istart);
         }
         bound = nullptr;
     }
@@ -3614,10 +3614,10 @@ namespace onart {
             LOGWITH("Renderpass not started. This message can be ignored safely if the rendering goes fine after now");
             return;
         }
-        vkCmdEndRenderPass(getCommandBuffer());
+        vkCmdEndRenderPass(recentCommandBuffer);
         bound = nullptr;
 
-        if((reason = vkEndCommandBuffer(getCommandBuffer())) != VK_SUCCESS){
+        if((reason = vkEndCommandBuffer(recentCommandBuffer)) != VK_SUCCESS){
             LOGWITH("Failed to end command buffer:",reason);
             return;
         }
@@ -3625,7 +3625,7 @@ namespace onart {
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &getCommandBuffer();
+        submitInfo.pCommandBuffers = &recentCommandBuffer;
         std::vector<VkSemaphore> waitSemaphores(predecessorCount);
         if(predecessorCount){
             for (size_t i = 0; i < predecessorCount; i++) {
@@ -3654,6 +3654,7 @@ namespace onart {
         }
 
         currentPass = -1;
+        recentCommandBuffer = {};
     }
 
     bool VkMachine::RenderPass::wait(uint64_t timeout){
@@ -3666,6 +3667,7 @@ namespace onart {
         bool ret = singleton->gCommandBuffers[cbInfo.cbIndex]->wait(cbInfo.serialNumber, timeout);
         if (ret) {
             commandBuffers.clear();
+            recentCommandBuffer = {};
         }
         return ret;
     }
@@ -3722,7 +3724,7 @@ namespace onart {
             pr.clearValue.depthStencil.depth = 1.0f;
             pr.clearValue.depthStencil.stencil = 0;
         }
-        vkCmdClearAttachments(getCommandBuffer(), clearCount, clearParam, 1, &rect);
+        vkCmdClearAttachments(recentCommandBuffer, clearCount, clearParam, 1, &rect);
     }
 
     void VkMachine::RenderPass::start(uint32_t pos, bool waitOnZero){
@@ -3744,15 +3746,25 @@ namespace onart {
                 wait();
                 currentPass = 0;
             }
+            else {
+                for (auto it = commandBuffers.begin(); it != commandBuffers.end();) {
+                    if (singleton->gCommandBuffers[it->cbIndex]->wait(it->serialNumber, 0)) {
+                        it = commandBuffers.erase(it);
+                    }
+                    else {
+                        ++it;
+                    }
+                }
+            }
             auto& newcb = commandBuffers.emplace_back();
             newcb.cbIndex = singleton->allocateRenderPassCommandBuffer();
             newcb.serialNumber = singleton->gCommandBuffers[newcb.cbIndex]->resetCount;
+            recentCommandBuffer = singleton->gCommandBuffers[newcb.cbIndex]->commandBuffer;
             
             VkCommandBufferBeginInfo cbInfo{};
             cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             cbInfo.flags = VkCommandBufferUsageFlagBits::VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            VkCommandBuffer cb = getCommandBuffer();
-            reason = vkBeginCommandBuffer(cb, &cbInfo);
+            reason = vkBeginCommandBuffer(recentCommandBuffer, &cbInfo);
             if(reason != VK_SUCCESS){
                 LOGWITH("Failed to begin command buffer:",reason,resultAsString(reason));
                 currentPass = -1;
@@ -3788,17 +3800,15 @@ namespace onart {
             rpInfo.renderArea.extent = {targets[0]->width, targets[0]->height};
             rpInfo.renderPass = rp;
 
-            vkCmdBeginRenderPass(cb, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+            vkCmdBeginRenderPass(recentCommandBuffer, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
         }
         else{
-            VkCommandBuffer cb = getCommandBuffer();
-            vkCmdNextSubpass(cb, VK_SUBPASS_CONTENTS_INLINE);
-            vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &targets[currentPass - 1]->dset, 0, nullptr); // 서브패스는 무조건 0부터 시작해야 이게 유지되긴 할듯..
+            vkCmdNextSubpass(recentCommandBuffer, VK_SUBPASS_CONTENTS_INLINE);
+            vkCmdBindDescriptorSets(recentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &targets[currentPass - 1]->dset, 0, nullptr); // 서브패스는 무조건 0부터 시작해야 이게 유지되긴 할듯..
         }
-        VkCommandBuffer cb = getCommandBuffer();
-        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipeline);
-        vkCmdSetViewport(cb, 0, 1, &viewport);
-        vkCmdSetScissor(cb, 0, 1, &scissor);
+        vkCmdBindPipeline(recentCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipeline);
+        vkCmdSetViewport(recentCommandBuffer, 0, 1, &viewport);
+        vkCmdSetScissor(recentCommandBuffer, 0, 1, &scissor);
     }
 
     VkMachine::RenderPass2Cube::~RenderPass2Cube(){
@@ -4604,8 +4614,10 @@ namespace onart {
     }
 
     VkMachine::_managedCommandBuffer::~_managedCommandBuffer() {
-        singleton->gCommandBuffers[cbIndex]->reset();
-        singleton->idleGCommandBuffers.push_back(cbIndex);
+        if (serialNumber != ~0U) {
+            singleton->gCommandBuffers[cbIndex]->reset();
+            singleton->idleGCommandBuffers.push_back(cbIndex);
+        }
     }
 
     bool VkMachine::CommandBuffer::wait(uint32_t serialNumber, uint64_t time) {

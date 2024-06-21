@@ -550,6 +550,9 @@ namespace onart {
             struct _managedCommandBuffer {
                 uint32_t serialNumber;
                 cbindex_t cbIndex;
+                inline _managedCommandBuffer() :serialNumber(~0U) {}
+                inline _managedCommandBuffer(_managedCommandBuffer&& rhs) :serialNumber(rhs.serialNumber), cbIndex(rhs.cbIndex) { rhs.serialNumber = ~0U; }
+                inline void operator=(_managedCommandBuffer&& rhs) { serialNumber = rhs.serialNumber; cbIndex = rhs.cbIndex; rhs.serialNumber = ~0U; }
                 ~_managedCommandBuffer();
             };
             std::vector<CommandBuffer*> gCommandBuffers;
@@ -780,7 +783,8 @@ namespace onart {
             VkFence& getFence();
             VkSemaphore getSemaphore4Wait();
             const uint16_t stageCount;
-            std::vector<_managedCommandBuffer> commandBuffers;
+            VkCommandBuffer recentCommandBuffer{};
+            std::list<_managedCommandBuffer> commandBuffers;
             VkFramebuffer fb = VK_NULL_HANDLE;
             VkRenderPass rp = VK_NULL_HANDLE;
             std::vector<Pipeline*> pipelines;
