@@ -4372,6 +4372,9 @@ namespace onart {
             return;
         }
         if(currentPass == 0){
+            // Relocated to ensure acquireSm[currentCB] to be free.. while this wait is needed to reset command buffer
+            vkWaitForFences(singleton->device, 1, &fences[currentCB], VK_FALSE, UINT64_MAX);
+
             reason = vkAcquireNextImageKHR(singleton->device, window->swapchain.handle, UINT64_MAX, acquireSm[currentCB], VK_NULL_HANDLE, &imgIndex);
             if(reason != VK_SUCCESS) {
                 LOGWITH("Failed to acquire swapchain image:",reason,resultAsString(reason),"\nThis message can be ignored safely if the rendering goes fine after now");
@@ -4379,7 +4382,6 @@ namespace onart {
                 return;
             }
 
-            vkWaitForFences(singleton->device, 1, &fences[currentCB], VK_FALSE, UINT64_MAX);
             vkResetCommandBuffer(cbs[currentCB], 0);
             VkCommandBufferBeginInfo cbInfo{};
             cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
