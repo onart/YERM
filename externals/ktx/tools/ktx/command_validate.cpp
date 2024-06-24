@@ -17,17 +17,18 @@
 
 namespace ktx {
 
-/** @page ktxtools_validate ktx validate
+/** @page ktx_validate ktx validate
 @~English
 
 Validate a KTX2 file.
 
-@section ktxtools_validate_synopsis SYNOPSIS
+@section ktx_validate_synopsis SYNOPSIS
     ktx validate [option...] @e input-file
 
-@section ktxtools_validate_description DESCRIPTION
+@section ktx_validate_description DESCRIPTION
     @b ktx @b validate validates the Khronos texture format version 2 (KTX2) file specified
     as the @e input-file argument. It prints any found errors and warnings to stdout.
+    If the @e input-file is '-' the file will be read from the stdin.
 
     The validation rules and checks are based on the official specification:
     KTX File Format Specification - https://registry.khronos.org/KTX/specs/2.0/ktxspec.v2.html
@@ -42,22 +43,22 @@ Validate a KTX2 file.
     The following options are available:
     @snippet{doc} ktx/command.h command options_format
     <dl>
-        <dt>-g, --gltf-basisu</dt>
+        <dt>-g, \--gltf-basisu</dt>
         <dd>Check compatibility with KHR_texture_basisu glTF extension.</dd>
-        <dt>-e, --warnings-as-errors</dt>
+        <dt>-e, \--warnings-as-errors</dt>
         <dd>Treat warnings as errors.</dd>
     </dl>
     @snippet{doc} ktx/command.h command options_generic
 
-@section ktxtools_validate_exitstatus EXIT STATUS
+@section ktx_validate_exitstatus EXIT STATUS
     @snippet{doc} ktx/command.h command exitstatus
 
-@section ktxtools_validate_history HISTORY
+@section ktx_validate_history HISTORY
 
 @par Version 4.0
  - Initial version
 
-@section ktxtools_validate_author AUTHOR
+@section ktx_validate_author AUTHOR
     - Mátyás Császár [Vader], RasterGrid www.rastergrid.com
     - Daniel Rákos, RasterGrid www.rastergrid.com
 */
@@ -81,7 +82,7 @@ class CommandValidate : public Command {
     Combine<OptionsValidate, OptionsFormat, OptionsSingleIn, OptionsGeneric> options;
 
 public:
-    virtual int main(int argc, _TCHAR* argv[]) override;
+    virtual int main(int argc, char* argv[]) override;
     virtual void initOptions(cxxopts::Options& opts) override;
     virtual void processOptions(cxxopts::Options& opts, cxxopts::ParseResult& args) override;
 
@@ -91,7 +92,7 @@ private:
 
 // -------------------------------------------------------------------------------------------------
 
-int CommandValidate::main(int argc, _TCHAR* argv[]) {
+int CommandValidate::main(int argc, char* argv[]) {
     try {
         parseCommandLine("ktx validate",
                 "Validates the Khronos texture format version 2 (KTX2) file specified\n"
@@ -116,11 +117,14 @@ void CommandValidate::processOptions(cxxopts::Options& opts, cxxopts::ParseResul
 }
 
 void CommandValidate::executeValidate() {
+    InputStream inputStream(options.inputFilepath, *this);
+
     switch (options.format) {
     case OutputFormat::text: {
         std::ostringstream messagesOS;
-        const auto validationResult = validateNamedFile(
-                options.inputFilepath,
+        const auto validationResult = validateIOStream(
+                inputStream,
+                fmtInFile(options.inputFilepath),
                 options.warningsAsErrors,
                 options.GLTFBasisU,
                 [&](const ValidationReport& issue) {
@@ -150,8 +154,9 @@ void CommandValidate::executeValidate() {
         PrintIndent pi{messagesOS, base_indent, indent_width};
 
         bool first = true;
-        const auto validationResult = validateNamedFile(
-                options.inputFilepath,
+        const auto validationResult = validateIOStream(
+                inputStream,
+                fmtInFile(options.inputFilepath),
                 options.warningsAsErrors,
                 options.GLTFBasisU,
                 [&](const ValidationReport& issue) {

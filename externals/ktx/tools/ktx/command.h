@@ -27,7 +27,7 @@
 #endif
 
 #define KTX_COMMAND_ENTRY_POINT_DEF(CMDCLASS) \
-    (int argc, _TCHAR* argv[]) { CMDCLASS cmd{}; return cmd.main(argc, argv); }
+    (int argc, char* argv[]) { CMDCLASS cmd{}; return cmd.main(argc, argv); }
 
 #if defined(KTX_COMMAND_EXECUTABLE)
     // Command is built as a separate executable
@@ -45,14 +45,14 @@
         int NAME KTX_COMMAND_ENTRY_POINT_DEF(CMDCLASS)
 #endif
 
-#define KTX_COMMAND_BUILTIN(NAME) int NAME(int argc, _TCHAR* argv[]);
+#define KTX_COMMAND_BUILTIN(NAME) int NAME(int argc, char* argv[]);
 
 // -------------------------------------------------------------------------------------------------
 
 namespace ktx {
 
-using pfnBuiltinCommand = int (*)(int argc, _TCHAR* argv[]);
-using pfnImportedCommand = int (KTX_COMMAND_PTR *)(int argc, _TCHAR* argv[]);
+using pfnBuiltinCommand = int (*)(int argc, char* argv[]);
+using pfnImportedCommand = int (KTX_COMMAND_PTR *)(int argc, char* argv[]);
 
 static constexpr int CONSOLE_USAGE_WIDTH = 100;
 
@@ -132,13 +132,16 @@ public:
     virtual ~Command() = default;
 
 public:
-    virtual int main(int argc, _TCHAR* argv[]) = 0;
+    virtual int main(int argc, char* argv[]) = 0;
 
 protected:
-    void parseCommandLine(const std::string& name, const std::string& desc, int argc, _TCHAR* argv[]);
+    void parseCommandLine(const std::string& name, const std::string& desc, int argc, char* argv[]);
 
     virtual void initOptions(cxxopts::Options& /*opts*/) { }
     virtual void processOptions(cxxopts::Options& /*opts*/, cxxopts::ParseResult& /*args*/) { };
+#if defined(_WIN32) && defined(DEBUG)
+    bool launchDebugger();
+#endif
 };
 
 // -------------------------------------------------------------------------------------------------
@@ -146,9 +149,9 @@ protected:
 /**
 //! [command options_generic]
 <dl>
-    <dt>-h, --help</dt>
+    <dt>-h, \--help</dt>
     <dd>Print this usage message and exit.</dd>
-    <dt>-v, --version</dt>
+    <dt>-v, \--version</dt>
     <dd>Print the version number of this program and exit.</dd>
 </dl>
 //! [command options_generic]
@@ -162,7 +165,11 @@ struct OptionsGeneric {
         opts.add_options()
                 ("h,help", "Print this usage message and exit")
                 ("v,version", "Print the version number of this program and exit")
-                ("testrun", "Indicates test run. If enabled the tool will produce deterministic output whenever possible");
+                ("testrun", "Indicates test run. If enabled the tool will produce deterministic output whenever possible")
+#if defined(_WIN32) && defined(DEBUG)
+                ("ld", "Launch debugger on startup.")
+#endif
+                ;
     }
 
     void process(cxxopts::Options& opts, cxxopts::ParseResult& args, Reporter& report) {
@@ -190,7 +197,7 @@ enum class OutputFormat {
 /**
 //! [command options_format]
 <dl>
-    <dt>--format text | json | mini-json</dt>
+    <dt>\--format text | json | mini-json</dt>
     <dd>Specifies the report output format. Possible options are: <br />
         @b text - Human readable text based format. <br />
         @b json - Formatted JSON. <br />
@@ -232,23 +239,24 @@ struct OptionsSingleIn {
 
     void init(cxxopts::Options& opts) {
         opts.add_options()
-                ("s,stdin", "Use stdin as the input file")
-                ("i,input-file", "The input file", cxxopts::value<std::string>(), "filepath");
+                ("stdin", "Use stdin as the input file. (Using a single dash '-' as the input file has the same effect)")
+                ("i,input-file", "The input file. Using a single dash '-' as the input file will use stdin.", cxxopts::value<std::string>(), "filepath");
         opts.parse_positional("input-file");
         opts.positional_help("<input-file>");
     }
 
     void process(cxxopts::Options&, cxxopts::ParseResult& args, Reporter& report) {
+        if (!args.unmatched().empty())
+            report.fatal_usage("Too many filenames specified.");
+
         if (args.count("stdin") + args.count("input-file") == 0)
             report.fatal_usage("Missing input file. Either <input-file> or --stdin must be specified.");
         if (args.count("stdin") + args.count("input-file") > 1)
             report.fatal_usage("Conflicting options: Only one can be specified from <input-file> and --stdin.");
 
-        if (args.count("stdin")) {
-            // TODO: Tools P4: Add support for stdin (To support '-' alias argv has to be scanned as cxxopts has no direct support for it)
-            report.fatal(rc::NOT_IMPLEMENTED, "stdin support is not yet implemented.");
+        if (args.count("stdin"))
             inputFilepath = "-";
-        } else
+        else
             inputFilepath = args["input-file"].as<std::string>();
     }
 };
@@ -259,27 +267,37 @@ struct OptionsSingleInSingleOut {
 
     void init(cxxopts::Options& opts) {
         opts.add_options()
-                ("s,stdin", "Use stdin as the input file")
-                ("i,input-file", "The input file", cxxopts::value<std::string>(), "filepath")
-                ("o,output-file", "The output file", cxxopts::value<std::string>(), "filepath");
+                ("stdin", "Use stdin as the input file. (Using a single dash '-' as the input file has the same effect)")
+                ("stdout", "Use stdout as the output file. (Using a single dash '-' as the output file has the same effect)")
+                ("i,input-file", "The input file. Using a single dash '-' as the input file will use stdin.", cxxopts::value<std::string>(), "filepath")
+                ("o,output-file", "The output file. Using a single dash '-' as the output file will use stdout.", cxxopts::value<std::string>(), "filepath");
         opts.parse_positional("input-file", "output-file");
         opts.positional_help("<input-file> <output-file>");
     }
 
     void process(cxxopts::Options&, cxxopts::ParseResult& args, Reporter& report) {
+        if (!args.unmatched().empty())
+            report.fatal_usage("Too many filenames specified.");
+
         if (args.count("stdin") + args.count("input-file") == 0)
             report.fatal_usage("Missing input file. Either <input-file> or --stdin must be specified.");
         if (args.count("stdin") + args.count("input-file") > 1)
             report.fatal_usage("Conflicting options: Only one can be specified from <input-file> and --stdin.");
 
-        if (args.count("stdin")) {
-            // TODO: Tools P4: Add support for stdin (To support '-' alias argv has to be scanned as cxxopts has no direct support for it)
-            report.fatal(rc::NOT_IMPLEMENTED, "stdin support is not yet implemented.");
+        if (args.count("stdout") + args.count("output-file") == 0)
+            report.fatal_usage("Missing output file. Either <output-file> or --stdout must be specified.");
+        if (args.count("stdout") + args.count("output-file") > 1)
+            report.fatal_usage("Conflicting options: Only one can be specified from <output-file> and --stdout.");
+
+        if (args.count("stdin"))
             inputFilepath = "-";
-        } else
+        else
             inputFilepath = args["input-file"].as<std::string>();
 
-        outputFilepath = args["output-file"].as<std::string>();
+        if (args.count("stdout"))
+            outputFilepath = "-";
+        else
+            outputFilepath = args["output-file"].as<std::string>();
     }
 };
 
@@ -289,23 +307,35 @@ struct OptionsMultiInSingleOut {
 
     void init(cxxopts::Options& opts) {
         opts.add_options()
-                ("files", "Input/output files. Last file specified will be used as output", cxxopts::value<std::vector<std::string>>(), "<filepath>");
+                ("stdin", "Use stdin as the first input file. (Using a single dash '-' as the first input file has the same effect)")
+                ("stdout", "Use stdout as the output file. (Using a single dash '-' as the output file has the same effect)")
+                ("files", "Input/output files. Last file specified will be used as output."
+                          " Using a single dash '-' as an input or output file will use stdin/stdout.", cxxopts::value<std::vector<std::string>>(), "<filepath>");
         opts.parse_positional("files");
         opts.positional_help("<input-file...> <output-file>");
     }
 
     void process(cxxopts::Options&, cxxopts::ParseResult& args, Reporter& report) {
         std::vector<std::string> files;
-        if (args.count("files"))
-            files = args["files"].as<std::vector<std::string>>();
+        if (args.count("stdin"))
+            files.emplace_back("-");
+        if (args.count("files")) {
+            const auto& argFiles = args["files"].as<std::vector<std::string>>();
+            files.insert(files.end(), argFiles.begin(), argFiles.end());
+        }
+        if (args.count("stdout"))
+            files.emplace_back("-");
         if (files.size() < 1)
             report.fatal_usage("Input and output files must be specified.");
         if (files.size() < 2)
-            report.fatal_usage("Output file must be specified.");
+            report.fatal_usage("{} file must be specified.", args.count("stdout") == 0 ? "Output" : "Input");
 
         outputFilepath = std::move(files.back());
         files.pop_back();
         inputFilepaths = std::move(files);
+
+        if (std::count(inputFilepaths.begin(), inputFilepaths.end(), "-") > 1)
+            report.fatal_usage("'-' or --stdin as input file was specified more than once.");
     }
 };
 
@@ -322,6 +352,42 @@ struct Combine : Args... {
         (dummy = ... = (Args::process(opts, args, report), 0));
         (void) dummy;
     }
+};
+
+/// Helper to handle stdin and fstream uniformly
+class InputStream {
+    std::string filepath;
+    std::istream* activeStream = nullptr;
+    std::ifstream file; // Unused for stdin/stdout
+    std::stringstream stdinBuffer;
+
+public:
+    InputStream(const std::string& filepath, Reporter& report);
+
+    /*explicit(false)*/ operator std::istream&() {
+        return *activeStream;
+    }
+
+    std::istream* operator->() {
+        return activeStream;
+    }
+    std::istream& operator*() {
+        return *activeStream;
+    }
+};
+
+/// Helper to handle stdout and fstream uniformly
+class OutputStream {
+    std::string filepath;
+    FILE* file;
+    // std::ostream* activeStream = nullptr;
+    // std::ofstream file; // Unused for stdin/stdout
+
+public:
+    OutputStream(const std::string& filepath, Reporter& report);
+    ~OutputStream();
+    void writeKTX2(ktxTexture* texture, Reporter& report);
+    void write(const char* data, std::size_t size, Reporter& report);
 };
 
 } // namespace ktx

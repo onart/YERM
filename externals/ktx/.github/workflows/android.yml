@@ -15,8 +15,8 @@ on:
     # Also trigger on push of release tags to any branch. Useful
     # for testing release builds before merging to main.
     tags:
-      - 'v[0-9]+\.[0-9]+\.[0-9]+'
-      - 'v[0-9]+\.[0-9]+\.[0-9]+-*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
     paths-ignore:
       - .appveyor.yml
       - .travis.yml
@@ -28,8 +28,12 @@ jobs:
   linux:
     runs-on: ubuntu-latest
 
+    env:
+      GIT_LFS_SKIP_SMUDGE: 1
+      WERROR: ON
+
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         # Fetch all history to make sure tags are
         # included (used for version creation)
@@ -50,7 +54,7 @@ jobs:
       run: sudo apt-get install -y ninja-build
 
     - name: android_Debug_arm64-v8a
-      run: ./ci_scripts/build_android_debug.sh
+      run: ./ci_scripts/build_android.sh
       env:
         ANDROID_ABI: arm64-v8a
         ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
@@ -63,6 +67,7 @@ jobs:
         ANDROID_ABI: arm64-v8a
         ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
         ASTCENC_ISA: "ASTCENC_ISA_NEON=ON"
+        CONFIGURATION: Release
 
     # Android ABI x86 is obsolete
     # and not supported by ARM ASTC encoder
@@ -90,7 +95,7 @@ jobs:
     # by the preceding steps and uploads the zip.
     - name: upload artifact
       id: upload-artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: KTX-Software-${{env.KTX_VERSION}}-Android
         path: install-android

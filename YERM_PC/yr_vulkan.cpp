@@ -1497,7 +1497,7 @@ namespace onart {
         }
         if(option == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS){
             ktxBasisParams params{};
-            params.compressionLevel = KTX_ETC1S_DEFAULT_COMPRESSION_LEVEL;
+            params.compressionLevel = 5;// BASISU_DEFAULT_COMPRESSION_LEVEL == 2;
             params.uastc = KTX_TRUE;
             params.verbose = KTX_FALSE;
             params.structSize = sizeof(params);

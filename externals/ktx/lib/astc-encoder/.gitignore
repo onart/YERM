@@ -40,5 +40,3 @@ TestOutput
 astc_reference-main*
 Docs/Profiling.md
 Source/astcenccli_version.h
-
-!/CMakeLists.txt

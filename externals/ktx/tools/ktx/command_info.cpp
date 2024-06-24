@@ -22,17 +22,18 @@
 
 namespace ktx {
 
-/** @page ktxtools_info ktx info
+/** @page ktx_info ktx info
 @~English
 
 Print information about a KTX2 file.
 
-@section ktxtools_info_synopsis SYNOPSIS
+@section ktx_info_synopsis SYNOPSIS
     ktx info [option...] @e input-file
 
-@section ktxtools_info_description DESCRIPTION
+@section ktx_info_description DESCRIPTION
     @b ktx @b info prints information about the KTX2 file specified as the @e input-file argument.
-    The command implicitly calls @ref ktxtools_validate "validate" and prints any found errors
+    If the @e input-file is '-' the file will be read from the stdin.
+    The command implicitly calls @ref ktx_validate "validate" and prints any found errors
     and warnings to stdout.
     If the specified input file is invalid the information is displayed based on best effort and
     may be incomplete.
@@ -52,15 +53,15 @@ Print information about a KTX2 file.
     @snippet{doc} ktx/command.h command options_format
     @snippet{doc} ktx/command.h command options_generic
 
-@section ktxtools_info_exitstatus EXIT STATUS
+@section ktx_info_exitstatus EXIT STATUS
     @snippet{doc} ktx/command.h command exitstatus
 
-@section ktxtools_info_history HISTORY
+@section ktx_info_history HISTORY
 
 @par Version 4.0
  - Initial version
 
-@section ktxtools_info_author AUTHOR
+@section ktx_info_author AUTHOR
     - Mátyás Császár [Vader], RasterGrid www.rastergrid.com
     - Daniel Rákos, RasterGrid www.rastergrid.com
 */
@@ -68,7 +69,7 @@ class CommandInfo : public Command {
     Combine<OptionsFormat, OptionsSingleIn, OptionsGeneric> options;
 
 public:
-    virtual int main(int argc, _TCHAR* argv[]) override;
+    virtual int main(int argc, char* argv[]) override;
     virtual void initOptions(cxxopts::Options& opts) override;
     virtual void processOptions(cxxopts::Options& opts, cxxopts::ParseResult& args) override;
 
@@ -80,7 +81,7 @@ private:
 
 // -------------------------------------------------------------------------------------------------
 
-int CommandInfo::main(int argc, _TCHAR* argv[]) {
+int CommandInfo::main(int argc, char* argv[]) {
     try {
         parseCommandLine("ktx info",
                 "Prints information about the KTX2 file specified as the input-file argument.\n"
@@ -106,21 +107,19 @@ void CommandInfo::processOptions(cxxopts::Options& opts, cxxopts::ParseResult& a
 }
 
 void CommandInfo::executeInfo() {
-    std::ifstream file(options.inputFilepath, std::ios::binary | std::ios::in);
-    if (!file)
-        fatal(rc::IO_FAILURE, "Could not open input file \"{}\": {}", options.inputFilepath, errnoMessage());
+    InputStream inputStream(options.inputFilepath, *this);
 
     KTX_error_code result;
 
     switch (options.format) {
     case OutputFormat::text:
-        result = printInfoText(file);
+        result = printInfoText(inputStream);
         break;
     case OutputFormat::json:
-        result = printInfoJSON(file, false);
+        result = printInfoJSON(inputStream, false);
         break;
     case OutputFormat::json_mini:
-        result = printInfoJSON(file, true);
+        result = printInfoJSON(inputStream, true);
         break;
     default:
         assert(false && "Internal error");
@@ -128,12 +127,12 @@ void CommandInfo::executeInfo() {
     }
 
     if (result != KTX_SUCCESS)
-        fatal(rc::INVALID_FILE, "Failed to process KTX2 file \"{}\": {}", options.inputFilepath, ktxErrorString(result));
+        fatal(rc::INVALID_FILE, "Failed to process KTX2 file \"{}\": {}", fmtInFile(options.inputFilepath), ktxErrorString(result));
 }
 
 KTX_error_code CommandInfo::printInfoText(std::istream& file) {
     std::ostringstream messagesOS;
-    const auto validationResult = validateIOStream(file, options.inputFilepath, false, false, [&](const ValidationReport& issue) {
+    const auto validationResult = validateIOStream(file, fmtInFile(options.inputFilepath), false, false, [&](const ValidationReport& issue) {
         fmt::print(messagesOS, "{}-{:04}: {}\n", toString(issue.type), issue.id, issue.message);
         fmt::print(messagesOS, "    {}\n", issue.details);
     });
@@ -167,7 +166,7 @@ KTX_error_code CommandInfo::printInfoJSON(std::istream& file, bool minified) {
     PrintIndent pi{messagesOS, base_indent, indent_width};
 
     bool first = true;
-    const auto validationResult = validateIOStream(file, options.inputFilepath, false, false, [&](const ValidationReport& issue) {
+    const auto validationResult = validateIOStream(file, fmtInFile(options.inputFilepath), false, false, [&](const ValidationReport& issue) {
         if (!std::exchange(first, false)) {
             pi(2, "}},{}", nl);
         }

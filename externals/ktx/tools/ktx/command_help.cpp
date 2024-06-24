@@ -10,7 +10,14 @@
 #include <fmt/format.h>
 
 #if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h> // For GetModuleFileNameW
+#include <shellapi.h> // For ShellExecuteW
 #include <pathcch.h> // For PathCchRemoveFileSpec
 #include <fmt/xchar.h> // For wchat_t format
 #endif
@@ -51,15 +58,15 @@ struct OptionsHelp {
     }
 };
 
-/** @page ktxtools_help ktx help
+/** @page ktx_help ktx help
 @~English
 
 Display help information about the ktx tool.
 
-@section ktxtools_help_synopsis SYNOPSIS
+@section ktx_help_synopsis SYNOPSIS
     ktx help [option...] @e [command]
 
-@section ktxtools_help_description DESCRIPTION
+@section ktx_help_description DESCRIPTION
     @b ktx @b help displays the man page of a specific ktx command specified as the @e command
     argument.
     On windows systems the man pages are opened with the system default browser in html format.
@@ -73,26 +80,26 @@ Display help information about the ktx tool.
         <dt>command</dt>
         <dd>Specifies which command's man page will be displayed. If the command option is missing
         the main ktx tool man page will be displayed. Possible options are: <br />
-            @ref ktxtools_create "create" <br />
-            @ref ktxtools_extract "extract" <br />
-            @ref ktxtools_encode "encode" <br />
-            @ref ktxtools_transcode "transcode" <br />
-            @ref ktxtools_info "info" <br />
-            @ref ktxtools_validate "validate" <br />
-            @ref ktxtools_help "help"
+            @ref ktx_create "create" <br />
+            @ref ktx_extract "extract" <br />
+            @ref ktx_encode "encode" <br />
+            @ref ktx_transcode "transcode" <br />
+            @ref ktx_info "info" <br />
+            @ref ktx_validate "validate" <br />
+            @ref ktx_help "help"
         </dd>
     </dl>
     @snippet{doc} ktx/command.h command options_generic
 
-@section ktxtools_help_exitstatus EXIT STATUS
+@section ktx_help_exitstatus EXIT STATUS
     @snippet{doc} ktx/command.h command exitstatus
 
-@section ktxtools_help_history HISTORY
+@section ktx_help_history HISTORY
 
 @par Version 4.0
  - Initial version
 
-@section ktxtools_help_author AUTHOR
+@section ktx_help_author AUTHOR
     - Mátyás Császár [Vader], RasterGrid www.rastergrid.com
     - Daniel Rákos, RasterGrid www.rastergrid.com
 */
@@ -100,7 +107,7 @@ class CommandHelp : public Command {
     Combine<OptionsHelp, OptionsGeneric> options;
 
 public:
-    virtual int main(int argc, _TCHAR* argv[]) override;
+    virtual int main(int argc, char* argv[]) override;
     virtual void initOptions(cxxopts::Options& opts) override;
     virtual void processOptions(cxxopts::Options& opts, cxxopts::ParseResult& args) override;
 
@@ -110,7 +117,7 @@ private:
 
 // -------------------------------------------------------------------------------------------------
 
-int CommandHelp::main(int argc, _TCHAR* argv[]) {
+int CommandHelp::main(int argc, char* argv[]) {
     try {
         parseCommandLine("ktx help",
                 "Displays the man page of a specific ktx command specified as the command argument."
@@ -150,7 +157,7 @@ void CommandHelp::executeHelp() {
     executablePath.resize(wcslen(executablePath.c_str()));
 
     const auto commandStr = options.command.value_or("");
-    const auto systemCommand = fmt::format(L"{}\\..\\share\\doc\\KTX-Software\\html\\ktxtools\\ktxtools{}{}.html",
+    const auto systemCommand = fmt::format(L"{}\\..\\share\\doc\\KTX-Software\\html\\ktxtools\\ktx{}{}.html",
             executablePath,
             options.command ? L"_" : L"",
             std::wstring(commandStr.begin(), commandStr.end()));
@@ -172,17 +179,18 @@ void CommandHelp::executeHelp() {
 #   endif
 
     const auto executableDir = std::filesystem::path(executablePath).remove_filename();
-    const auto manFile = fmt::format("{}/../share/man/man1/ktxtools{}{}.1",
+    const auto manFile = fmt::format("{}/../share/man/man1/ktx{}{}.1",
                 executableDir.string(),
                 options.command ? "_" : "",
                 options.command.value_or(""));
     if (std::filesystem::exists(manFile)) {
-        // We have relative access to the man file, prioritze opening it that way to support custom install locations
+        // We have relative access to the man file, prioritze opening it
+        // that way to support custom install locations
         const auto systemCommand = fmt::format("man \"{}\"", manFile);
         const auto result = std::system(systemCommand.c_str());
         (void) result;
     } else {
-        const auto systemCommand = fmt::format("man ktxtools{}{}",
+        const auto systemCommand = fmt::format("man ktx{}{}",
                 options.command ? "_" : "",
                 options.command.value_or(""));
         const auto result = std::system(systemCommand.c_str());

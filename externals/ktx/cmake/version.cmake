@@ -180,10 +180,6 @@ function( create_version_header dest_path target )
             VERBATIM
         )
     else()
-        execute_process(
-            COMMAND chmod 755 ./mkversion
-            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-        )
         add_custom_command(
             OUTPUT ${version_h_output}
             COMMAND ./mkversion -o version.h ${dest_path}
@@ -201,7 +197,7 @@ function( create_version_header dest_path target )
 endfunction()
 
 function( create_version_file )
-    file(WRITE ${PROJECT_BINARY_DIR}/ktx.version "${KTX_VERSION}")
+    file(WRITE ${PROJECT_BINARY_DIR}/ktx.version "${KTX_VERSION_FULL}")
 endfunction()
 
 # vim:ai:ts=4:sts=4:sw=2:expandtab:textwidth=70

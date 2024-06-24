@@ -616,6 +616,18 @@ struct FormatDescriptor {
         }
         return maxBitLength;
     }
+    bool anyChannelBitLengthNotEqual(uint32_t bitLength) const {
+        for (uint32_t i = 0; i < 16; ++i) {
+            uint32_t channelBitLength = 0;
+            for (const auto& sample : samples)
+                if (sample.channelType == i)
+                    channelBitLength += sample.bitLength + 1;
+
+            if (bitLength != channelBitLength)
+                return true;
+        }
+        return false;
+    }
     khr_df_sample_datatype_qualifiers_e
     channelDataType(khr_df_model_channels_e c) const {
         // TODO: Fix for shared exponent case...
@@ -710,6 +722,16 @@ struct FormatDescriptor {
             if (sample.channelType == static_cast<uint32_t>(channel))
                 return &sample;
         return nullptr;
+    }
+
+    void removeLastChannel() {
+        const auto numChannels = static_cast<uint32_t>(samples.size());
+        assert(numChannels > 1);
+        assert(basic.bytesPlane0 % numChannels == 0);
+        samples.pop_back();
+        basic.bytesPlane0 = basic.bytesPlane0 / numChannels * (numChannels - 1u);
+        if (extended.channelCount != 0)
+            --extended.channelCount;
     }
 
     friend std::ostream& operator<< (std::ostream& o, khr_df_sample_datatype_qualifiers_e q) {

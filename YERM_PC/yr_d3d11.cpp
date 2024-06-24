@@ -649,7 +649,7 @@ namespace onart {
         }
         if (option == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
             ktxBasisParams params{};
-            params.compressionLevel = KTX_ETC1S_DEFAULT_COMPRESSION_LEVEL;
+            params.compressionLevel = 5;// KTX_ETC1S_DEFAULT_COMPRESSION_LEVEL;
             params.uastc = KTX_TRUE;
             params.verbose = KTX_FALSE;
             params.structSize = sizeof(params);

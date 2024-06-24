@@ -4,11 +4,23 @@
 
 cmake_minimum_required(VERSION 3.15)
 
+include(CMakePrintHelpers)
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/modules/")
 
 find_package(Bash REQUIRED)
 
 include(cmake/version.cmake)
+
+if(POLICY CMP0149)
+    # Ignore CMAKE_SYSTEM_VERSION and select either latest available
+    # Windows SDK or that specified in WindowsSDKVersion environment
+    # variable  Needed because OLD policy picks SDK that matches
+    # system version, CI uses Windows Server 2022 and its matching
+    # SDK lacks the arm64 glu32.lib which causes builds to fail.
+    # MUST be set before project() command.
+    cmake_policy(SET CMP0149 NEW)
+endif()
 
 project(KTX-Software
     VERSION ${KTX_VERSION}
@@ -28,7 +40,7 @@ include(cmake/cputypetest.cmake)
 if( IOS OR EMSCRIPTEN )
     set( LIB_TYPE_DEFAULT ON )
 else()
-    set( LIB_TYPE_DEFAULT OFF )
+    set( LIB_TYPE_DEFAULT ON ) # YERM (on = static)
 endif()
 
 CMAKE_DEPENDENT_OPTION( KTX_FEATURE_TOOLS
@@ -37,17 +49,18 @@ CMAKE_DEPENDENT_OPTION( KTX_FEATURE_TOOLS
                         "NOT IOS;NOT ANDROID;NOT EMSCRIPTEN"
                         OFF
 )
-option( KTX_FEATURE_DOC "Create KTX documentation" OFF )
-option( KTX_FEATURE_STATIC_LIBRARY "Create static libraries (shared otherwise)" ON )
-option( KTX_FEATURE_JNI "Create Java bindings for libktx" OFF )
-option( KTX_FEATURE_TESTS "Create unit tests" OFF ) # YERM
-option( KTX_FEATURE_TOOLS_CTS "Enable KTX CLI Tools CTS tests (requires CTS submodule)" OFF )
+option( KTX_FEATURE_DOC "Create KTX documentation." OFF )
+option( KTX_FEATURE_STATIC_LIBRARY "Create static libraries (shared otherwise)." ${LIB_TYPE_DEFAULT} )
+option( KTX_FEATURE_JNI "Create Java bindings for libktx." OFF )
+option( KTX_FEATURE_PY "Create Python source distribution." OFF )
+option( KTX_FEATURE_TESTS "Create unit tests." OFF ) # YERM
+option( KTX_FEATURE_TOOLS_CTS "Enable KTX CLI Tools CTS tests (requires CTS submodule)." OFF )
 
 if(KTX_FEATURE_TOOLS_CTS AND NOT KTX_FEATURE_TOOLS)
-    message(WARNING "KTX_FEATURE_TOOLS is not set -> disabling KTX_FEATURE_TOOLS_CTS")
+    message(WARNING "KTX_FEATURE_TOOLS is not set -> disabling KTX_FEATURE_TOOLS_CTS.")
     set(KTX_FEATURE_TOOLS_CTS "OFF")
 elseif(KTX_FEATURE_TOOLS_CTS AND NOT KTX_FEATURE_TESTS)
-    message(WARNING "KTX_FEATURE_TESTS is not set -> disabling KTX_FEATURE_TOOLS_CTS")
+    message(WARNING "KTX_FEATURE_TESTS is not set -> disabling KTX_FEATURE_TOOLS_CTS.")
     set(KTX_FEATURE_TOOLS_CTS "OFF")
 endif()
 
@@ -92,16 +105,16 @@ endif()
 
 
 CMAKE_DEPENDENT_OPTION( KTX_EMBED_BITCODE
-    "Embed bitcode in binaries"
+    "Embed bitcode in binaries."
     OFF
     "APPLE AND IOS"
     OFF
 )
 
-option( KTX_FEATURE_KTX1 "Enable KTX 1 support" ON )
-option( KTX_FEATURE_KTX2 "Enable KTX 2 support" ON )
-option( KTX_FEATURE_VK_UPLOAD "Enable Vulkan texture upload" ON )
-option( KTX_FEATURE_GL_UPLOAD "Enable OpenGL texture upload" ON )
+option( KTX_FEATURE_KTX1 "Enable KTX 1 support." ON )
+option( KTX_FEATURE_KTX2 "Enable KTX 2 support." ON )
+option( KTX_FEATURE_VK_UPLOAD "Enable Vulkan texture upload." ON )
+option( KTX_FEATURE_GL_UPLOAD "Enable OpenGL texture upload." ON )
 # When a variable like this is set via CMakeUserPresets.json, it no longer
 # shows the selectable options provided by the STRINGS property.
 set( KTX_FEATURE_LOADTEST_APPS
@@ -113,6 +126,24 @@ set( KTX_FEATURE_LOADTEST_APPS
 set_property( CACHE KTX_FEATURE_LOADTEST_APPS
               PROPERTY STRINGS OFF OpenGL Vulkan OpenGL+Vulkan
 )
+if(WIN32 OR APPLE)
+    if(NOT IOS)
+        CMAKE_DEPENDENT_OPTION( KTX_LOADTEST_APPS_USE_LOCAL_DEPENDENCIES
+            "Look for locally installed dependencies. Fail build if not found. When OFF use binaries from the KTX-Software repo, if available for the target processor. Useful when building for Windows arm64 using vcpkg packages."
+            OFF
+            KTX_FEATURE_LOADTEST_APPS
+            OFF
+        )
+    endif()
+else()
+    set( KTX_LOADTEST_APPS_USE_LOCAL_DEPENDENCIES ON )
+endif()
+
+option( KTX_GENERATE_VK_FILES
+    "Include targets for generating VkFormat related files. For project developers only."
+    OFF
+)
+mark_as_advanced(FORCE KTX_GENERATE_VK_FILES)
 
 # Platform specific settings
 
@@ -230,17 +261,27 @@ else()
 endif()
 
 # Depends on the settings, so it must be included after
-include(cmake/mkvk.cmake)
+if(KTX_GENERATE_VK_FILES)
+    include(cmake/mkvk.cmake)
+endif()
 
 # Global compile & link options including optimization flags
+
+option( KTX_WERROR "Make all warnings in KTX code into errors." OFF)
+
 if(MSVC)
-    add_compile_options( /W4;/WX )
+    # ";" argument separator is problematic. Can't use a GenEx `$<IF:`
+    # because `/W4;/WX` is returned as a single string.
+    add_compile_options( /W4;$<$<BOOL:${KTX_WERROR}>:/WX> )
     add_compile_options( $<IF:$<CONFIG:Debug>,/Gz,/O2> )
+    # Enable UTF-8 support
+    add_compile_options( $<$<C_COMPILER_ID:MSVC>:/utf-8> )
+    add_compile_options( $<$<CXX_COMPILER_ID:MSVC>:/utf-8> )
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT") # YERM
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd") # YERM
 elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU"
        OR ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
-    add_compile_options(-Wall -Wextra -Werror)
+    add_compile_options( -Wall -Wextra $<$<BOOL:${KTX_WERROR}>:-Werror>)
     add_compile_options( $<IF:$<CONFIG:Debug>,-O0,-O3> )
     if(EMSCRIPTEN)
         add_link_options( $<IF:$<CONFIG:Debug>,-gsource-map,-O3> )
@@ -249,6 +290,55 @@ elseif(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU"
     endif()
 else()
     message(FATAL_ERROR "${CMAKE_CXX_COMPILER_ID} not yet supported.")
+endif()
+
+# To improve output determinism enable precise floating point operations globally
+# This code was based on lib/astc-encoder/Source/cmake_core.cmake
+
+# For Visual Studio prior to 2022 (compiler < 19.30) /fp:strict
+# For Visual Studio 2022 (compiler >= 19.30) /fp:precise
+# For Visual Studio 2022 ClangCL seems to have accidentally enabled contraction by default,
+# so behaves differently to CL.exe. Use the -Xclang argument to workaround and allow access
+# GNU-style switch to control contraction and force disable.
+
+# On CMake 3.25 or older CXX_COMPILER_FRONTEND_VARIANT is not always set
+if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "")
+    set(CMAKE_CXX_COMPILER_FRONTEND_VARIANT "${CMAKE_CXX_COMPILER_ID}")
+endif()
+
+# Compiler accepts MSVC-style command line options
+set(is_msvc_fe "$<STREQUAL:${CMAKE_CXX_COMPILER_FRONTEND_VARIANT},MSVC>")
+# Compiler accepts GNU-style command line options
+set(is_gnu_fe1 "$<STREQUAL:${CMAKE_CXX_COMPILER_FRONTEND_VARIANT},GNU>")
+# Compiler accepts AppleClang-style command line options, which is also GNU-style
+set(is_gnu_fe2 "$<STREQUAL:${CMAKE_CXX_COMPILER_FRONTEND_VARIANT},AppleClang>")
+# Compiler accepts GNU-style command line options
+set(is_gnu_fe "$<OR:${is_gnu_fe1},${is_gnu_fe2}>")
+
+# Compiler is Visual Studio cl.exe
+set(is_msvccl "$<AND:${is_msvc_fe},$<CXX_COMPILER_ID:MSVC>>")
+# Compiler is Visual Studio clangcl.exe
+set(is_clangcl "$<AND:${is_msvc_fe},$<CXX_COMPILER_ID:Clang>>")
+# Compiler is upstream clang with the standard frontend
+set(is_clang "$<AND:${is_gnu_fe},$<CXX_COMPILER_ID:Clang,AppleClang>>")
+
+if(${is_msvccl} AND $<VERSION_LESS:$<CXX_COMPILER_VERSION>,19.30>)
+    add_compile_options(/fp:strict)
+endif()
+if(${is_msvccl} AND $<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,19.30>)
+    add_compile_options(/fp:precise)
+endif()
+if(${is_clangcl})
+    add_compile_options(/fp:precise)
+endif()
+if(${is_clangcl} AND $<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,14.0.0>)
+    add_compile_options(-Xclang -ffp-contract=off)
+endif()
+if(${is_clang} AND $<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,10.0.0>)
+    add_compile_options(-ffp-model=precise)
+endif()
+if(${is_gnu_fe})
+    add_compile_options(-ffp-contract=off)
 endif()
 
 set(KTX_BUILD_DIR "${CMAKE_BINARY_DIR}")
@@ -297,10 +387,15 @@ set(KTX_MAIN_SRC
     lib/texture2.c
     lib/texture2.h
     lib/uthash.h
+    lib/vk2gl.h
     lib/vk_format.h
+    lib/vkFormat2glFormat.inl
+    lib/vkFormat2glInternalFormat.inl
+    lib/vkFormat2glType.inl
     lib/vkformat_check.c
     lib/vkformat_enum.h
     lib/vkformat_str.c
+    lib/vkformat_typesize.c
     )
 
 set(BASISU_ENCODER_CXX_SRC
@@ -356,12 +451,13 @@ if(WIN32)
     # generators (like Visual Studio) to take the exact path and not
     # change it.
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY $<1:${KTX_BUILD_DIR}/$<CONFIG>>)
-elseif(APPLE)
+elseif(APPLE OR LINUX)
     if(NOT IOS)
-        # Set a common RUNTIME_OUTPUT_DIR for all targets, so that
-        # INSTALL RPATH is functional in build directory as well.
+        # Set a common RUNTIME_OUTPUT_DIR and LIBRARY_OUTPUT_DIR for all targets,
+        # so that INSTALL RPATH is functional in build directory as well.
         # BUILD_WITH_INSTALL_RPATH is necessary for working code signing.
-        set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${KTX_BUILD_DIR}/$<CONFIG>)
+        set(CMAKE_RUNTIME_OUTPUT_DIRECTORY $<1:${KTX_BUILD_DIR}/$<CONFIG>>)
+        set(CMAKE_LIBRARY_OUTPUT_DIRECTORY $<1:${KTX_BUILD_DIR}/$<CONFIG>>)
     endif()
 endif()
 
@@ -369,7 +465,6 @@ endif()
 add_library( ktx ${LIB_TYPE}
     ${KTX_MAIN_SRC}
     )
-    
 
 # Read-only library
 add_library( ktx_read ${LIB_TYPE}
@@ -379,7 +474,7 @@ add_library( ktx_read ${LIB_TYPE}
 macro(common_libktx_settings target enable_write library_type)
 
     if(TARGET mkvk)
-        # Creating vulkan headers is only required when Vulkan SDK updates.
+        # Creating vulkan headers only required after Vulkan Spec/SDK updates.
         add_dependencies(${target} mkvk)
     endif()
 
@@ -392,6 +487,9 @@ macro(common_libktx_settings target enable_write library_type)
         VERSION ${PROJECT_VERSION}
         SOVERSION ${PROJECT_VERSION_MAJOR}
         XCODE_ATTRIBUTE_ENABLE_HARDENED_RUNTIME "YES"
+        CXX_STANDARD 11
+        CXX_STANDARD_REQUIRED YES
+
     )
     if(IOS)
         set_target_properties(${target} PROPERTIES
@@ -453,11 +551,16 @@ macro(common_libktx_settings target enable_write library_type)
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/lib/basisu/zstd>
         $<INSTALL_INTERFACE:lib/basisu/zstd>
 
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/other_include>
-        $<INSTALL_INTERFACE:other_include>
-
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/utils>
         $<INSTALL_INTERFACE:utils>
+    )
+
+    target_include_directories(
+        ${target}
+        SYSTEM
+    PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/other_include>
+        $<INSTALL_INTERFACE:other_include>
     )
 
     if( ${library_type} STREQUAL STATIC )
@@ -560,7 +663,7 @@ macro(common_libktx_settings target enable_write library_type)
         find_package(Threads REQUIRED)
         target_link_libraries(
             ${target}
-        PUBLIC
+            PRIVATE
             dl
             Threads::Threads
         )
@@ -647,6 +750,10 @@ common_libktx_settings(ktx_read 0 ${LIB_TYPE})
 
 if(KTX_FEATURE_JNI)
     add_subdirectory(interface/java_binding)
+endif()
+
+if(KTX_FEATURE_PY)
+    add_subdirectory(interface/python_binding)
 endif()
 
 create_version_header(lib ktx)
@@ -787,6 +894,7 @@ if(EMSCRIPTEN)
         "SHELL:-s EXPORT_NAME=LIBKTX"
         "SHELL:-s EXPORTED_RUNTIME_METHODS=[\'GL\']"
         "SHELL:-s GL_PREINITIALIZED_CONTEXT=1"
+        "SHELL:-s GL_ENABLE_GET_PROC_ADDRESS=1" # For Emscripten 3.1.51+
     )
     set_target_properties( ktx_js PROPERTIES OUTPUT_NAME "libktx")
 
@@ -858,6 +966,7 @@ add_library( objUtil STATIC
     utils/sbufstream.h
     utils/scapp.h
     utils/stdafx.h
+    utils/platform_utils.h
     utils/unused.h
     )
 target_include_directories(
@@ -958,8 +1067,17 @@ else()
 endif()
 
 # Other external projects
-add_subdirectory(other_projects/fmt)
-add_subdirectory(other_projects/cxxopts)
+# `NOT TARGET`s here are a precaution. They would only be exercised if
+# this CMakeLists is included in another project which is unlikely
+# except for building the ktx library.
+if((KTX_FEATURE_TOOLS OR KTX_FEATURE_TESTS) AND NOT TARGET fmt::fmt)
+    set(FMT_INSTALL OFF)
+    set(FMT_SYSTEM_HEADERS ON)
+    add_subdirectory(other_projects/fmt)
+endif()
+if(KTX_FEATURE_TOOLS AND NOT TARGET cxxopts::cxxopts)
+    add_subdirectory(other_projects/cxxopts)
+endif()
 
 # Tools
 if(KTX_FEATURE_TOOLS)
@@ -1046,7 +1164,7 @@ install(EXPORT KTXTargets
     FILE KtxTargets.cmake
     NAMESPACE KTX::
     DESTINATION lib/cmake/ktx
-    COMPONENT library
+    COMPONENT dev
 )
 
 include(CMakePackageConfigHelpers)
@@ -1059,7 +1177,7 @@ install( FILES
     "cmake/KtxConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/KtxConfigVersion.cmake"
     DESTINATION lib/cmake/ktx
-    COMPONENT library
+    COMPONENT dev
 )
 
 # CPack
@@ -1146,6 +1264,16 @@ elseif(LINUX)
     set(CPACK_GENERATOR DEB RPM TBZ2)
     set(CPACK_PACKAGE_CHECKSUM SHA1)
     set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ReadMe.txt")
+
+    # This fixes the directory permission derived from Ubuntu ${BUILD_DIR} of 0775 to 0755.
+    # otherwise when installing the RPM, it conflicts with the base filesystem.rpm that is
+    # setting the directory permissions and owns them to 0755.
+    # See GitHub Issue #827.
+    # NOTE: Alternatively It would be better build the RPM through a docker or RedHat OS in the CI
+    set(CPACK_RPM_DEFAULT_DIR_PERMISSIONS
+        OWNER_READ OWNER_WRITE OWNER_EXECUTE
+        GROUP_READ GROUP_EXECUTE
+        WORLD_READ WORLD_EXECUTE)
 elseif(WIN32)
     set(CPACK_GENERATOR "NSIS")
     # Add logo to top left of installer pages. Despite the installer-

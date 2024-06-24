@@ -20,6 +20,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #endif
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -34,11 +35,12 @@
 #include "memstream.h"
 #include "texture2.h"
 #include "unused.h"
-#include "vk_format.h"
 
 // FIXME: Test this #define and put it in a header somewhere.
 //#define IS_BIG_ENDIAN (1 == *(unsigned char *)&(const int){0x01000000ul})
 #define IS_BIG_ENDIAN 0
+
+extern uint32_t vkFormatTypeSize(VkFormat format);
 
 struct ktxTexture_vtbl ktxTexture2_vtbl;
 struct ktxTexture_vtblInt ktxTexture2_vtblInt;
@@ -217,18 +219,18 @@ ktx_uint32_t e5b9g9r9_ufloat_comparator[e5b9g9r9_bdbwordcount] = {
 #endif
 
 /**
-* @private
-* @~English
-* @brief Initialize a ktxFormatSize object from the info in a DFD.
-*
-* This is used instead of referring to the DFD directly so code dealing
-* with format info can be common to KTX 1 & 2.
-*
-* @param[in] This   pointer the ktxTexture2 whose DFD to use.
-* @param[in] fi       pointer to the ktxFormatSize object to initialize.
-*
-* @return    KTX_TRUE on success, otherwise KTX_FALSE.
-*/
+ * @private
+ * @~English
+ * @brief Initialize a ktxFormatSize object from the info in a DFD.
+ *
+ * This is used instead of referring to the DFD directly so code dealing
+ * with format info can be common to KTX 1 & 2.
+ *
+ * @param[in] This   pointer the ktxFormatSize to initialize.
+ * @param[in] pDFD   pointer to the DFD whose data to use.
+ *
+ * @return    KTX_TRUE on success, otherwise KTX_FALSE.
+ */
 bool
 ktxFormatSize_initFromDfd(ktxFormatSize* This, ktx_uint32_t* pDfd)
 {
@@ -294,6 +296,10 @@ ktxFormatSize_initFromDfd(ktxFormatSize* This, ktx_uint32_t* pDfd)
                 return false;
             if (result & i_PACKED_FORMAT_BIT)
                 This->flags |= KTX_FORMAT_SIZE_PACKED_BIT;
+            if (result & i_COMPRESSED_FORMAT_BIT)
+                This->flags |= KTX_FORMAT_SIZE_COMPRESSED_BIT;
+            if (result & i_YUVSDA_FORMAT_BIT)
+                This->flags |= KTX_FORMAT_SIZE_YUVSDA_BIT;
         }
     }
     if (This->blockSizeInBits == 0) {
@@ -304,9 +310,10 @@ ktxFormatSize_initFromDfd(ktxFormatSize* This, ktx_uint32_t* pDfd)
         // the following reasons. (1) in v2 files levelIndex is always used to
         // calculate data size and, of course, for the level offsets. (2) Finer
         // grain access to supercompressed data than levels is not possible.
-        uint32_t blockByteLength;
-        recreateBytesPlane0FromSampleInfo(pDfd, &blockByteLength);
-        This->blockSizeInBits = blockByteLength * 8;
+        //
+        // The value set here is applied to the DFD after the data has been
+        // inflated during loading.
+        This->blockSizeInBits = reconstructDFDBytesPlane0FromSamples(pDfd) * 8;
     }
     return true;
 }
@@ -326,20 +333,7 @@ ktxFormatSize_initFromDfd(ktxFormatSize* This, ktx_uint32_t* pDfd)
 static uint32_t*
 ktxVk2dfd(ktx_uint32_t vkFormat)
 {
-    switch(vkFormat) {
-      case VK_FORMAT_D16_UNORM_S8_UINT:
-        // 2 16-bit words. D16 in the first. S8 in the 8 LSBs of the second.
-        return createDFDDepthStencil(16, 8, 4);
-      case VK_FORMAT_D24_UNORM_S8_UINT:
-        // 1 32-bit word. D24 in the MSBs. S8 in the LSBs.
-        return createDFDDepthStencil(24, 8, 4);
-      case VK_FORMAT_D32_SFLOAT_S8_UINT:
-        // 2 32-bit words. D32 float in the first word. S8 in LSBs of the
-        // second.
-        return createDFDDepthStencil(32, 8, 8);
-      default:
-        return vk2dfd(vkFormat);
-    }
+    return vk2dfd(vkFormat);
 }
 
 /**
@@ -436,34 +430,11 @@ ktxTexture2_construct(ktxTexture2* This, ktxTextureCreateInfo* createInfo,
 
     This->vkFormat = createInfo->vkFormat;
 
-    // Ideally we'd set all these things in ktxFormatSize_initFromDfd
-    // but This->_protected is not allocated until ktxTexture_construct;
-    if (This->isCompressed) {
-        This->_protected->_typeSize = 1;
-    } else if (formatSize.flags & (KTX_FORMAT_SIZE_DEPTH_BIT | KTX_FORMAT_SIZE_STENCIL_BIT)) {
-        switch (createInfo->vkFormat) {
-        case VK_FORMAT_S8_UINT:
-            This->_protected->_typeSize = 1;
-            break;
-        case VK_FORMAT_D16_UNORM: // [[fallthrough]];
-        case VK_FORMAT_D16_UNORM_S8_UINT:
-            This->_protected->_typeSize = 2;
-            break;
-        case VK_FORMAT_X8_D24_UNORM_PACK32: // [[fallthrough]];
-        case VK_FORMAT_D24_UNORM_S8_UINT: // [[fallthrough]];
-        case VK_FORMAT_D32_SFLOAT: // [[fallthrough]];
-        case VK_FORMAT_D32_SFLOAT_S8_UINT:
-            This->_protected->_typeSize = 4;
-            break;
-        }
-    } else if (formatSize.flags & KTX_FORMAT_SIZE_PACKED_BIT) {
-        This->_protected->_typeSize = formatSize.blockSizeInBits / 8;
-    } else {
-        // Unpacked and uncompressed
-        uint32_t numComponents;
-        getDFDComponentInfoUnpacked(This->pDfd, &numComponents,
-                                    &This->_protected->_typeSize);
-    }
+    // The typeSize cannot be reconstructed just from the DFD as the BDFD
+    // does not capture the packing expressed by the [m]PACK[n] layout
+    // information in the VkFormat, so we calculate the typeSize directly
+    // from the vkFormat
+    This->_protected->_typeSize = vkFormatTypeSize(createInfo->vkFormat);
 
     This->supercompressionScheme = KTX_SS_NONE;
 
@@ -1110,6 +1081,9 @@ ktxTexture2_constructFromStdioStream(ktxTexture2* This, FILE* stdioStream,
  * @~English
  * @brief Construct a ktxTexture from a named KTX file.
  *
+ * The file name must be encoded in utf-8. On Windows convert unicode names
+ * to utf-8 with @c WideCharToMultiByte(CP_UTF8, ...) before calling.
+ *
  * See ktxTextureInt_constructFromStream for details.
  *
  * @param[in] This pointer to a ktxTextureInt-sized block of memory to
@@ -1136,7 +1110,7 @@ ktxTexture2_constructFromNamedFile(ktxTexture2* This,
     if (This == NULL || filename == NULL)
         return KTX_INVALID_VALUE;
 
-    file = fopen(filename, "rb");
+    file = ktxFOpenUTF8(filename, "rb");
     if (!file)
        return KTX_FILE_OPEN_FAILED;
 
@@ -1386,6 +1360,9 @@ ktxTexture2_CreateFromStdioStream(FILE* stdioStream,
  *
  * The address of a newly created ktxTexture2 reflecting the contents of the
  * file is written to the location pointed at by @p newTex.
+ *
+ * The file name must be encoded in utf-8. On Windows convert unicode names
+ * to utf-8 with @c WideCharToMultiByte(CP_UTF8, ...) before calling.
  *
  * The create flag KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT should not be set,
  * if the ktxTexture is ultimately to be uploaded to OpenGL or Vulkan. This
@@ -1962,15 +1939,17 @@ ktxTexture2_NeedsTranscoding(ktxTexture2* This)
 /**
  * @memberof ktxTexture2
  * @~English
- * @brief Return the total size in bytes of the uncompressed data of a ktxTexture2.
+ * @brief Return the total size in bytes of the uncompressed data of a
+ *        ktxTexture2.
  *
- * If supercompressionScheme == KTX_SS_NONE or
- * KTX_SS_BASIS_LZ, returns the value of @c This->dataSize
- * else if supercompressionScheme == KTX_SS_ZSTD or KTX_SS_ZLIB, it returns the
- * sum of the uncompressed sizes of each mip level plus space for the level padding. With no
- * supercompression the data size and uncompressed data size are the same. For Basis
- * supercompression the uncompressed size cannot be known until the data is transcoded
- * so the compressed size is returned.
+ * If supercompressionScheme == @c KTX_SS_NONE or
+ * @c KTX_SS_BASIS_LZ, returns the value of @c This->dataSize
+ * else if supercompressionScheme == @c KTX_SS_ZSTD or @c KTX_SS_ZLIB, it
+ * returns the sum of the uncompressed sizes of each mip level plus space for
+ * the level padding. With no supercompression the data size and uncompressed
+ * data size are the same. For Basis supercompression the uncompressed size
+ * cannot be known until the data is transcoded so the compressed size is
+ * returned.
  *
  * @param[in]     This     pointer to the ktxTexture1 object of interest.
  */
@@ -2345,12 +2324,12 @@ ktxTexture2_inflateZLIBInt(ktxTexture2* This, ktx_uint8_t* pDeflatedData,
  * @~English
  * @brief Load all the image data from the ktxTexture2's source.
  *
- * The data will be inflated if supercompressionScheme == KTX_SS_ZSTD or
- * KTX_SS_ZLIB.
+ * The data will be inflated if supercompressionScheme == @c KTX_SS_ZSTD or
+ * @c KTX_SS_ZLIB.
  * The data is loaded into the provided buffer or to an internally allocated
  * buffer, if @p pBuffer is @c NULL. Callers providing their own buffer must
  * ensure the buffer large enough to hold the inflated data for files deflated
- * with Zstd or ZLIB. See ktxTexture2_GetDataSizeUncompressed().
+ * with Zstd or ZLIB. See ktxTexture2\_GetDataSizeUncompressed().
  *
  * The texture's levelIndex, dataSize, DFD  and supercompressionScheme will
  * all be updated after successful inflation to reflect the inflated data.

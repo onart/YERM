@@ -2,9 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 function(set_test_properties test_target)
+    # See comments in set_tools_properties() in ../tools/CMakeLists.txt.
     if(APPLE)
         set_target_properties(${test_target} PROPERTIES
             INSTALL_RPATH "@executable_path;/usr/local/lib"
+        )
+    elseif(LINUX)
+        set_target_properties(${test_target} PROPERTIES
+            INSTALL_RPATH "$ORIGIN;$ORIGIN/../lib"
         )
     endif()
 endfunction()
@@ -28,7 +33,9 @@ if(KTX_FEATURE_TOOLS)
 
     # ktx cli tool tests
     if(KTX_FEATURE_TOOLS_CTS)
+        add_subdirectory(ktxdiff)
         set(KTX_TOOLS_PATH $<TARGET_FILE:ktxtools>)
+        set(KTX_DIFF_PATH $<TARGET_FILE:ktxdiff>)
         add_subdirectory(cts/clitests)
     endif()
 endif()

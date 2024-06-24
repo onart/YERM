@@ -48,9 +48,7 @@ VulkanLoadTests::VulkanLoadTests(const sampleInvocation samples[],
 
 VulkanLoadTests::~VulkanLoadTests()
 {
-    if (pCurSample != nullptr) {
-        delete pCurSample;
-    }
+    delete pCurSample;
 }
 
 bool
@@ -73,9 +71,7 @@ VulkanLoadTests::initialize(Args& args)
 void
 VulkanLoadTests::finalize()
 {
-    if (pCurSample != nullptr) {
-        delete pCurSample;
-    }
+    delete pCurSample;
     VulkanAppSDL::finalize();
 }
 
@@ -353,6 +349,10 @@ const VulkanLoadTests::sampleInvocation siSamples[] = {
     { Texture::create,
       "uastc_Iron_Bars_001_normal.ktx2",
       "Transcode of UASTC+zstd Compressed KTX2 XY normal map mipmapped"
+    },
+    { Texture::create,
+      "--use-vma uastc_Iron_Bars_001_normal.ktx2",
+      "Transcode of UASTC+zstd Compressed KTX2 XY normal map mipmapped, using VMA"
     },
     { Texture::create,
       "ktx_document_uastc_rdo4_zstd5.ktx2",

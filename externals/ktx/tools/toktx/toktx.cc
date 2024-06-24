@@ -1,8 +1,6 @@
 // -*- tab-width: 4; -*-
 // vi: set sw=2 ts=4 sts=4 expandtab:
 
-// $Id: aaf1dc131758d6a2a60a7ad1e797c02451aecd32 $
-
 // Copyright 2010-2020 The Khronos Group Inc.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -16,6 +14,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <sstream>
 #include <vector>
@@ -69,7 +68,7 @@ enum oetf_e {
 
 static ktx_uint32_t log2(ktx_uint32_t v);
 #if IMAGE_DEBUG
-static void dumpImage(_TCHAR* name, int width, int height, int components,
+static void dumpImage(char* name, int width, int height, int components,
                       int componentSize, unsigned char* srcImage);
 #endif
 
@@ -86,15 +85,16 @@ Create a KTX file from JPEG, PNG or netpbm format files.
 @section toktx_description DESCRIPTION
     Create a Khronos format texture file (KTX) from a set of JPEG (.jpg),
     PNG (.png) or Netpbm format (.pam, .pgm, .ppm) images. It writes the
-    destination ktx file to @e outfile, appending ".ktx{,2}" if necessary. If
-    @e outfile is '-' the output will be written to stdout.
+    destination ktx file to @e outfile, creating parent directories and
+    appending ".ktx{,2}" if necessary. If @e outfile is '-' the output will
+    be written to stdout.
 
     @b toktx reads each named @e infile. which must be in .jpg, .png, .pam,
     .ppm or .pgm format. @e infiles prefixed with '@' are read as text files
     listing actual file names to process with one file path per line. Paths
     must be absolute or relative to the current directory when @b toktx is run.
     If '\@@' is used instead, paths must be absolute or relative to the location
-    of the list file.
+    of the list file. File paths must be encoded in UTF-8.
 
     The target texture type (number of components in the output texture) is
     chosen via @b --target_type. Swizzling of the components of the input
@@ -151,14 +151,14 @@ Create a KTX file from JPEG, PNG or netpbm format files.
 
     The following options are always available:
     <dl>
-    <dt>--2d</dt>
+    <dt>\--2d</dt>
     <dd>If the image height is 1, by default a KTX file for a 1D texture is
         created. With this option one for a 2D texture is created instead.</dd>
-    <dt>--automipmap</dt>
+    <dt>\--automipmap</dt>
     <dd>Causes the KTX file to be marked to request generation of a mipmap
         pyramid when the file is loaded. This option is mutually exclusive
         with @b --genmipmap, @b --levels and @b --mipmap.</dd>
-    <dt>--cubemap</dt>
+    <dt>\--cubemap</dt>
     <dd>KTX file is for a cubemap. At least 6 @e infiles must be provided,
         more if @b --mipmap or @b --layers is also specified. Provide the
         images in the order +X, -X, +Y, -Y, +Z, -Z where the arrangement is a
@@ -167,43 +167,43 @@ Create a KTX file from JPEG, PNG or netpbm format files.
         specified, provide the faces for layer 0 first then for layer 1, etc.
         Images must have an upper left origin so --lower_left_maps_to_s0t0
         is ignored with this option.</dd>
-    <dt>--depth &lt;number&gt;</dt>
+    <dt>\--depth &lt;number&gt;</dt>
     <dd>KTX file is for a 3D texture with a depth of @e number where
         @e number &gt; 0. Provide the file(s) for z=0 first then those for
         z=1, etc. It is an error to specify this together with
         @b --layers or @b --cubemap.</dd>
-    <dt>--genmipmap</dt>
+    <dt>\--genmipmap</dt>
     <dd>Causes mipmaps to be generated for each input file. This option is
         mutually exclusive with @b --automipmap and @b --mipmap. When set,
         the following mipmap-generation related options become valid,
         otherwise they are ignored.
         <dl>
-        <dt>--filter &lt;name&gt;</dt>
+        <dt>\--filter &lt;name&gt;</dt>
         <dd>Specifies the filter to use when generating the mipmaps. @e name
             is a string. The default is @e lanczos4. The following names are
             recognized: @e box, @e tent, @e bell, @e b-spline, @e mitchell,
             @e lanczos3, @e lanczos4, @e lanczos6, @e lanczos12, @e blackman,
             @e kaiser, @e gaussian, @e catmullrom, @e quadratic_interp,
             @e quadratic_approx and @e quadratic_mix.</dd>
-        <dt>--fscale &lt;floatVal&gt;</dt>
+        <dt>\--fscale &lt;floatVal&gt;</dt>
         <dd>The filter scale to use. The default is 1.0.</dd>
-        <dt>--wmode &lt;mode&gt;</dt>
+        <dt>\--wmode &lt;mode&gt;</dt>
         <dd>Specify how to sample pixels near the image boundaries. Values
             are @e wrap, @e reflect and @e clamp. The default is @e clamp.</dd>
         </dl>
     </dd>
-    <dt>--layers &lt;number&gt;</dt>
+    <dt>\--layers &lt;number&gt;</dt>
     <dd>KTX file is for an array texture with @e number of layers where
         @e number &gt; 0. Provide the file(s) for layer 0 first then those
         for layer 1, etc. It is an error to specify this together with
         @b --depth.</dd>
-    <dt>--levels &lt;number&gt;</dt>
+    <dt>\--levels &lt;number&gt;</dt>
     <dd>KTX file is for a mipmap pyramid with @e number of levels rather than
         a full pyramid. @e number must be &gt; 1 and  &lt;= the maximum number
         of levels determined from the size of the base level image. Provide the
         base level image first, if using @b --mipmap. This option is mutually
         exclusive with @b --automipmap.</dd>
-    <dt>--mipmap</dt>
+    <dt>\--mipmap</dt>
     <dd>KTX file is for a mipmap pyramid with one @b infile being explicitly
         provided for each level. Provide the images in the order of layer
         then face or depth slice then level with the base-level image first
@@ -213,13 +213,13 @@ Create a KTX file from JPEG, PNG or netpbm format files.
 
         This option is mutually exclusive with @b --automipmap and
         @b --genmipmap.</dd>
-    <dt>--nometadata</dt>
+    <dt>\--nometadata</dt>
     <dd>Do not write KTXorientation metadata into the output file. Metadata
         is written by default. Use of this option is not recommended.</dd>
-    <dt>--nowarn</dt>
+    <dt>\--nowarn</dt>
     <dd>Silence warnings which are issued when certain transformations are
         performed on input images.</dd>
-    <dt>--upper_left_maps_to_s0t0</dt>
+    <dt>\--upper_left_maps_to_s0t0</dt>
     <dd>Map the logical upper left corner of the image to s0,t0.
         Although opposite to the OpenGL convention, this is the DEFAULT
         BEHAVIOUR. netpbm and PNG files have an upper left origin so this
@@ -228,7 +228,7 @@ Create a KTX file from JPEG, PNG or netpbm format files.
         to inform loaders of the logical orientation. If an OpenGL {,ES}
         loader ignores the orientation value, the image will appear upside
         down.</dd>
-    <dt>--lower_left_maps_to_s0t0</dt>
+    <dt>\--lower_left_maps_to_s0t0</dt>
     <dd>Map the logical lower left corner of the image to s0,t0.
         This causes the input netpbm and PNG images to be flipped vertically
         to a lower-left origin. When this option is in effect, toktx
@@ -236,48 +236,59 @@ Create a KTX file from JPEG, PNG or netpbm format files.
         to inform loaders of the logical orientation. If a Vulkan loader
         ignores the orientation value, the image will appear upside down.
         This option is ignored with @b --cubemap. </dd>
-    <dt>--assign_oetf &lt;linear|srgb&gt;</dt>
+    <dt>\--assign_oetf &lt;linear|srgb&gt;</dt>
     <dd>Force the created texture to have the specified transfer function. If
         this is specified, implicit or explicit color space information from the
         input file(s) will be ignored and no color transformation will be
         performed. USE WITH CAUTION preferably only when you know the file
         format information is wrong.</dd>
-    <dt>--assign_primaries &lt;bt709|none|srgb&gt;</dt>
+    <dt>\--assign_primaries &lt;bt709|none|srgb&gt;</dt>
     <dd>Force the created texture to have the specified primaries. If this is
         specified, implicit or explicit color space information from the input
         file(s) will be ignored and no color transformation will be performed.
         USE WITH CAUTION preferably only when you know the file format
         information is wrong.</dd>
-    <dt>--convert_oetf &lt;linear|srgb&gt;</dt>
+    <dt>\--convert_oetf &lt;linear|srgb&gt;</dt>
     <dd>Convert the input images to the specified transfer function, if the
         current transfer function is different. If both this and
         @b --assign_oetf are specified, conversion will be performed from the
         assigned transfer function to the transfer function specified by this
         option, if different.
-    <dt>--linear</dt>
+    <dt>\--convert_primaries &lt;primaries&gt;</dt>
+    <dd>Convert the image images to the specified color primaries, if
+        different from the color primaries of the input file(s) or the one
+        specified by --assign-primaries. If both this and --assign-primaries
+        are specified, conversion will be performed from the assigned primaries
+        to the primaries specified by this option, if different. This option is
+        not allowed to be specified when --assign-primaries is set to 'none'.
+        Case insensitive.
+        Possible options are:
+        bt709 | srgb | bt601-ebu | bt601-smpte | bt2020 | ciexyz | aces |
+        acescc | ntsc1953 | pal525 | displayp3 | adobergb</dd>
+    <dt>\--linear</dt>
     <dd>Deprecated. Use @b --assign_oetf linear.</dd>
-    <dt>--srgb</dt>
+    <dt>\--srgb</dt>
     <dd>Deprecated. Use @b --assign_oetf srgb.</dd>
-    <dt>--resize &lt;width&gt;x&lt;height&gt;
+    <dt>\--resize &lt;width&gt;x&lt;height&gt;
     <dd>Resize images to @e width X @e height. This should not be used with
         @b --mipmap as it would resize all the images to the same size.
         Resampler options can be set via @b --filter and  @b --fscale. </dd>
-    <dt>--scale &lt;value&gt;</dt>
+    <dt>\--scale &lt;value&gt;</dt>
     <dd>Scale images by @e value as they are read. Resampler options can
         be set via @b --filter and  @b --fscale. </dd>.
-    <dt>--swizzle &lt;swizzle&gt;
+    <dt>\--swizzle &lt;swizzle&gt;
     <dd>Add swizzle metadata to the file being created. @e swizzle
         has the same syntax as the parameter for @b --input_swizzle.
         Not recommended for use with block-cmpressed textures, including
         Basis Universal formats, because something like @c rabb may
         yield drastically different error metrics if done after compression.
-    <dt>--target_type &lt;type&gt;
+    <dt>\--target_type &lt;type&gt;
     <dd>Specify the number of components in the created texture. @e type
         is one of the following strings: @c R, @c RG, @c RGB or @c RGBA.
         Excess input components will be dropped. Output components with
         no mapping from the input will be set to 0 or, if the alpha component,
         1.0.
-    <dt>--t2</dt>
+    <dt>\--t2</dt>
     <dd>Output in KTX2 format. Default is KTX.</dd>
     </dl>
     @snippet{doc} scapp.h scApp options
@@ -330,7 +341,7 @@ class toktxApp : public scApp {
     toktxApp();
     virtual ~toktxApp() { };
 
-    virtual int main(int argc, _TCHAR* argv[]);
+    virtual int main(int argc, char* argv[]);
     virtual void usage();
 
     friend void warning(const char *pFmt, va_list args);
@@ -339,12 +350,14 @@ class toktxApp : public scApp {
 
   protected:
     struct targetImageSpec : public ImageSpec {
-        OETFFunc decodeFunc = nullptr;  // To be applied to the source image!
-        OETFFunc encodeFunc = nullptr;
+        khr_df_transfer_e usedInputTransferFunction;
+        khr_df_primaries_e usedInputPrimaries;
+        std::unique_ptr<const TransferFunction> srcTransferFunction{};
+        std::unique_ptr<const TransferFunction> dstTransferFunction{};
+        std::unique_ptr<const ColorPrimaries> srcColorPrimaries{};
+        std::unique_ptr<const ColorPrimaries> dstColorPrimaries{};
         targetImageSpec& operator=(const ImageSpec& s) {
             *static_cast<ImageSpec*>(this) = s;
-            encodeFunc = nullptr;
-            decodeFunc = nullptr;
             return *this;
         }
     };
@@ -352,11 +365,13 @@ class toktxApp : public scApp {
     virtual bool processOption(argparser& parser, int opt);
     void processEnvOptions();
     void validateOptions();
+    khr_df_primaries_e parseColorPrimaries(string& argValue);
 
-    Image* createImage(const targetImageSpec& target, ImageInput& in);
-    void convertImageType(Image*& pImage);
-    void scaleImage(Image*& pImage, ktx_uint32_t width, ktx_uint32_t height);
-    void genMipmap(Image*& pImage,
+    unique_ptr<Image> createImage(const targetImageSpec& target, ImageInput& in);
+    unique_ptr<Image> convertImageType(unique_ptr<Image> pImage);
+    unique_ptr<Image> scaleImage(unique_ptr<Image> pImage,
+                                 ktx_uint32_t width, ktx_uint32_t height);
+    void genMipmap(unique_ptr<Image> pImage,
                    uint32_t layer, uint32_t faceSlice,
                    ktxTexture* texture);
 
@@ -391,9 +406,10 @@ class toktxApp : public scApp {
         int          metadata;
         int          mipmap;
         int          two_d;
-        khr_df_transfer_e convert_oetf;
         khr_df_transfer_e assign_oetf;
+        khr_df_transfer_e convert_oetf;
         khr_df_primaries_e assign_primaries;
+        khr_df_primaries_e convert_primaries;
         int          useStdin;
         int          lower_left_maps_to_s0t0;
         struct mipgenOptions gmopts;
@@ -428,6 +444,7 @@ class toktxApp : public scApp {
             convert_oetf = KHR_DF_TRANSFER_UNSPECIFIED;
             assign_oetf = KHR_DF_TRANSFER_UNSPECIFIED;
             assign_primaries = KHR_DF_PRIMARIES_MAX;
+            convert_primaries = KHR_DF_PRIMARIES_MAX;
             // As required by spec. Opposite of OpenGL {,ES}, same as
             // Vulkan, et al.
             lower_left_maps_to_s0t0 = 0;
@@ -471,9 +488,10 @@ toktxApp::toktxApp() : scApp(myversion, mydefversion, options)
         { "scale", argparser::option::required_argument, NULL, 's' },
         { "swizzle", argparser::option::required_argument, NULL, 1101},
         { "target_type", argparser::option::required_argument, NULL, 1102},
-        { "convert_oetf", argparser::option::required_argument, NULL, 1103},
-        { "assign_oetf", argparser::option::required_argument, NULL, 1104},
+        { "assign_oetf", argparser::option::required_argument, NULL, 1103},
+        { "convert_oetf", argparser::option::required_argument, NULL, 1104},
         { "assign_primaries", argparser::option::required_argument, NULL, 1105},
+        { "convert_primaries", argparser::option::required_argument, NULL, 1106},
         { "t2", argparser::option::no_argument, &options.ktx2, 1},
     };
 
@@ -484,7 +502,8 @@ toktxApp::toktxApp() : scApp(myversion, mydefversion, options)
     short_opts += "f:F:w:d:a:l:r:s:";
 }
 
-toktxApp theApp;
+static toktxApp toktx;
+ktxApp& theApp = toktx;
 
 // I really HATE this duplication of text but I cannot find a simple way to
 // avoid it that works on all platforms (e.g running man toktx) even if I was
@@ -495,8 +514,9 @@ toktxApp::usage()
     cerr <<
         "Usage: " << name << " [options] <outfile> [<infile>.{jpg,png,pam,pgm,ppm} ...]\n"
         "\n"
-        "  <outfile>    The destination ktx file. \".ktx\" will appended if necessary.\n"
-        "               If it is '-' the output will be written to stdout.\n"
+        "  <outfile>    The destination ktx file. Parent directories will be created\n"
+        "               and \".ktx\" will appended if necessary. If it is '-' the\n"
+        "               output will be written to stdout.\n"
         "  <infile>     One or more image files in .jpg, .png, .pam, .ppm, or .pgm\n"
         "               format. Other formats can be readily converted to these formats\n"
         "               using tools such as ImageMagick and XnView. infiles prefixed\n"
@@ -504,7 +524,7 @@ toktxApp::usage()
         "               process with one file path per line. Paths must be absolute or\n"
         "               relative to the current directory when toktx is run. If '@@'\n"
         "               is used instead, paths must be absolute or relative to the\n"
-        "               location of the list file.\n"
+        "               location of the list file. File paths must be encoded in UTF-8.\n"
         "\n"
         "  The target texture type (number of components in the output texture) is chosen\n"
         "  via --target_type. Swizzling of the components of the input file is specified\n"
@@ -627,6 +647,17 @@ toktxApp::usage()
         "               --assign_oetf are specified, conversion will be performed from\n"
         "               the assigned transfer function to the transfer function specified\n"
         "               by this option, if different.\n"
+        "  --convert_primaries <primaries> \n"
+        "               Convert the image image(s) to the specified color primaries,\n"
+        "               if different from the color primaries of the input file(s) or the\n"
+        "               one specified by --assign-primaries. If both this and\n"
+        "               --assign-primaries are specified, conversion will be performed\n"
+        "               from the assigned primaries to the primaries specified by this\n"
+        "               option, if different. This option is not allowed to be specified\n"
+        "               when --assign-primaries is set to 'none'. Case insensitive.\n"
+        "               Possible options are: bt709 | srgb | bt601-ebu | bt601-smpte |\n"
+        "               bt2020 | ciexyz | aces | acescc | ntsc1953 | pal525 |\n"
+        "               displayp3 | adobergb.\n"
         "  --linear     Deprecated. Use --assign_oetf linear.\n"
         "  --srgb       Deprecated. Use --assign_oetf srgb.\n"
         "  --swizzle <swizzle>\n"
@@ -659,16 +690,10 @@ toktxApp::usage()
         "the logical image origin to match the GL convention.\n";
 }
 
-int _tmain(int argc, _TCHAR* argv[])
-{
-    return theApp.main(argc, argv);
-}
-
 int
-toktxApp::main(int argc, _TCHAR *argv[])
+toktxApp::main(int argc, char *argv[])
 {
     KTX_error_code ret;
-    //ktxTextureCreateInfo createInfo;
     ktxTexture* texture = 0;
     int exitCode = 0;
     unsigned int faceSlice, level, layer, levelCount = 1;
@@ -680,14 +705,14 @@ toktxApp::main(int argc, _TCHAR *argv[])
     validateOptions();
 
     faceSlice = layer = level = 0;
-    vector<_tstring>::const_iterator it;
+    vector<string>::const_iterator it;
     bool firstImage = true;
     ImageSpec firstImageSpec;
     targetImageSpec target;
 
     for (it = options.infiles.begin(); it < options.infiles.end(); it++) {
-        const _tstring& infile = *it;
-        Image* image = nullptr;
+        const string& infile = *it;
+        unique_ptr<Image> image;
         uint32_t subimage=0, miplevel=0;
 
         try {
@@ -793,7 +818,7 @@ toktxApp::main(int argc, _TCHAR *argv[])
                     assert(ret == KTX_SUCCESS);
 
                     if (options.genmipmap) {
-                        genMipmap(image, layer, faceSlice, texture);
+                        genMipmap(std::move(image), layer, faceSlice, texture);
                     }
 #if IMAGE_DEBUG
                     {
@@ -806,7 +831,6 @@ toktxApp::main(int argc, _TCHAR *argv[])
                                   texture.pData + offset);
                     }
 #endif
-                    delete image;
                     image = nullptr;
 
                     miplevel++;
@@ -851,7 +875,7 @@ toktxApp::main(int argc, _TCHAR *argv[])
             // been created despite its name. We want the same message
             // to the user hence not creating a different exception.
             if (image != nullptr)
-                delete image;
+                image = nullptr;
             exitCode = 1;
             goto cleanup;
         } catch (runtime_error& e) {
@@ -944,8 +968,13 @@ toktxApp::main(int argc, _TCHAR *argv[])
         /* Set "stdout" to have binary mode */
         (void)_setmode( _fileno( stdout ), _O_BINARY );
 #endif
-    } else
-        f = _tfopen(options.outfile.c_str(), "wb");
+    }
+    else {
+        const auto outputPath = filesystem::path(DecodeUTF8Path(options.outfile));
+        if (outputPath.has_parent_path())
+            filesystem::create_directories(outputPath.parent_path());
+        f = fopenUTF8(options.outfile, "wb");
+    }
 
     if (f) {
         if (options.astc || options.etc1s || options.bopts.uastc || options.zcmp) {
@@ -967,7 +996,7 @@ toktxApp::main(int argc, _TCHAR *argv[])
 closefileandcleanup:
         fclose(f);
         if (exitCode && (f != stdout)) {
-            _tunlink(options.outfile.c_str());
+            unlinkUTF8(options.outfile);
         }
     } else {
         cerr << name << ": "
@@ -981,41 +1010,62 @@ cleanup:
     return exitCode;
 }
 
-Image*
+unique_ptr<Image>
 toktxApp::createImage(const targetImageSpec& target, ImageInput& in)
 {
     const ImageSpec& inSpec = in.spec();
+    FormatDescriptor inputFormat;
+    unique_ptr<Image> image;
 
-    Image* image = nullptr;
-    if (target.format().channelBitLength() == 16) {
-        switch (inSpec.format().channelCount()) {
+    // input plugins that support channel reduction and addition do so
+    // in a way which differs from the documented behaviour for --target_type
+    // so alway do channel adjustments in this program.
+    if (target.format().channelCount() != inSpec.format().channelCount()) {
+        // Have plugin deliver all channels.
+        inputFormat = inSpec.format();
+        if (inSpec.format().anyChannelBitLengthNotEqual(target.format().channelBitLength())) {
+            // target.format() is set so all channels have same bit length.
+            std::vector<uint32_t> bits;
+            bits.resize(1);
+            bits[0] = target.format().channelBitLength();
+            // TODO: Consider making a function for channelBitCounts.
+            // Currently supported input formats all have
+            // numChannels = numSamples so this works but is fragile.
+            inputFormat.updateSampleBitCounts(bits);
+        }
+    } else {
+        inputFormat = target.format();
+    }
+    //if (target.format().channelBitLength() == 16) {
+    if (inputFormat.channelBitLength() == 16) {
+        switch (inputFormat.channelCount()) {
           case 1: {
-            image = new r16image(inSpec.width(), inSpec.height());
+            image = make_unique<r16image>(inSpec.width(), inSpec.height());
             break;
           } case 2: {
-            image = new rg16image(inSpec.width(), inSpec.height());
+            image = make_unique<rg16image>(inSpec.width(), inSpec.height());
             break;
           } case 3: {
-            image = new rgb16image(inSpec.width(), inSpec.height());
+            image = make_unique<rgb16image>(inSpec.width(), inSpec.height());
             break;
           } case 4: {
-            image = new rgba16image(inSpec.width(), inSpec.height());
+            image = make_unique<rgba16image>(inSpec.width(), inSpec.height());
             break;
           }
         }
     } else if (target.format().channelBitLength() == 8) {
-        switch (inSpec.format().channelCount()) {
+        switch (inputFormat.channelCount()) {
           case 1: {
-            image = new r8image(inSpec.width(), inSpec.height());
+            image = make_unique<r8image>(inSpec.width(), inSpec.height());
             break;
           } case 2: {
-            image = new rg8image(inSpec.width(), inSpec.height());
+            image = make_unique<rg8image>(inSpec.width(), inSpec.height());
             break;
           } case 3: {
-            image = new rgb8image(inSpec.width(), inSpec.height());
+            image = make_unique<rgb8image>(inSpec.width(), inSpec.height());
             break;
           } case 4: {
-            image = new rgba8image(inSpec.width(), inSpec.height());
+            image = make_unique<rgba8image>(inSpec.width(), inSpec.height());
             break;
           }
         }
@@ -1032,30 +1082,35 @@ toktxApp::createImage(const targetImageSpec& target, ImageInput& in)
     }
 
     in.readImage(static_cast<uint8_t*>(*image), image->getByteCount(),
-                  0, inSpec.format().channelCount(), target.format());
+                  0/*subimage*/, 0/*miplevel*/, inputFormat);
     /* Sanity check. */
     assert(image->getWidth() * image->getHeight() * image->getPixelSize()
            == image->getByteCount());
 
-    // TODO: Convert primaries?
-    image->setPrimaries((khr_df_primaries_e)target.format().primaries());
-    if (target.encodeFunc != nullptr) {
-        assert(target.decodeFunc != nullptr);
-        image->transformOETF(target.decodeFunc, target.encodeFunc,
-                            inSpec.format().oeGamma());
-        if (target.encodeFunc == encode_sRGB) {
-            image->setOetf(KHR_DF_TRANSFER_SRGB);
+
+
+    if (target.dstTransferFunction != nullptr) {
+        assert(target.srcTransferFunction != nullptr);
+        if (target.dstColorPrimaries != nullptr) {
+            assert(target.srcColorPrimaries != nullptr);
+            auto primaryTransform = target.srcColorPrimaries->transformTo(*target.dstColorPrimaries);
+
+            // Transform OETF with primary transform
+            image->transformColorSpace(*target.srcTransferFunction, *target.dstTransferFunction, &primaryTransform);
         } else {
-            image->setOetf(KHR_DF_TRANSFER_LINEAR);
+            // Transform OETF without primary transform
+            image->transformColorSpace(*target.srcTransferFunction, *target.dstTransferFunction);
         }
-    } else {
-        image->setOetf((khr_df_transfer_e)target.format().transfer());
     }
+    image->setPrimaries((khr_df_primaries_e)target.format().primaries());
+    image->setOetf((khr_df_transfer_e)target.format().transfer());
 
     if (options.scale != 1.0f) {
-        scaleImage(image,
-               static_cast<ktx_uint32_t>(image->getWidth() * options.scale),
-               static_cast<ktx_uint32_t>(image->getHeight() * options.scale));
+        auto scaledWidth = image->getWidth() * options.scale;
+        auto scaledHeight = image->getHeight() * options.scale;
+        image = scaleImage(std::move(image),
+               static_cast<ktx_uint32_t>(scaledWidth),
+               static_cast<ktx_uint32_t>(scaledHeight));
     } else if (options.resize
                && (image->getWidth() != target.width()
                    || image->getHeight() != target.height()))
@@ -1063,41 +1118,42 @@ toktxApp::createImage(const targetImageSpec& target, ImageInput& in)
         // --resize is not allowed with --mipmap so createImage will never be
         // called for other than the base level when set. This would be
         // incorrect otherwise. target reflects the resize value, if any.
-        scaleImage(image, target.width(), target.height());
+        image = scaleImage(std::move(image), target.width(), target.height());
     }
     if (options.targetType != commandOptions::eUnspecified) {
-        convertImageType(image);
+        image = convertImageType(std::move(image));
     }
     return image;
 }
 
-void
-toktxApp::convertImageType(Image*& pImage)
+unique_ptr<Image>
+toktxApp::convertImageType(unique_ptr<Image> pImage)
 {
     // TODO: These copyTo's should be reversed. The image should have
     // a copy constructor for each componentCount src image.
     if (options.targetType != (int)pImage->getComponentCount()) {
-        Image* newImage = nullptr;
+        unique_ptr<Image> newImage;
+        string nullSwizzle = "rgba";
         // The casts in the following copyTo* definitions only work
         // because, thanks to the switch, at runtime we always pass
         // the image type being cast to.
         if (pImage->getComponentSize() == 2) {
             switch (options.targetType) {
               case commandOptions::eR:
-                newImage = new r16image(pImage->getWidth(), pImage->getHeight());
-                pImage->copyToR(*newImage);
+                newImage = make_unique<r16image>(pImage->getWidth(), pImage->getHeight());
+                pImage->copyToR(*newImage, nullSwizzle);
                 break;
               case commandOptions::eRG:
-                newImage = new rg16image(pImage->getWidth(), pImage->getHeight());
-                pImage->copyToRG(*newImage);
+                newImage = make_unique<rg16image>(pImage->getWidth(), pImage->getHeight());
+                pImage->copyToRG(*newImage, nullSwizzle);
                 break;
               case commandOptions::eRGB:
-                newImage = new rgb16image(pImage->getWidth(), pImage->getHeight());
-                pImage->copyToRGB(*newImage);
+                newImage = make_unique<rgb16image>(pImage->getWidth(), pImage->getHeight());
+                pImage->copyToRGB(*newImage, nullSwizzle);
                 break;
               case commandOptions::eRGBA:
-                newImage = new rgba16image(pImage->getWidth(), pImage->getHeight());
-                pImage->copyToRGBA(*newImage);
+                newImage = make_unique<rgba16image>(pImage->getWidth(), pImage->getHeight());
+                pImage->copyToRGBA(*newImage, nullSwizzle);
                 break;
               case commandOptions::eUnspecified:
                 assert(false);
@@ -1105,45 +1161,42 @@ toktxApp::convertImageType(Image*& pImage)
         } else {
             switch (options.targetType) {
               case commandOptions::eR:
-                newImage = new r8image(pImage->getWidth(), pImage->getHeight());
-                pImage->copyToR(*newImage);
+                newImage = make_unique<r8image>(pImage->getWidth(), pImage->getHeight());
+                pImage->copyToR(*newImage, nullSwizzle);
                 break;
               case commandOptions::eRG:
-                newImage = new rg8image(pImage->getWidth(), pImage->getHeight());
-                pImage->copyToRG(*newImage);
+                newImage = make_unique<rg8image>(pImage->getWidth(), pImage->getHeight());
+                pImage->copyToRG(*newImage, nullSwizzle);
                 break;
               case commandOptions::eRGB:
-                newImage = new rgb8image(pImage->getWidth(), pImage->getHeight());
-                pImage->copyToRGB(*newImage);
+                newImage = make_unique<rgb8image>(pImage->getWidth(), pImage->getHeight());
+                pImage->copyToRGB(*newImage, nullSwizzle);
                 break;
               case commandOptions::eRGBA:
-                newImage = new rgba8image(pImage->getWidth(), pImage->getHeight());
-                pImage->copyToRGBA(*newImage);
+                newImage = make_unique<rgba8image>(pImage->getWidth(), pImage->getHeight());
+                pImage->copyToRGBA(*newImage, nullSwizzle);
                 break;
               case commandOptions::eUnspecified:
                 assert(false);
             }
         }
         if (newImage) {
-             delete pImage;
-             pImage = newImage;
+             return newImage;
         } else {
             throw runtime_error(
                 "Out of memory for image with new target type."
             );
         }
     }
+    return pImage;
 }
 
 // TODO: This should probably be a method on Image.
-void
-toktxApp::scaleImage(Image*& pImage, ktx_uint32_t width, ktx_uint32_t height)
+unique_ptr<Image>
+toktxApp::scaleImage(unique_ptr<Image> pImage, ktx_uint32_t width, ktx_uint32_t height)
 {
-    Image* pScaledImage = pImage->createImage(width, height);
-
     try {
-        pImage->resample(*pScaledImage,
-                        pImage->getOetf() == KHR_DF_TRANSFER_SRGB,
+        pImage = pImage->resample(width, height,
                         options.gmopts.filter.c_str(),
                         options.gmopts.filterScale,
                         basisu::Resampler::Boundary_Op::BOUNDARY_CLAMP);
@@ -1155,29 +1208,23 @@ toktxApp::scaleImage(Image*& pImage, ktx_uint32_t width, ktx_uint32_t height)
         // latter are much more likely to occur hence choice of exception.
         throw cant_create_image(message.str());
     }
-    pScaledImage->setOetf(pImage->getOetf());
-    pScaledImage->setPrimaries(pImage->getPrimaries());
-    delete pImage;
-    pImage = pScaledImage;
+    return pImage;
 }
 
 void
-toktxApp::genMipmap(Image*& pImage,
+toktxApp::genMipmap(unique_ptr<Image> pImage,
                     uint32_t layer, uint32_t faceSlice,
                     ktxTexture* texture)
 {
+    unique_ptr<Image> levelImage;
     for (uint32_t glevel = 1; glevel < texture->numLevels; glevel++) {
-        Image *levelImage = pImage->createImage(
-            maximum<uint32_t>(1, pImage->getWidth() >> glevel),
-            maximum<uint32_t>(1, pImage->getHeight() >> glevel));
-        levelImage->setOetf(pImage->getOetf());
-        levelImage->setPrimaries(pImage->getPrimaries());
+        auto levelWidth = maximum<uint32_t>(1, pImage->getWidth() >> glevel);
+        auto levelHeight = maximum<uint32_t>(1, pImage->getHeight() >> glevel);
         try {
-            pImage->resample(*levelImage,
-                            pImage->getOetf() == KHR_DF_TRANSFER_SRGB,
-                            options.gmopts.filter.c_str(),
-                            options.gmopts.filterScale,
-                            options.gmopts.wrapMode);
+            levelImage = pImage->resample(levelWidth, levelHeight,
+                                    options.gmopts.filter.c_str(),
+                                    options.gmopts.filterScale,
+                                    options.gmopts.wrapMode);
         } catch (runtime_error& e) {
             stringstream message;
             message << "Image::resample() failed! " << e.what();
@@ -1195,7 +1242,6 @@ toktxApp::genMipmap(Image*& pImage,
                                       *levelImage,
                                       levelImage->getByteCount());
         assert(ret == KTX_SUCCESS);
-        delete levelImage;
     }
 }
 
@@ -1377,6 +1423,38 @@ toktxApp::createTexture(const targetImageSpec& target)
     return texture;
 }
 
+static std::unique_ptr<const ColorPrimaries>
+createColorPrimaries(khr_df_primaries_e primaries) {
+    switch (primaries) {
+    case KHR_DF_PRIMARIES_BT709:
+        return std::make_unique<ColorPrimariesBT709>();
+    case KHR_DF_PRIMARIES_BT601_EBU:
+        return std::make_unique<ColorPrimariesBT601_625_EBU>();
+    case KHR_DF_PRIMARIES_BT601_SMPTE:
+        return std::make_unique<ColorPrimariesBT601_525_SMPTE>();
+    case KHR_DF_PRIMARIES_BT2020:
+        return std::make_unique<ColorPrimariesBT2020>();
+    case KHR_DF_PRIMARIES_CIEXYZ:
+        return std::make_unique<ColorPrimariesCIEXYZ>();
+    case KHR_DF_PRIMARIES_ACES:
+        return std::make_unique<ColorPrimariesACES>();
+    case KHR_DF_PRIMARIES_ACESCC:
+        return std::make_unique<ColorPrimariesACEScc>();
+    case KHR_DF_PRIMARIES_NTSC1953:
+        return std::make_unique<ColorPrimariesNTSC1953>();
+    case KHR_DF_PRIMARIES_PAL525:
+        return std::make_unique<ColorPrimariesPAL525>();
+    case KHR_DF_PRIMARIES_DISPLAYP3:
+        return std::make_unique<ColorPrimariesDisplayP3>();
+    case KHR_DF_PRIMARIES_ADOBERGB:
+        return std::make_unique<ColorPrimariesAdobeRGB>();
+    default:
+        assert(false);
+        // We return BT709 by default if some error happened
+        return std::make_unique<ColorPrimariesBT709>();
+    }
+}
+
 void
 toktxApp::determineTargetColorSpace(const ImageInput& in, targetImageSpec& target)
 {
@@ -1389,13 +1467,34 @@ toktxApp::determineTargetColorSpace(const ImageInput& in, targetImageSpec& targe
     //    UNSPECIFIED.
     const ImageSpec& spec = in.spec();
     // Set Primaries
+    target.usedInputPrimaries = spec.format().primaries();
     if (options.assign_primaries != KHR_DF_PRIMARIES_MAX) {
+        target.usedInputPrimaries = options.assign_primaries;
         target.format().setPrimaries(options.assign_primaries);
     } else if (spec.format().primaries() != KHR_DF_PRIMARIES_UNSPECIFIED) {
         target.format().setPrimaries(spec.format().primaries());
     } else {
+        if (!in.formatName().compare("png")) {
+            warning("No color primaries in PNG input file \"{}\", defaulting to BT.709.",
+                    in.filename().c_str());
+            target.usedInputPrimaries = KHR_DF_PRIMARIES_BT709;
+            target.format().setPrimaries(KHR_DF_PRIMARIES_BT709);
+        } else {
            // Leave as unspecified.
            target.format().setPrimaries(spec.format().primaries());
+        }
+    }
+
+    if (options.convert_primaries != KHR_DF_PRIMARIES_MAX) {
+        if (target.usedInputPrimaries == KHR_DF_PRIMARIES_UNSPECIFIED) {
+            throw cant_create_image(
+                "Cannot convert primaries as no information about the color primaries "
+                "is available in the input file \"{}\". Use --assign-primaries to specify one.");
+        } else if (options.convert_primaries != target.usedInputPrimaries) {
+            target.srcColorPrimaries = createColorPrimaries(target.usedInputPrimaries);
+            target.dstColorPrimaries = createColorPrimaries(options.convert_primaries);
+            target.format().setPrimaries(options.convert_primaries);
+        }
     }
 
     // OETF / Transfer function handling in priority order:
@@ -1412,23 +1511,36 @@ toktxApp::determineTargetColorSpace(const ImageInput& in, targetImageSpec& targe
     // 6. Convert OETF based on convert_oetf option value or as described
     //    above.
     //
+    target.usedInputTransferFunction = KHR_DF_TRANSFER_UNSPECIFIED;
     if (options.assign_oetf != KHR_DF_TRANSFER_UNSPECIFIED) {
         target.format().setTransfer(options.assign_oetf);
+        target.usedInputTransferFunction = options.assign_oetf;
+        if (options.assign_oetf == KHR_DF_TRANSFER_SRGB) {
+            target.srcTransferFunction
+                = std::make_unique<TransferFunctionSRGB>();
+        } else {
+            assert(options.assign_oetf == KHR_DF_TRANSFER_LINEAR);
+            target.srcTransferFunction
+                = std::make_unique<TransferFunctionLinear>();
+        }
     } else {
         // Set image's OETF as indicated by metadata.
         if (spec.format().transfer() != KHR_DF_TRANSFER_UNSPECIFIED) {
             target.format().setTransfer(spec.format().transfer());
+            target.usedInputTransferFunction = spec.format().transfer();
             switch (spec.format().transfer()) {
               case KHR_DF_TRANSFER_LINEAR:
-                target.decodeFunc = decode_linear;
+                target.srcTransferFunction =
+                    make_unique<TransferFunctionLinear>();
                 break;
               case KHR_DF_TRANSFER_SRGB:
-                target.decodeFunc = decode_sRGB;
+                target.srcTransferFunction =
+                    make_unique<TransferFunctionSRGB>();
                 break;
               case KHR_DF_TRANSFER_ITU:
                 target.format().setTransfer(KHR_DF_TRANSFER_SRGB);
-                target.decodeFunc = decode_bt709;
-                target.encodeFunc = encode_sRGB;
+                target.srcTransferFunction =
+                    make_unique<TransferFunctionITU>();
                 break;
               default:
                 throw cant_create_image(
@@ -1440,7 +1552,6 @@ toktxApp::determineTargetColorSpace(const ImageInput& in, targetImageSpec& targe
                         "It has an ICC profile. These are not supported."
                         " Use --assign_oetf to specify handling.");
         } else if (spec.format().oeGamma() >= 0.0f) {
-            target.decodeFunc = decode_gamma;
             if (spec.format().oeGamma() > .45450f
                 && spec.format().oeGamma() < .45460f) {
                 // N.B The previous loader matched oeGamma .45455 to the sRGB
@@ -1451,16 +1562,34 @@ toktxApp::determineTargetColorSpace(const ImageInput& in, targetImageSpec& targe
                 // This change results in 1 bit differences in the LSB of
                 // some color values noticeable only when directly comparing
                 // images produced before and after this change of loader.
+                warning("Converting gamma 2.2f to sRGB. Use --assign-oetf srgb"
+                        " to force treating input as sRGB.", in.filename().c_str()
+                );
                 target.format().setTransfer(KHR_DF_TRANSFER_SRGB);
-                target.encodeFunc = encode_sRGB;
+                target.srcTransferFunction
+                    = make_unique<TransferFunctionGamma>(spec.format().oeGamma());
             } else if (spec.format().oeGamma() == 1.0) {
                 target.format().setTransfer(KHR_DF_TRANSFER_LINEAR);
+                target.srcTransferFunction
+                    = make_unique<TransferFunctionLinear>();
             } else if (spec.format().oeGamma() == 0.0f) {
                 if (!in.formatName().compare("png")) {
-                    warning("Ignoring reported gamma of 0.0f in %s."
-                            "Handling as sRGB.", in.filename().c_str());
-                    target.format().setTransfer(KHR_DF_TRANSFER_SRGB);
-                    target.decodeFunc = decode_sRGB;
+                    if (spec.format().channelBitLength() == 8) {
+                        warning("Ignoring reported gamma of 0.0f in %s."
+                                "Handling as sRGB.", in.filename().c_str());
+                        target.format().setTransfer(KHR_DF_TRANSFER_SRGB);
+                        target.usedInputTransferFunction = KHR_DF_TRANSFER_SRGB;
+                        target.srcTransferFunction =
+                            make_unique<TransferFunctionSRGB>();
+                    } else {
+                        warning("Ignoring reported gamma of 0.0f in %s."
+                                "Handling as linear.", in.filename().c_str());
+                        target.format().setTransfer(KHR_DF_TRANSFER_LINEAR);
+                        target.usedInputTransferFunction =
+                            KHR_DF_TRANSFER_LINEAR;
+                        target.srcTransferFunction =
+                            make_unique<TransferFunctionLinear>();
+                    }
                 } else {
                     throw cant_create_image("Its reported gamma is 0.0f."
                             " Use --assign_oetf to specify handling.");
@@ -1474,13 +1603,19 @@ toktxApp::determineTargetColorSpace(const ImageInput& in, targetImageSpec& targe
                         << "Specify handling with --convert_oetf or"
                         << " --assign_oetf.";
                     throw cant_create_image(message.str());
+                } else {
+                    target.srcTransferFunction
+                        = make_unique<TransferFunctionGamma>(spec.format().oeGamma());
                 }
             }
         } else {
             if (!in.formatName().compare("png")) {
                 // Follow W3C. Treat unspecified as sRGB.
                 target.format().setTransfer(KHR_DF_TRANSFER_SRGB);
-                target.decodeFunc = decode_sRGB;
+                target.usedInputTransferFunction =
+                    KHR_DF_TRANSFER_SRGB;
+                target.srcTransferFunction =
+                    make_unique<TransferFunctionSRGB>();
             } else {
                 throw cant_create_image(
                     "It has no color space information."
@@ -1489,14 +1624,28 @@ toktxApp::determineTargetColorSpace(const ImageInput& in, targetImageSpec& targe
         }
     }
 
-    if (options.convert_oetf != KHR_DF_TRANSFER_UNSPECIFIED &&
-        options.convert_oetf != spec.format().transfer()) {
-        if (options.convert_oetf == KHR_DF_TRANSFER_SRGB) {
-            target.encodeFunc = encode_sRGB;
-            target.format().setTransfer(KHR_DF_TRANSFER_SRGB);
-        } else {
-            target.encodeFunc = encode_linear;
-            target.format().setTransfer(KHR_DF_TRANSFER_LINEAR);
+    if (options.convert_oetf != KHR_DF_TRANSFER_UNSPECIFIED) {
+        target.format().setTransfer(options.convert_oetf);
+    }
+
+    // Need to do color conversion if either the transfer functions don't match or the primaries
+    if (target.format().transfer() != target.usedInputTransferFunction ||
+        target.format().primaries() != target.usedInputPrimaries) {
+        if (target.srcTransferFunction == nullptr)
+            throw cant_create_image(
+                "No transfer function can be determined from input file."
+                " Use --assign-oetf to specify one.");
+
+        switch (target.format().transfer()) {
+        case KHR_DF_TRANSFER_LINEAR:
+            target.dstTransferFunction = std::make_unique<TransferFunctionLinear>();
+            break;
+        case KHR_DF_TRANSFER_SRGB:
+            target.dstTransferFunction = std::make_unique<TransferFunctionSRGB>();
+            break;
+        default:
+            assert(false);
+            break;
         }
     }
 }
@@ -1511,10 +1660,10 @@ toktxApp::determineTargetTypeBitLengthScale(const ImageInput& in,
     uint32_t bitLength = format.channelBitLength();
     uint32_t maxValue;
 
-    if (format.channelBitLength() > 8
+    if (format.largestChannelBitLength() > 8
         && (options.etc1s || options.bopts.uastc)) {
         bitLength = 8;
-    } else if (format.channelBitLength() < 8) {
+    } else if (format.largestChannelBitLength() < 8) {
         bitLength = 8;
     }
 
@@ -1523,8 +1672,7 @@ toktxApp::determineTargetTypeBitLengthScale(const ImageInput& in,
 
     // TODO: Support < 8 bit channels for non-block-compressed?
 
-    if (targetFormat.channelBitLength()
-        != format.channelBitLength()) {
+    if (bitLength != format.largestChannelBitLength()) {
         warning("Rescaling %d-bit image in %s to %d bits.",
                 format.channelBitLength(),
                 in.filename().c_str(),
@@ -1547,7 +1695,7 @@ toktxApp::determineTargetTypeBitLengthScale(const ImageInput& in,
     }
 
     // Must be after setting of model.
-    if (bitLength != targetFormat.channelBitLength()
+    if (targetFormat.anyChannelBitLengthNotEqual(bitLength)
         || maxValue != targetFormat.channelUpper()
         || channelCount != targetFormat.channelCount())
     {
@@ -1734,10 +1882,10 @@ toktxApp::validateOptions()
         exit(1);
     }
 
-    if (options.outfile.compare(_T("-")) != 0
-            && options.outfile.find_last_of('.') == _tstring::npos)
+    if (options.outfile.compare("-") != 0
+            && options.outfile.find_last_of('.') == string::npos)
     {
-        options.outfile.append(options.ktx2 ? _T(".ktx2") : _T(".ktx"));
+        options.outfile.append(options.ktx2 ? ".ktx2" : ".ktx");
     }
 
     ktx_uint32_t requiredInputFiles = options.cubemap ? 6 : 1 * options.levels;
@@ -1753,8 +1901,8 @@ toktxApp::validateOptions()
 
 void
 toktxApp::processEnvOptions() {
-    _tstring toktx_options;
-    _TCHAR* env_options = _tgetenv(_T("TOKTX_OPTIONS"));
+    string toktx_options;
+    char* env_options = getenv("TOKTX_OPTIONS");
 
     if (env_options != nullptr)
         toktx_options = env_options;
@@ -1764,7 +1912,7 @@ toktxApp::processEnvOptions() {
     if (!toktx_options.empty()) {
         istringstream iss(toktx_options);
         argvector arglist;
-        for (_tstring w; iss >> w; )
+        for (string w; iss >> w; )
             arglist.push_back(w);
 
         argparser optparser(arglist, 0);
@@ -1777,6 +1925,48 @@ toktxApp::processEnvOptions() {
         }
     }
 }
+
+/*
+ * @brief parse a color primaries argument
+ */
+ khr_df_primaries_e
+ toktxApp::parseColorPrimaries(string& argValue) {
+        static const std::unordered_map<std::string, khr_df_primaries_e> values{
+            { "NONE", KHR_DF_PRIMARIES_UNSPECIFIED },
+            { "BT709", KHR_DF_PRIMARIES_BT709 },
+            { "SRGB", KHR_DF_PRIMARIES_SRGB },
+            { "BT601-EBU", KHR_DF_PRIMARIES_BT601_EBU },
+            { "BT601-SMPTE", KHR_DF_PRIMARIES_BT601_SMPTE },
+            { "BT2020", KHR_DF_PRIMARIES_BT2020 },
+            { "CIEXYZ", KHR_DF_PRIMARIES_CIEXYZ },
+            { "ACES", KHR_DF_PRIMARIES_ACES },
+            { "ACESCC", KHR_DF_PRIMARIES_ACESCC },
+            { "NTSC1953", KHR_DF_PRIMARIES_NTSC1953 },
+            { "PAL525", KHR_DF_PRIMARIES_PAL525 },
+            { "DISPLAYP3", KHR_DF_PRIMARIES_DISPLAYP3 },
+            { "ADOBERGB", KHR_DF_PRIMARIES_ADOBERGB },
+        };
+
+        khr_df_primaries_e result = {};
+
+        if (argValue.length()) {
+            for_each(argValue.begin(), argValue.end(), [](char & c) {
+                c = (char)::toupper(c);
+            });
+
+            const auto it = values.find(argValue);
+            if (it != values.end()) {
+                result = it->second;
+            } else {
+                cerr << name
+                     << "Invalid or unsupported transfer function specified: "
+                     << argValue << endl;
+                exit(1);
+            }
+        }
+
+        return result;
+    }
 
 /*
  * @brief process a command line option
@@ -1890,29 +2080,24 @@ toktxApp::processOption(argparser& parser, int opt)
             c = (char)::tolower(c);
         });
         if (parser.optarg.compare("linear") == 0)
-            options.convert_oetf = KHR_DF_TRANSFER_LINEAR;
+            options.assign_oetf = KHR_DF_TRANSFER_LINEAR;
         else if (parser.optarg.compare("srgb") == 0)
-            options.convert_oetf = KHR_DF_TRANSFER_SRGB;
+            options.assign_oetf = KHR_DF_TRANSFER_SRGB;
         break;
       case 1104:
         for_each(parser.optarg.begin(), parser.optarg.end(), [](char & c) {
             c = (char)::tolower(c);
         });
         if (parser.optarg.compare("linear") == 0)
-            options.assign_oetf = KHR_DF_TRANSFER_LINEAR;
+            options.convert_oetf = KHR_DF_TRANSFER_LINEAR;
         else if (parser.optarg.compare("srgb") == 0)
-            options.assign_oetf = KHR_DF_TRANSFER_SRGB;
+            options.convert_oetf = KHR_DF_TRANSFER_SRGB;
         break;
       case 1105:
-        for_each(parser.optarg.begin(), parser.optarg.end(), [](char & c) {
-            c = (char)::tolower(c);
-        });
-        if (parser.optarg.compare("bt709") == 0)
-            options.assign_primaries = KHR_DF_PRIMARIES_BT709;
-        else if (parser.optarg.compare("none") == 0)
-            options.assign_primaries = KHR_DF_PRIMARIES_UNSPECIFIED;
-        if (parser.optarg.compare("srgb") == 0)
-            options.assign_primaries = KHR_DF_PRIMARIES_SRGB;
+        options.assign_primaries = parseColorPrimaries(parser.optarg);
+        break;
+      case 1106:
+        options.convert_primaries = parseColorPrimaries(parser.optarg);
         break;
       case ':':
       default:
@@ -1922,19 +2107,19 @@ toktxApp::processOption(argparser& parser, int opt)
 }
 
 void warning(const char *pFmt, va_list args) {
-    theApp.warning(pFmt, args);
+    toktx.warning(pFmt, args);
 }
 
 void warning(const char *pFmt, ...) {
     va_list args;
     va_start(args, pFmt);
 
-    theApp.warning(pFmt, args);
+    toktx.warning(pFmt, args);
     va_end(args);
 }
 
 void warning(const string& msg) {
-   theApp.warning(msg);
+   toktx.warning(msg);
 }
 
 static ktx_uint32_t
@@ -1961,7 +2146,7 @@ log2(ktx_uint32_t v)
 
 #if IMAGE_DEBUG
 static void
-dumpImage(_TCHAR* name, int width, int height, int components, int componentSize,
+dumpImage(char* name, int width, int height, int components, int componentSize,
           unsigned char* srcImage)
 {
     char formatstr[2048];

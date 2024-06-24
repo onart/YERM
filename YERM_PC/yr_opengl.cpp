@@ -656,7 +656,7 @@ namespace onart {
         }
         if (option == GLMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
             ktxBasisParams params{};
-            params.compressionLevel = KTX_ETC1S_DEFAULT_COMPRESSION_LEVEL;
+            params.compressionLevel = 5;// KTX_ETC1S_DEFAULT_COMPRESSION_LEVEL == 2;
             params.uastc = KTX_TRUE;
             params.verbose = KTX_FALSE;
             params.structSize = sizeof(params);

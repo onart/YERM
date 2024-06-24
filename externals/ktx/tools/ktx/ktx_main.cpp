@@ -4,6 +4,7 @@
 
 
 #include "command.h"
+#include "platform_utils.h"
 #include "stdafx.h"
 #include <iostream>
 #include <string>
@@ -17,46 +18,47 @@
 
 namespace ktx {
 
-/** @page ktxtools ktx
+/** @page ktx ktx
 @~English
 
 Unified CLI frontend for the KTX-Software library.
 
-@section ktxtools_synopsis SYNOPSIS
+@section ktx_synopsis SYNOPSIS
     ktx &lt;command&gt; [command-option...]<br>
     ktx [option...]
 
-@section ktxtools_description DESCRIPTION
-    Unified CLI frontend for the KTX-Software library with sub-commands for specific operations<br/>
-    for the KTX File Format Specification https://registry.khronos.org/KTX/specs/2.0/ktxspec.v2.html.
+@section ktx_description DESCRIPTION
+    Unified CLI frontend for the KTX-Software library with sub-commands for specific operations
+    for the KTX File Format Specification
+    https://registry.khronos.org/KTX/specs/2.0/ktxspec.v2.html.
 
     The following commands are available:
     <dl>
-        <dt>@ref ktxtools_create "create"</dt>
+        <dt>@ref ktx_create "create"</dt>
         <dd>
             Create a KTX2 file from various input files.
         </dd>
-        <dt>@ref ktxtools_extract "extract"</dt>
+        <dt>@ref ktx_extract "extract"</dt>
         <dd>
             Extract selected images from a KTX2 file.
         </dd>
-        <dt>@ref ktxtools_encode "encode"</dt>
+        <dt>@ref ktx_encode "encode"</dt>
         <dd>
             Encode a KTX2 file.
         </dd>
-        <dt>@ref ktxtools_transcode "transcode"</dt>
+        <dt>@ref ktx_transcode "transcode"</dt>
         <dd>
             Transcode a KTX2 file.
         </dd>
-        <dt>@ref ktxtools_info "info"</dt>
+        <dt>@ref ktx_info "info"</dt>
         <dd>
             Print information about a KTX2 file.
         </dd>
-        <dt>@ref ktxtools_validate "validate"</dt>
+        <dt>@ref ktx_validate "validate"</dt>
         <dd>
             Validate a KTX2 file.
         </dd>
-        <dt>@ref ktxtools_help "help"</dt>
+        <dt>@ref ktx_help "help"</dt>
         <dd>
             Display help information about the ktx tool.
         </dd>
@@ -65,15 +67,15 @@ Unified CLI frontend for the KTX-Software library.
     The following options are also available without a command:
     @snippet{doc} ktx/command.h command options_generic
 
-@section ktxtools_exitstatus EXIT STATUS
+@section ktx_exitstatus EXIT STATUS
     @snippet{doc} ktx/command.h command exitstatus
 
-@section ktxtools_history HISTORY
+@section ktx_history HISTORY
 
 @par Version 4.0
  - Initial version
 
-@section ktxtools_author AUTHOR
+@section ktx_author AUTHOR
     - Mátyás Császár [Vader], RasterGrid www.rastergrid.com
     - Daniel Rákos, RasterGrid www.rastergrid.com
 */
@@ -86,13 +88,13 @@ public:
     virtual ~Tools() {};
 
 public:
-    virtual int main(int argc, _TCHAR* argv[]) override;
+    virtual int main(int argc, char* argv[]) override;
     void printUsage(std::ostream& os, const cxxopts::Options& options);
 };
 
 // -------------------------------------------------------------------------------------------------
 
-int Tools::main(int argc, _TCHAR* argv[]) {
+int Tools::main(int argc, char* argv[]) {
     cxxopts::Options options("ktx", "");
     options.custom_help("[--version] [--help] <command> <command-args>");
     options.set_width(CONSOLE_USAGE_WIDTH);
@@ -173,7 +175,7 @@ std::unordered_map<std::string, ktx::pfnBuiltinCommand> builtinCommands = {
     { "help",       ktxHelp }
 };
 
-int _tmain(int argc, _TCHAR* argv[]) {
+int main(int argc, char* argv[]) {
     // If -NSDocumentRevisionsDebugMode YES ever causes any problem it should be discarded here
     // by creating a new argc and argv pair and excluding the problematic arguments from them.
     // This way downstream tools will not have to deal with this issue
@@ -183,6 +185,8 @@ int _tmain(int argc, _TCHAR* argv[]) {
     //      // defaults to checked and is saved in a user-specific file not the
     //      // pbxproj file, so it can't be disabled in a generated project.
     //      // Remove these from the arguments under consideration.
+
+    InitUTF8CLI(argc, argv);
 
     if (argc >= 2) {
         // Has a subcommand, attempt to lookup

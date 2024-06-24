@@ -31,8 +31,12 @@ add_subdirectory(transcodetests)
 add_subdirectory(streamtests)
 
 add_executable( unittests
-    unittests/unittests.cc
+    ${PROJECT_SOURCE_DIR}/lib/dfdutils/dfd2vk.c
     unittests/image_unittests.cc
+    unittests/test_fragment_uri.cc
+    unittests/test_string_to_vkformat.cc
+    unittests/unittests.cc
+    unittests/vkformat_list.inl
     unittests/wthelper.h
     tests.cmake
 )
@@ -45,14 +49,30 @@ PRIVATE
     $<TARGET_PROPERTY:ktx,INCLUDE_DIRECTORIES>
     ${PROJECT_SOURCE_DIR}/lib
     ${PROJECT_SOURCE_DIR}/tools
+    ${PROJECT_SOURCE_DIR}/tools/imageio
     loadtests/common
+)
+
+target_include_directories(
+    unittests
+    SYSTEM
+PRIVATE
+    ${PROJECT_SOURCE_DIR}/other_include
 )
 
 target_link_libraries(
     unittests
     gtest
     ktx
+    fmt::fmt
     ${CMAKE_THREAD_LIBS_INIT}
+)
+
+set_target_properties(
+    unittests
+    PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED YES
 )
 
 add_executable( texturetests
@@ -79,11 +99,12 @@ target_link_libraries(
 )
 
 gtest_discover_tests(unittests
-    TEST_PREFIX unittest
+    TEST_PREFIX unittest.
     # With the 5s default we get periodic timeouts on Travis & GitHub CI.
     DISCOVERY_TIMEOUT 20
 )
 gtest_discover_tests(texturetests
-    TEST_PREFIX texturetest
+    TEST_PREFIX texturetest.
     DISCOVERY_TIMEOUT 20
+    EXTRA_ARGS "${PROJECT_SOURCE_DIR}/tests/testimages/"
 )

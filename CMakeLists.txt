@@ -5,6 +5,7 @@ project("yerm")
 if (ANDROID)
     message(STATUS "Build for Android platform is currently up to Android Studio. Please open YERM_android project with it.")
 elseif (EMSCRIPTEN)
+    # Compiler/Tools
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CONFIGURATION_TYPES "Debug;Release;")
     macro(append_compiler_flags FLAGS)
@@ -34,6 +35,7 @@ elseif (EMSCRIPTEN)
     set(CMAKE_EXE_LINKER_FLAGS_MINSIZEREL "${CMAKE_EXE_LINKER_FLAGS_MINSIZEREL} ${FLAGS}")
     endmacro()
 
+    # Build Settings
     option(YERM_BUILD_WEBGPU "Build WebGPU based graphics." ON)
     option(YERM_BUILD_WEBGL "Build WebGL based graphics." ON)
     option(YERM_LINK_WEBGPU "Link WebGPU." ON)
@@ -67,7 +69,8 @@ elseif (EMSCRIPTEN)
 
     set(CMAKE_EXECUTABLE_SUFFIX ".html")
     
-	append_compiler_flags("-Wall")
+    # Flags for Emscripten
+	append_compiler_flags("-Wall -Wno-deprecated-declarations -fno-exceptions")
 	append_compiler_flags_debug("-g3")
 
 	append_linker_flags("-Wall")
@@ -79,7 +82,7 @@ elseif (EMSCRIPTEN)
     append_linker_flags("--js-library ${CMAKE_CURRENT_SOURCE_DIR}/externals/wasm_webgpu/library_miniprintf.js")
     append_linker_flags("--shell-file \"${CMAKE_CURRENT_SOURCE_DIR}/externals/wasm_webgpu/shell.html\"")
 	append_linker_flags("-sMINIMAL_RUNTIME=2 -sTEXTDECODER=2 -sABORTING_MALLOC=0 -sSUPPORT_ERRNO=0")
-	append_linker_flags("-sENVIRONMENT=web -sMIN_FIREFOX_VERSION=87 -sMIN_SAFARI_VERSION=140000 -sMIN_EDGE_VERSION=90 -sMIN_CHROME_VERSION=90")
+	append_linker_flags("-sENVIRONMENT=web -sMIN_FIREFOX_VERSION=87 -sMIN_SAFARI_VERSION=140000 -sMIN_CHROME_VERSION=90")
 	append_linker_flags("-sTOTAL_STACK=16KB -sINITIAL_MEMORY=128KB")
 	append_linker_flags("-sALLOW_MEMORY_GROWTH=1")
 	append_linker_flags("-sUSE_SDL=0 -sFILESYSTEM=0 -sAUTO_JS_LIBRARIES=0 -sDISABLE_EXCEPTION_THROWING=1")
@@ -102,8 +105,13 @@ elseif (EMSCRIPTEN)
     add_executable(yerm
         YERM_webgpu/hello_triangle_minimal.c
     )
+    
+    # Additional library
+    add_compile_definitions(_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
+    add_subdirectory(externals/ktx)
+    target_link_directories(yerm PUBLIC externals/ktx)
     target_include_directories(yerm PUBLIC externals)
-    target_link_libraries(yerm PUBLIC ${YERM_GRAPHICS})
+    target_link_libraries(yerm PUBLIC ${YERM_GRAPHICS} glfw ktx)
 else()
 
 function(get_all_targets var dir)
@@ -140,7 +148,7 @@ endmacro()
     endforeach()
 
     if(NOT CMAKE_VERSION VERSION_LESS "3.26")
-        add_compile_definitions(-D_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
+        add_compile_definitions(_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
     endif()
 
     option(YERM_BUILD_VULKAN "Build Vulkan based graphics." ON)
@@ -153,8 +161,8 @@ endmacro()
     if(CMAKE_SYSTEM_NAME MATCHES "Windows")
         option(YERM_BUILD_D3D12 "Build Direct3D 12 based graphics." OFF)
         option(YERM_BUILD_D3D11 "Build Direct3D 11 based graphics." ON)
-        option(YERM_LINK_D3D11 "Link with OpenGL 4.0 based graphics. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" ON)
-        option(YERM_LINK_D3D12 "Link with Vulkan based graphics. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" OFF)
+        option(YERM_LINK_D3D11 "Link with Direct3D 11 based graphics. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" OFF)
+        option(YERM_LINK_D3D12 "Link with Direct3D 12 based graphics. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" OFF)
     endif()
 
     if(${YERM_BUILD_VULKAN} OR ${YERM_LINK_VULKAN})
@@ -193,7 +201,7 @@ endmacro()
         add_compile_definitions(YR_USE_D3D12)
         set(YERM_GRAPHICS_LIB YRGraphics_d3d12)
     elseif(${YERM_LINK_D3D11})
-        add_compile_definitions(YR_USE_D3D12)
+        add_compile_definitions(YR_USE_D3D11)
         set(YERM_GRAPHICS_LIB YRGrahpics_d3d11)
     elseif(${YERM_LINK_OPENGLES})
         add_compile_definitions(YR_USE_GLES)

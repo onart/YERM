@@ -176,7 +176,7 @@ class ImageInput {
     std::unique_ptr<std::stringstream> buffer;
     std::istream* isp = nullptr;
     std::string name;
-    _tstring _filename;
+    std::string _filename;
     std::vector<uint16_t> nativeBuffer16;
     std::vector<uint8_t> nativeBuffer8;
     struct imageInfo {
@@ -220,7 +220,7 @@ class ImageInput {
     ///        required writer was not able to be created. If the open fails,
     ///        the `unique_ptr` will be empty. An error can be retrieved by
     ///        ImageInput::geterror().
-    static unique_ptr open(const _tstring& filename,
+    static unique_ptr open(const std::string& filename,
                            const ImageSpec *config=nullptr,
                            WarningCallbackFunction wcb=nullptr);
                            //Filesystem::IOProxy* ioproxy = nullptr,
@@ -229,8 +229,8 @@ class ImageInput {
     virtual ~ImageInput() { close(); }
 
     // TODO: is config necessary?
-    virtual void open (const _tstring& filename, ImageSpec& newspec);
-    virtual void open (const _tstring& filename, ImageSpec& newspec,
+    virtual void open (const std::string& filename, ImageSpec& newspec);
+    virtual void open (const std::string& filename, ImageSpec& newspec,
                        const ImageSpec& /*config*/) {
         return open(filename, newspec);
     }
@@ -304,7 +304,7 @@ class ImageInput {
      * fstream or stringstream that would otherwise disappear when open() exits. The catch
      * clauses std::move the stream info back to the caller so it can keep searching for a plugin.
      */
-    void open(const _tstring& filename, std::ifstream& ifs,
+    void open(const std::string& filename, std::ifstream& ifs,
               std::unique_ptr<std::stringstream>& bufferIn,
               ImageSpec& newspec) {
         _filename = filename;    // Purely so warnings can include the file name.
@@ -313,6 +313,7 @@ class ImageInput {
                 open(std::move(ifs), newspec);
             } catch (...) {
                 ifs = std::move(getFile());
+                ifs.clear();
                 ifs.seekg(0);
                 throw;
             }
@@ -321,6 +322,7 @@ class ImageInput {
                 open(std::move(bufferIn), newspec);
             } catch (...) {
                 bufferIn = std::move(getBuffer());
+                bufferIn->clear();
                 bufferIn.get()->seekg(0);
                 throw;
             }
@@ -328,6 +330,7 @@ class ImageInput {
             try {
                 open(std::cin, newspec);
             } catch (...) {
+                std::cin.clear();
                 std::cin.seekg(0);
                 throw;
             }
@@ -336,7 +339,7 @@ class ImageInput {
 
   public:
     virtual const std::string& formatName(void) const { return name; }
-    virtual const _tstring& filename(void) const { return _filename; }
+    virtual const std::string& filename(void) const { return _filename; }
 
     // Return a reference to the ImageSpec of the current image.
     // This default method assumes no subimages.
@@ -379,36 +382,37 @@ class ImageInput {
     }
 
     /// Read an entire image into contiguous memory performing conversions to
-    /// @a targetFormat.
+    /// @a requestFormat.
     ///
-    // @TODO @a targetFormat allows callers to request almost unlimited
-    // possible conversions compared to the original format. The current
-    // plug-ins only provide a handful of conversions and those available
-    // vary by plug-in. As a work in progress this is okay but we need to
-    // rationalize all this such as
-    //
-    //   1. a subset of all possible conversions supported by every plug-in
-    //   2. a way to query the available conversions and specify one or more.
-    //
-    // Currently supported transformations are:
-    //   @b Npbm can do bits/pixel rescaling, including 16- to 8-bit
-    //   conversions.
-    //   @b png can also do bits/pixel rescaling, including 16- to 8-bit.
-    //   @b Jpeg can convert the number of components. This is not used by
-    //   callers as, for historic reasons, this conversion is provided by
-    //   the upper level Image class.
+    /// @TODO @a requestFormat allows callers to request almost unlimited
+    /// possible conversions compared to the original format. The current
+    /// plug-ins only provide a handful of conversions and those available
+    /// vary by plug-in. Plug-ins must throw an exception when an
+    /// unsupported conversion is requested. As a work in progress this is
+    /// okay but we need to rationalize all this such as
+    ///
+    ///   1. a subset of all possible conversions supported by every plug-in
+    ///   2. conversion-specific exceptions so caller can tell what didn't work.
+    ///
+    /// Commonly supported transformations are bit scaling and changing the
+    /// channel count, both adding and removing channels. See the derived
+    /// classes for the specific coversions supported.
+    ///
     virtual void readImage(void* buffer, size_t bufferByteCount,
                            uint32_t subimage = 0, uint32_t miplevel = 0,
-                           const FormatDescriptor& targetFormat = FormatDescriptor());
+                           const FormatDescriptor& requestFormat = FormatDescriptor());
 
-    /// Read a scanline into contiguous performing conversions to
-    /// @a targetFormat.
+    /// @brief Read a scanline into contiguous memory performing conversions to
+    /// @a requestFormat.
     ///
-    /// @sa See readImage for information about handling of targetFormat.
+    /// Supported conversions in the default implementation are uint->uint for
+    /// 8- & 16-bit values.
+    ///
+    /// @sa See readImage for information about handling of requestFormat.
     virtual void readScanline(void* buffer, size_t bufferByteCount,
                               uint32_t y, uint32_t z,
                               uint32_t subimage, uint32_t miplevel,
-                              const FormatDescriptor& targetFormat = FormatDescriptor());
+                              const FormatDescriptor& requestFormat = FormatDescriptor());
     /// Read a single scanline (all channels) of native data into contiguous
     /// memory.
     virtual void readNativeScanline(void* buffer, size_t bufferByteCount,
@@ -462,7 +466,7 @@ public:
     /// unique_ptr to an ImageOutput.
     using unique_ptr = std::unique_ptr<ImageOutput>;
 
-    static unique_ptr create (const _tstring& name);
+    static unique_ptr create (const std::string& name);
 
 protected:
     ImageOutput(std::string&& name) : name(name) { }
@@ -490,7 +494,7 @@ public:
     ///                     append another subimage (`AppendSubimage`), or
     ///                     append another MIP level (`AppendMIPLevel`).
     /// @returns            `true` upon success, or `false` upon failure.
-    virtual void open (const _tstring& name, const ImageSpec& newspec,
+    virtual void open (const std::string& name, const ImageSpec& newspec,
                        OpenMode mode=Create) = 0;
 
     /// Return a reference to the image format specification of the current

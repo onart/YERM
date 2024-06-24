@@ -25,6 +25,7 @@
  * @snippet{doc} version.h API version
  */
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <sys/types.h>
@@ -156,6 +157,7 @@ extern "C" {
  * @brief Required unpack alignment
  */
 #define KTX_GL_UNPACK_ALIGNMENT 4
+#define KTX_FACESLICE_WHOLE_LEVEL UINT_MAX
 
 #define KTX_TRUE  true
 #define KTX_FALSE false
@@ -176,8 +178,8 @@ typedef enum ktx_error_code_e {
     KTX_FILE_WRITE_ERROR,    /*!< An error occurred while writing to the file. */
     KTX_GL_ERROR,            /*!< GL operations resulted in an error. */
     KTX_INVALID_OPERATION,   /*!< The operation is not allowed in the current state. */
-    KTX_INVALID_VALUE,       /*!< A parameter value was not valid */
-    KTX_NOT_FOUND,           /*!< Requested key was not found */
+    KTX_INVALID_VALUE,       /*!< A parameter value was not valid. */
+    KTX_NOT_FOUND,           /*!< Requested metadata key or required dynamically loaded GPU function was not found. */
     KTX_OUT_OF_MEMORY,       /*!< Not enough memory to complete the operation. */
     KTX_TRANSCODE_FAILED,    /*!< Transcoding of block compressed texture failed. */
     KTX_UNKNOWN_FILE_FORMAT, /*!< The file not a KTX file */
@@ -706,15 +708,21 @@ typedef struct ktxTexture2 {
     struct ktxTexture2_private* _private;  /*!< Private data. */
 } ktxTexture2;
 
+/**
+ * @brief Helper for casting ktxTexture1 and ktxTexture2 to ktxTexture.
+ *
+ * Use with caution.
+ */
 #define ktxTexture(t) ((ktxTexture*)t)
 
 /**
  * @memberof ktxTexture
  * @~English
- * @brief Structure for passing texture information to ktxTexture1_Create() and
- *        ktxTexture2_Create().
+ * @brief Structure for passing texture information to ktxTexture1\_Create() and
+ *        ktxTexture2\_Create().
  *
- * @sa ktxTexture1_Create() and ktxTexture2_Create().
+ * @sa @ref ktxTexture1::ktxTexture1\_Create() "ktxTexture1_Create()"
+ * @sa @ref ktxTexture2::ktxTexture2\_Create() "ktxTexture2_Create()"
  */
 typedef struct
 {
@@ -1730,6 +1738,9 @@ KTX_API KTX_error_code KTX_APIENTRY ktxPrintKTX2InfoJSONForStream(ktxStream* str
 /**
 @~English
 @page libktx_history Revision History
+
+No longer updated. Kept to preserve ancient history. For more recent history see the repo log at
+https://github.com/KhronosGroup/KTX-Software. See also the Release Notes in the repo.
 
 @section v8 Version 4.0
 Added:

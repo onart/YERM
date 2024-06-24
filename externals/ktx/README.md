@@ -6,9 +6,9 @@
 The Official Khronos KTX Software Repository
 ---
 
-| GNU/Linux, iOS, macOS & wasm | Windows | Android | Mingw | Documentation |
-| :--------------------------: | :-----: | :-----: | :---: | :-----------: | 
-| ![Build Status](https://travis-ci.com/KhronosGroup/KTX-Software.svg?branch=main) | ![Build status](https://github.com/KhronosGroup/KTX-Software/actions/workflows/windows.yml/badge.svg) | ![KTX-Software CI](https://github.com/KhronosGroup/KTX-Software/actions/workflows/android.yml/badge.svg) | ![KTX-Software CI](https://github.com/KhronosGroup/KTX-Software/actions/workflows/mingw.yml/badge.svg) | ![Build status](https://codedocs.xyz/KhronosGroup/KTX-Software.svg)|
+| GNU/Linux, iOS, macOS & wasm | Windows | Android | Mingw |
+| :--------------------------: | :-----: | :-----: | :---: |
+| ![Build Status](https://travis-ci.com/KhronosGroup/KTX-Software.svg?branch=main) | ![Build status](https://github.com/KhronosGroup/KTX-Software/actions/workflows/windows.yml/badge.svg) | ![KTX-Software CI](https://github.com/KhronosGroup/KTX-Software/actions/workflows/android.yml/badge.svg) | ![KTX-Software CI](https://github.com/KhronosGroup/KTX-Software/actions/workflows/mingw.yml/badge.svg) |
 
 This is the official home of the source code for the Khronos KTX library and tools.
 
@@ -48,6 +48,7 @@ Version 2 file. [`tools/ktx2ktx2`](https://github.com/KhronosGroup/KTX-Software/
 human readable form. [`tools/ktxinfo`](https://github.com/KhronosGroup/KTX-Software/tree/main/tools/ktxinfo)
 - *ktxsc* - a tool to supercompress a KTX Version 2 file that
 contains uncompressed images.[`tools/ktxsc`](https://github.com/KhronosGroup/KTX-Software/tree/main/tools/ktxsc)
+- *pyktx* - Python wrapper
 - *toktx* - a tool to create KTX files from PNG, Netpbm or JPEG format images. It supports mipmap generation, encoding to
 Basis Universal formats and Zstd supercompression.[`tools/toktx`](https://github.com/KhronosGroup/KTX-Software/tree/main/tools/toktx)
 
@@ -100,22 +101,21 @@ Windows' Git Bash or Cygwin's bash terminal:
 
 ```bash
 ./install-gitconfig.sh
-rm TODO.md lib/mainpage.md pkgdoc/pages.md tools/toktx/toktx.cc
-git checkout TODO.md lib/mainpage.md pkgdoc/pages.md tools/toktx/toktx.cc
+./ci_scripts/smudge_date.sh
 
 ```
 
-On Windows with the Command Prompt (requires `git.exe` in a directory
+On Windows PowerShell (requires `git.exe` in a directory
 on your %PATH%):
 
-```cmd
-install-gitconfig.bat
-del TODO.md TODO.md lib\mainpage.md pkgdoc\pages.md tools\toktx\toktx.cc
-git checkout TODO.md lib\mainpage.md pkgdoc\pages.md tools\toktx\toktx.cc
+```ps1
+install-gitconfig.ps1
+./ci_scripts/smudge_date.ps1
 ```
 
 The first command adds an [include] of the repo's `.gitconfig` to the
 local git config file `.git/config`, i.e. the one in your clone of the repo.
-`.gitconfig` contains the config of the "keyworder" filter. The remaining
-commands force a new checkout of the affected files to smudge them with the
-date. These two are unnecessary if you plan to edit these files.
+`.gitconfig` contains the config of the "keyworder" filter. The script in
+the second command forces a new checkout of the affected files to smudge them
+with their last modified date. This is unnecessary if you plan to edit
+these files.

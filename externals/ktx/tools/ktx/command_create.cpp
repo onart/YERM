@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "command.h"
+#include "platform_utils.h"
 #include "metrics_utils.h"
 #include "compress_utils.h"
 #include "encode_utils.h"
@@ -36,6 +37,30 @@ struct ColorSpaceInfo {
 // -------------------------------------------------------------------------------------------------
 
 struct OptionsCreate {
+    inline static const char* kFormat = "format";
+    inline static const char* k1D = "1d";
+    inline static const char* kCubemap = "cubemap";
+    inline static const char* kRaw = "raw";
+    inline static const char* kWidth = "width";
+    inline static const char* kHeight = "height";
+    inline static const char* kDepth = "depth";
+    inline static const char* kLayers = "layers";
+    inline static const char* kLevels = "levels";
+    inline static const char* kRuntimeMipmap = "runtime-mipmap";
+    inline static const char* kGenerateMipmap = "generate-mipmap";
+    inline static const char* kEncode = "encode";
+    inline static const char* kSwizzle = "swizzle";
+    inline static const char* kInputSwizzle = "input-swizzle";
+    inline static const char* kAssignOetf = "assign-oetf";
+    inline static const char* kAssignPrimaries = "assign-primaries";
+    inline static const char* kConvertOetf = "convert-oetf";
+    inline static const char* kConvertPrimaries = "convert-primaries";
+    inline static const char* kFailOnColorConversions = "fail-on-color-conversions";
+    inline static const char* kWarnOnColorConversions = "warn-on-color-conversions";
+    inline static const char* kMipmapFilter = "mipmap-filter";
+    inline static const char* kMipmapFilterScale = "mipmap-filter-scale";
+    inline static const char* kMipmapWrap = "mipmap-wrap";
+
     bool _1d = false;
     bool cubemap = false;
 
@@ -60,95 +85,113 @@ struct OptionsCreate {
     std::optional<std::string> swizzle; /// Sets KTXswizzle
     std::optional<std::string> swizzleInput; /// Used to swizzle the input image data
 
-    khr_df_transfer_e convertOETF = KHR_DF_TRANSFER_UNSPECIFIED;
-    khr_df_transfer_e assignOETF = KHR_DF_TRANSFER_UNSPECIFIED;
-    khr_df_primaries_e assignPrimaries = KHR_DF_PRIMARIES_UNSPECIFIED;
-    khr_df_primaries_e convertPrimaries = KHR_DF_PRIMARIES_UNSPECIFIED;
+    std::optional<khr_df_transfer_e> convertOETF = {};
+    std::optional<khr_df_transfer_e> assignOETF = {};
+    std::optional<khr_df_primaries_e> assignPrimaries = {};
+    std::optional<khr_df_primaries_e> convertPrimaries = {};
     bool failOnColorConversions = false;
     bool warnOnColorConversions = false;
 
     void init(cxxopts::Options& opts) {
         opts.add_options()
-                ("format", "KTX format enum. The enum names are matching the VkFormats without the VK_FORMAT_ prefix."
-                           " If the format is an ASTC formats the ASTC encoder specific options become valid,"
-                           " otherwise they are ignored. Required. The VK_FORMAT_ prefix is ignored if present. Case insensitive.", cxxopts::value<std::string>(), "<enum>")
-                ("1d", "Create a 1D texture. If not set the texture will be a 2D or 3D texture.")
-                ("cubemap", "Create a cubemap texture. If not set the texture will be a 2D or 3D texture.")
-                ("raw", "Create from raw image data.")
-                ("width", "Base level width in pixels.", cxxopts::value<uint32_t>(), "[0-9]+")
-                ("height", "Base level height in pixels.", cxxopts::value<uint32_t>(), "[0-9]+")
-                ("depth", "Base level depth in pixels. If set the texture will be a 3D texture.", cxxopts::value<uint32_t>(), "[0-9]+")
-                ("layers", "Number of layers. If set the texture will be an array texture.", cxxopts::value<uint32_t>(), "[0-9]+")
-                ("levels", "Number of mip levels.", cxxopts::value<uint32_t>(), "[0-9]+")
-                ("runtime-mipmap", "Runtime mipmap generation mode.")
-                ("generate-mipmap", "Causes mipmaps to be generated during texture creation."
+                (kFormat, "KTX format enum that specifies the image data format."
+                    " The enum names are matching the VkFormats without the VK_FORMAT_ prefix."
+                    " The VK_FORMAT_ prefix is ignored if present."
+                    "\nWhen used with --encode it specifies the format of the input files before the encoding step."
+                    " In this case it must be one of:"
+                    "\n    R8_UNORM"
+                    "\n    R8_SRGB"
+                    "\n    R8G8_UNORM"
+                    "\n    R8G8_SRGB"
+                    "\n    R8G8B8_UNORM"
+                    "\n    R8G8B8_SRGB"
+                    "\n    R8G8B8A8_UNORM"
+                    "\n    R8G8B8A8_SRGB"
+                    "\nIf the format is an ASTC format the ASTC encoder specific options become valid,"
+                    " otherwise they are ignored."
+                    "\nThe format will be used to verify and load all input files into a texture before encoding."
+                    " Case insensitive. Required.", cxxopts::value<std::string>(), "<enum>")
+                (k1D, "Create a 1D texture. If not set the texture will be a 2D or 3D texture.")
+                (kCubemap, "Create a cubemap texture. If not set the texture will be a 2D or 3D texture.")
+                (kRaw, "Create from raw image data.")
+                (kWidth, "Base level width in pixels.", cxxopts::value<uint32_t>(), "[0-9]+")
+                (kHeight, "Base level height in pixels.", cxxopts::value<uint32_t>(), "[0-9]+")
+                (kDepth, "Base level depth in pixels. If set the texture will be a 3D texture.", cxxopts::value<uint32_t>(), "[0-9]+")
+                (kLayers, "Number of layers. If set the texture will be an array texture.", cxxopts::value<uint32_t>(), "[0-9]+")
+                (kLevels, "Number of mip levels.", cxxopts::value<uint32_t>(), "[0-9]+")
+                (kRuntimeMipmap, "Runtime mipmap generation mode.")
+                (kGenerateMipmap, "Causes mipmaps to be generated during texture creation."
                     " It enables the use of \'Generate Mipmap\' options."
                     " If the --levels is not specified the maximum possible mip level will be generated."
                     " This option is mutually exclusive with --runtime-mipmap and cannot be used with UINT or 3D textures.")
-                ("encode", "Encode the created KTX file. Case insensitive."
+                (kEncode, "Encode the created KTX file. Case insensitive."
                     "\nPossible options are: basis-lz | uastc", cxxopts::value<std::string>(), "<codec>")
-                ("swizzle", "KTX swizzle metadata.", cxxopts::value<std::string>(), "[rgba01]{4}")
-                ("input-swizzle", "Pre-swizzle input channels.", cxxopts::value<std::string>(), "[rgba01]{4}")
-                ("assign-oetf", "Force the created texture to have the specified transfer function, ignoring"
+                (kSwizzle, "KTX swizzle metadata.", cxxopts::value<std::string>(), "[rgba01]{4}")
+                (kInputSwizzle, "Pre-swizzle input channels.", cxxopts::value<std::string>(), "[rgba01]{4}")
+                (kAssignOetf, "Force the created texture to have the specified transfer function, ignoring"
                     " the transfer function of the input file(s). Case insensitive."
                     "\nPossible options are: linear | srgb", cxxopts::value<std::string>(), "<oetf>")
-                ("assign-primaries", "Force the created texture to have the specified color primaries, ignoring"
+                (kAssignPrimaries, "Force the created texture to have the specified color primaries, ignoring"
                     " the color primaries of the input file(s). Case insensitive."
                     "\nPossible options are:"
-                    " bt709 | srgb | bt601-ebu | bt601-smpte | bt2020 | ciexyz | aces | acescc | ntsc1953 | pal525 | displayp3 | adobergb.",
+                    " none | bt709 | srgb | bt601-ebu | bt601-smpte | bt2020 | ciexyz | aces | acescc | ntsc1953 | pal525 | displayp3 | adobergb.",
                     cxxopts::value<std::string>(), "<primaries>")
-                ("convert-oetf", "Convert the input image(s) to the specified transfer function, if different"
+                (kConvertOetf, "Convert the input image(s) to the specified transfer function, if different"
                     " from the transfer function of the input file(s). If both this and --assign-oetf are specified,"
                     " conversion will be performed from the assigned transfer function to the transfer function"
                     " specified by this option, if different. Case insensitive."
                     "\nPossible options are: linear | srgb", cxxopts::value<std::string>(), "<oetf>")
-                ("convert-primaries", "Convert the image image(s) to the specified color primaries, if different"
+                (kConvertPrimaries, "Convert the image image(s) to the specified color primaries, if different"
                     " from the color primaries of the input file(s) or the one specified by --assign-primaries."
                     " If both this and --assign-primaries are specified, conversion will be performed from "
                     " the assigned primaries to the primaries specified by this option, if different."
+                    " This option is not allowed to be specified when --assign-primaries is set to 'none'."
                     " Case insensitive."
                     "\nPossible options are:"
                     " bt709 | srgb | bt601-ebu | bt601-smpte | bt2020 | ciexyz | aces | acescc | ntsc1953 | pal525 | displayp3 | adobergb.",
                     cxxopts::value<std::string>(), "<primaries>")
-                ("fail-on-color-conversions", "Generates an error if any of the input images would need to be color converted.")
-                ("warn-on-color-conversions", "Generates a warning if any of the input images are color converted.");
+                (kFailOnColorConversions, "Generates an error if any of the input images would need to be color converted.")
+                (kWarnOnColorConversions, "Generates a warning if any of the input images are color converted.");
 
         opts.add_options("Generate Mipmap")
-                ("mipmap-filter", "Specifies the filter to use when generating the mipmaps. Case insensitive."
+                (kMipmapFilter, "Specifies the filter to use when generating the mipmaps. Case insensitive."
                     "\nPossible options are:"
                     " box | tent | bell | b-spline | mitchell | blackman | lanczos3 | lanczos4 | lanczos6 |"
                     " lanczos12 | kaiser | gaussian | catmullrom | quadratic_interp | quadratic_approx | "
                     " quadratic_mix."
                     " Defaults to lanczos4.",
                     cxxopts::value<std::string>(), "<filter>")
-                ("mipmap-filter-scale", "The filter scale to use. Defaults to 1.0.", cxxopts::value<float>(), "<float>")
-                ("mipmap-wrap", "Specify how to sample pixels near the image boundaries. Case insensitive."
+                (kMipmapFilterScale, "The filter scale to use. Defaults to 1.0.", cxxopts::value<float>(), "<float>")
+                (kMipmapWrap, "Specify how to sample pixels near the image boundaries. Case insensitive."
                     "\nPossible options are:"
                     " wrap | reflect | clamp."
                     " Defaults to clamp.", cxxopts::value<std::string>(), "<mode>");
     }
 
-    khr_df_transfer_e parseTransferFunction(cxxopts::ParseResult& args, const char* argName, Reporter& report) const {
+    std::optional<khr_df_transfer_e> parseTransferFunction(cxxopts::ParseResult& args, const char* argName, Reporter& report) const {
         static const std::unordered_map<std::string, khr_df_transfer_e> values{
             { "LINEAR", KHR_DF_TRANSFER_LINEAR },
             { "SRGB", KHR_DF_TRANSFER_SRGB }
         };
 
+        std::optional<khr_df_transfer_e> result = {};
+
         if (args[argName].count()) {
-            const auto oetfStr = to_upper_copy(args[argName].as<std::string>());
-            const auto it = values.find(oetfStr);
+            const auto oetfStr = args[argName].as<std::string>();
+            const auto it = values.find(to_upper_copy(oetfStr));
             if (it != values.end()) {
-                return it->second;
+                result = it->second;
             } else {
                 report.fatal_usage("Invalid or unsupported transfer function specified as --{} argument: \"{}\".", argName, oetfStr);
             }
         }
 
-        return KHR_DF_TRANSFER_UNSPECIFIED;
+        return result;
     }
 
-    khr_df_primaries_e parseColorPrimaries(cxxopts::ParseResult& args, const char* argName, Reporter& report) const {
+    std::optional<khr_df_primaries_e> parseColorPrimaries(cxxopts::ParseResult& args, const char* argName, Reporter& report) const {
         static const std::unordered_map<std::string, khr_df_primaries_e> values{
+            { "NONE", KHR_DF_PRIMARIES_UNSPECIFIED },
             { "BT709", KHR_DF_PRIMARIES_BT709 },
             { "SRGB", KHR_DF_PRIMARIES_SRGB },
             { "BT601-EBU", KHR_DF_PRIMARIES_BT601_EBU },
@@ -163,39 +206,41 @@ struct OptionsCreate {
             { "ADOBERGB", KHR_DF_PRIMARIES_ADOBERGB },
         };
 
+        std::optional<khr_df_primaries_e> result = {};
+
         if (args[argName].count()) {
-            const auto primariesStr = to_upper_copy(args[argName].as<std::string>());
-            const auto it = values.find(primariesStr);
+            const auto primariesStr = args[argName].as<std::string>();
+            const auto it = values.find(to_upper_copy(primariesStr));
             if (it != values.end()) {
-                return it->second;
+                result = it->second;
             } else {
-                report.fatal_usage("Invalid or unsupported transfer function specified as --{} argument: \"{}\".", argName, primariesStr);
+                report.fatal_usage("Invalid or unsupported primaries specified as --{} argument: \"{}\".", argName, primariesStr);
             }
         }
 
-        return KHR_DF_PRIMARIES_UNSPECIFIED;
+        return result;
     }
 
     void process(cxxopts::Options&, cxxopts::ParseResult& args, Reporter& report) {
-        _1d = args["1d"].as<bool>();
-        cubemap = args["cubemap"].as<bool>();
-        raw = args["raw"].as<bool>();
+        _1d = args[k1D].as<bool>();
+        cubemap = args[kCubemap].as<bool>();
+        raw = args[kRaw].as<bool>();
 
-        if (args["width"].count())
-            width = args["width"].as<uint32_t>();
-        if (args["height"].count())
-            height = args["height"].as<uint32_t>();
-        if (args["depth"].count())
-            depth = args["depth"].as<uint32_t>();
-        if (args["layers"].count())
-            layers = args["layers"].as<uint32_t>();
-        if (args["levels"].count())
-            levels = args["levels"].as<uint32_t>();
+        if (args[kWidth].count())
+            width = args[kWidth].as<uint32_t>();
+        if (args[kHeight].count())
+            height = args[kHeight].as<uint32_t>();
+        if (args[kDepth].count())
+            depth = args[kDepth].as<uint32_t>();
+        if (args[kLayers].count())
+            layers = args[kLayers].as<uint32_t>();
+        if (args[kLevels].count())
+            levels = args[kLevels].as<uint32_t>();
 
-        mipmapRuntime = args["runtime-mipmap"].as<bool>();
-        mipmapGenerate = args["generate-mipmap"].as<bool>();
+        mipmapRuntime = args[kRuntimeMipmap].as<bool>();
+        mipmapGenerate = args[kGenerateMipmap].as<bool>();
 
-        if (args["mipmap-filter"].count()) {
+        if (args[kMipmapFilter].count()) {
             static const std::unordered_set<std::string> filter_table{
                 "box",
                 "tent",
@@ -215,22 +260,22 @@ struct OptionsCreate {
                 "quadratic_mix",
             };
 
-            mipmapFilter = to_lower_copy(args["mipmap-filter"].as<std::string>());
+            mipmapFilter = to_lower_copy(args[kMipmapFilter].as<std::string>());
             if (filter_table.count(*mipmapFilter) == 0)
                 report.fatal_usage("Invalid or unsupported mipmap filter specified as --mipmap-filter argument: \"{}\".", *mipmapFilter);
         }
 
-        if (args["mipmap-filter-scale"].count())
-            mipmapFilterScale = args["mipmap-filter-scale"].as<float>();
+        if (args[kMipmapFilterScale].count())
+            mipmapFilterScale = args[kMipmapFilterScale].as<float>();
 
-        if (args["mipmap-wrap"].count()) {
+        if (args[kMipmapWrap].count()) {
             static const std::unordered_map<std::string, basisu::Resampler::Boundary_Op> wrap_table{
                 { "clamp", basisu::Resampler::Boundary_Op::BOUNDARY_CLAMP },
                 { "wrap", basisu::Resampler::Boundary_Op::BOUNDARY_WRAP },
                 { "reflect", basisu::Resampler::Boundary_Op::BOUNDARY_REFLECT },
             };
 
-            const auto wrapStr = to_lower_copy(args["mipmap-wrap"].as<std::string>());
+            const auto wrapStr = to_lower_copy(args[kMipmapWrap].as<std::string>());
             const auto it = wrap_table.find(wrapStr);
             if (it == wrap_table.end())
                 report.fatal_usage("Invalid or unsupported mipmap wrap mode specified as --mipmap-wrap argument: \"{}\".", wrapStr);
@@ -238,8 +283,8 @@ struct OptionsCreate {
                 mipmapWrap = it->second;
         }
 
-        if (args["swizzle"].count()) {
-            swizzle = to_lower_copy(args["swizzle"].as<std::string>());
+        if (args[kSwizzle].count()) {
+            swizzle = to_lower_copy(args[kSwizzle].as<std::string>());
             const auto errorFmt = "Invalid --swizzle value: \"{}\". The value must match the \"[rgba01]{{4}}\" regex.";
             if (swizzle->size() != 4)
                 report.fatal_usage(errorFmt, *swizzle);
@@ -247,8 +292,8 @@ struct OptionsCreate {
                 if (!contains("rgba01", c))
                     report.fatal_usage(errorFmt, *swizzle);
         }
-        if (args["input-swizzle"].count()) {
-            swizzleInput = to_lower_copy(args["input-swizzle"].as<std::string>());
+        if (args[kInputSwizzle].count()) {
+            swizzleInput = to_lower_copy(args[kInputSwizzle].as<std::string>());
             const auto errorFmt = "Invalid --input-swizzle value: \"{}\". The value must match the \"[rgba01]{{4}}\" regex.";
             if (swizzleInput->size() != 4)
                 report.fatal_usage(errorFmt, *swizzleInput);
@@ -257,8 +302,8 @@ struct OptionsCreate {
                     report.fatal_usage(errorFmt, *swizzleInput);
         }
 
-        if (args["format"].count()) {
-            const auto formatStr = args["format"].as<std::string>();
+        if (args[kFormat].count()) {
+            const auto formatStr = args[kFormat].as<std::string>();
             const auto parsedVkFormat = parseVkFormat(formatStr);
             if (!parsedVkFormat)
                 report.fatal_usage("The requested format is invalid or unsupported: \"{}\".", formatStr);
@@ -282,6 +327,8 @@ struct OptionsCreate {
                 VK_FORMAT_R8G8B8A8_SRGB,
                 VK_FORMAT_B8G8R8A8_UNORM,
                 VK_FORMAT_B8G8R8A8_SRGB,
+                VK_FORMAT_A8B8G8R8_UNORM_PACK32,
+                VK_FORMAT_A8B8G8R8_SRGB_PACK32,
                 VK_FORMAT_ASTC_4x4_UNORM_BLOCK,
                 VK_FORMAT_ASTC_4x4_SRGB_BLOCK,
                 VK_FORMAT_ASTC_5x4_UNORM_BLOCK,
@@ -318,8 +365,8 @@ struct OptionsCreate {
                 VK_FORMAT_R5G5B5A1_UNORM_PACK16,
                 VK_FORMAT_B5G5R5A1_UNORM_PACK16,
                 VK_FORMAT_A1R5G5B5_UNORM_PACK16,
-                VK_FORMAT_A4R4G4B4_UNORM_PACK16_EXT,
-                VK_FORMAT_A4B4G4R4_UNORM_PACK16_EXT,
+                VK_FORMAT_A4R4G4B4_UNORM_PACK16,
+                VK_FORMAT_A4B4G4R4_UNORM_PACK16,
                 VK_FORMAT_R10X6_UNORM_PACK16,
                 VK_FORMAT_R10X6G10X6_UNORM_2PACK16,
                 VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16,
@@ -361,6 +408,8 @@ struct OptionsCreate {
                 VK_FORMAT_R8G8B8A8_SINT,
                 VK_FORMAT_B8G8R8A8_UINT,
                 VK_FORMAT_B8G8R8A8_SINT,
+                VK_FORMAT_A8B8G8R8_UINT_PACK32,
+                VK_FORMAT_A8B8G8R8_SINT_PACK32,
                 VK_FORMAT_R16G16B16A16_UINT,
                 VK_FORMAT_R16G16B16A16_SINT,
                 VK_FORMAT_R32G32B32A32_UINT,
@@ -385,6 +434,8 @@ struct OptionsCreate {
                 VK_FORMAT_D16_UNORM_S8_UINT,
                 VK_FORMAT_D24_UNORM_S8_UINT,
                 VK_FORMAT_D32_SFLOAT_S8_UINT,
+                VK_FORMAT_A8_UNORM_KHR,
+                VK_FORMAT_A1B5G5R5_UNORM_PACK16_KHR,
         };
 
         if (isProhibitedFormat(vkFormat))
@@ -458,26 +509,25 @@ struct OptionsCreate {
 
         formatDesc = createFormatDescriptor(vkFormat, report);
 
-        convertOETF = parseTransferFunction(args, "convert-oetf", report);
-        assignOETF = parseTransferFunction(args, "assign-oetf", report);
+        convertOETF = parseTransferFunction(args, kConvertOetf, report);
+        assignOETF = parseTransferFunction(args, kAssignOetf, report);
 
-        convertPrimaries = parseColorPrimaries(args, "convert-primaries", report);
-        assignPrimaries = parseColorPrimaries(args, "assign-primaries", report);
+        convertPrimaries = parseColorPrimaries(args, kConvertPrimaries, report);
+        assignPrimaries = parseColorPrimaries(args, kAssignPrimaries, report);
+
+        if (convertPrimaries.has_value() && assignPrimaries == KHR_DF_PRIMARIES_UNSPECIFIED)
+            report.fatal_usage("Option --convert-primaries cannot be used when --assign-primaries is set to 'none'.");
 
         if (raw) {
-            if (convertOETF != KHR_DF_TRANSFER_UNSPECIFIED)
+            if (convertOETF.has_value())
                 report.fatal_usage("Option --convert-oetf cannot be used with --raw.");
-            if (assignOETF != KHR_DF_TRANSFER_UNSPECIFIED)
-                report.fatal_usage("Option --assign-oetf cannot be used with --raw.");
-            if (convertPrimaries != KHR_DF_PRIMARIES_UNSPECIFIED)
+            if (convertPrimaries.has_value())
                 report.fatal_usage("Option --convert-primaries cannot be used with --raw.");
-            if (assignPrimaries != KHR_DF_PRIMARIES_UNSPECIFIED)
-                report.fatal_usage("Option --assign-primaries cannot be used with --raw.");
         }
 
         if (formatDesc.transfer() == KHR_DF_TRANSFER_SRGB) {
-            if (convertOETF == KHR_DF_TRANSFER_UNSPECIFIED) {
-                switch (assignOETF) {
+            if (!convertOETF.has_value() && assignOETF.has_value()) {
+                switch (assignOETF.value()) {
                 case KHR_DF_TRANSFER_UNSPECIFIED:
                 case KHR_DF_TRANSFER_SRGB:
                     // assign-oetf must either not be specified or must be sRGB for an sRGB format
@@ -485,19 +535,19 @@ struct OptionsCreate {
                 default:
                     report.fatal_usage(
                             "Invalid value to --assign-oetf \"{}\" for format \"{}\". Transfer function must be sRGB for sRGB formats.",
-                            args["assign-oetf"].as<std::string>(), args["format"].as<std::string>());
+                            args[kAssignOetf].as<std::string>(), args[kFormat].as<std::string>());
                 }
-            } else if (convertOETF != KHR_DF_TRANSFER_SRGB) {
+            } else if (convertOETF.has_value() && convertOETF != KHR_DF_TRANSFER_SRGB) {
                 report.fatal_usage(
                         "Invalid value to --convert-oetf \"{}\" for format \"{}\". Transfer function must be sRGB for sRGB formats.",
-                        args["convert-oetf"].as<std::string>(), args["format"].as<std::string>());
+                        args[kConvertOetf].as<std::string>(), args[kFormat].as<std::string>());
             }
         }
 
-        if (args["fail-on-color-conversions"].count())
+        if (args[kFailOnColorConversions].count())
             failOnColorConversions = true;
 
-        if (args["warn-on-color-conversions"].count()) {
+        if (args[kWarnOnColorConversions].count()) {
             if (failOnColorConversions)
                 report.fatal_usage("The options --fail-on-color-conversions and warn-on-color-conversions are mutually exclusive.");
             warnOnColorConversions = true;
@@ -506,10 +556,19 @@ struct OptionsCreate {
 };
 
 struct OptionsASTC : public ktxAstcParams {
-    bool astc = false;
+    inline static const char* kAstcQuality = "astc-quality";
+    inline static const char* kAstcPerceptual = "astc-perceptual";
+
+    inline static const char* kAstcOptions[] = {
+        kAstcQuality,
+        kAstcPerceptual
+    };
+
+    std::string astcOptions{};
+    bool encodeASTC = false;
     ClampedOption<ktx_uint32_t> qualityLevel{ktxAstcParams::qualityLevel, 0, KTX_PACK_ASTC_QUALITY_LEVEL_MAX};
 
-    OptionsASTC() {
+    OptionsASTC() : ktxAstcParams() {
         threadCount = std::thread::hardware_concurrency();
         if (threadCount == 0)
             threadCount = 1;
@@ -522,11 +581,7 @@ struct OptionsASTC : public ktxAstcParams {
 
     void init(cxxopts::Options& opts) {
         opts.add_options("Encode ASTC")
-                ("astc-mode",
-                        "Specify which encoding mode to use. LDR is the default unless the "
-                        "input image is 16-bit in which case the default is HDR.",
-                        cxxopts::value<std::string>(), "ldr | hdr")
-                ("astc-quality",
+                (kAstcQuality,
                         "The quality level configures the quality-performance tradeoff for "
                         "the compressor; more complete searches of the search space "
                         "improve image quality at the expense of compression time. Default "
@@ -540,27 +595,26 @@ struct OptionsASTC : public ktxAstcParams {
                         "    thorough   | (equivalent to quality =  98)\n"
                         "    exhaustive | (equivalent to quality = 100)",
                         cxxopts::value<std::string>(), "<level>")
-                ("astc-perceptual",
+                (kAstcPerceptual,
                         "The codec should optimize for perceptual error, instead of direct "
                         "RMS error. This aims to improve perceived image quality, but "
                         "typically lowers the measured PSNR score. Perceptual methods are "
                         "currently only available for normal maps and RGB color data.");
     }
 
-    void process(cxxopts::Options&, cxxopts::ParseResult& args, Reporter& report) {
-        if (args["astc-mode"].count()) {
-            const auto modeStr = args["astc-mode"].as<std::string>();
-            if (modeStr == "ldr")
-                mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
-            else if (modeStr == "hdr")
-                mode = KTX_PACK_ASTC_ENCODER_MODE_HDR;
-            else
-                report.fatal_usage("Invalid astc-mode: \"{}\"", modeStr);
-        } else {
-            mode = KTX_PACK_ASTC_ENCODER_MODE_DEFAULT;
-        }
+    void captureASTCOption(const char* name) {
+        astcOptions += fmt::format(" --{}", name);
+    }
 
-        if (args["astc-quality"].count()) {
+    template <typename T>
+    T captureASTCOption(cxxopts::ParseResult& args, const char* name) {
+        const T value = args[name].as<T>();
+        astcOptions += fmt::format(" --{} {}", name, value);
+        return value;
+    }
+
+    void process(cxxopts::Options&, cxxopts::ParseResult& args, Reporter& report) {
+        if (args[kAstcQuality].count()) {
             static std::unordered_map<std::string, ktx_pack_astc_quality_levels_e> astc_quality_mapping{
                     {"fastest", KTX_PACK_ASTC_QUALITY_LEVEL_FASTEST},
                     {"fast", KTX_PACK_ASTC_QUALITY_LEVEL_FAST},
@@ -568,7 +622,7 @@ struct OptionsASTC : public ktxAstcParams {
                     {"thorough", KTX_PACK_ASTC_QUALITY_LEVEL_THOROUGH},
                     {"exhaustive", KTX_PACK_ASTC_QUALITY_LEVEL_EXHAUSTIVE}
             };
-            const auto qualityLevelStr = to_lower_copy(args["astc-quality"].as<std::string>());
+            const auto qualityLevelStr = to_lower_copy(captureASTCOption<std::string>(args, kAstcQuality));
             const auto it = astc_quality_mapping.find(qualityLevelStr);
             if (it == astc_quality_mapping.end())
                 report.fatal_usage("Invalid astc-quality: \"{}\"", qualityLevelStr);
@@ -577,24 +631,29 @@ struct OptionsASTC : public ktxAstcParams {
             qualityLevel = KTX_PACK_ASTC_QUALITY_LEVEL_MEDIUM;
         }
 
-        perceptual = args["astc-perceptual"].as<bool>();
+        if (args[kAstcPerceptual].count()) {
+            captureASTCOption(kAstcPerceptual);
+            perceptual = KTX_TRUE;
+        }
     }
 };
 
 // -------------------------------------------------------------------------------------------------
 
-/** @page ktxtools_create ktx create
+/** @page ktx_create ktx create
 @~English
 
 Create a KTX2 file from various input files.
 
-@section ktxtools_create_synopsis SYNOPSIS
+@section ktx_create_synopsis SYNOPSIS
     ktx create [option...] @e input-file... @e output-file
 
-@section ktxtools_create_description DESCRIPTION
+@section ktx_create_description DESCRIPTION
     @b ktx @b create can create, encode and supercompress a KTX2 file from the
     input images specified as the @e input-file... arguments and save it as the
-    @e output-file. The last positional argument is treated as the output-file.
+    @e output-file. The last positional argument is treated as the @e output-file.
+    If the @e input-file is '-' the file will be read from the stdin.
+    If the @e output-path is '-' the output file will be written to the stdout.
 
     Each @e input-file must be a valid EXR (.exr), PNG (.png) or Raw (.raw) file.
     PNG files with luminance (L) or luminance + alpha (LA) data will be converted
@@ -608,17 +667,28 @@ Create a KTX2 file from various input files.
 
     The following options are available:
     <dl>
-        <dt>--format &lt;enum&gt;</dt>
-        <dd>KTX format enum. The enum names are matching the VkFormats without the VK_FORMAT_ prefix.
+        <dt>\--format &lt;enum&gt;</dt>
+        <dd>KTX format enum that specifies the image data format.
+            The enum names are matching the VkFormats without the VK_FORMAT_ prefix.
+            The VK_FORMAT_ prefix is ignored if present.<br />
+            When used with --encode it specifies the format of the input files before the encoding step.
+            In this case it must be one of:
+            <ul>
+                <li>R8_UNORM</li>
+                <li>R8_SRGB</li>
+                <li>R8G8_UNORM</li>
+                <li>R8G8_SRGB</li>
+                <li>R8G8B8_UNORM</li>
+                <li>R8G8B8_SRGB</li>
+                <li>R8G8B8A8_UNORM</li>
+                <li>R8G8B8A8_SRGB</li>
+            </ul>
             If the format is an ASTC format the ASTC encoder specific options become valid,
-            otherwise they are ignored. Required. The VK_FORMAT_ prefix is ignored if present.
-            Case insensitive.</dd>
+            otherwise they are ignored.<br />
+            The format will be used to verify and load all input files into a texture before encoding.<br />
+            Case insensitive. Required.</dd>
         <dl>
-            <dt>--astc-mode &lt;ldr | hdr&gt;</dt>
-            <dd>Specify which encoding mode to use. LDR is the default
-                unless the input image is 16-bit in which case the default is
-                HDR.</dd>
-            <dt>--astc-quality &lt;level&gt;</dt>
+            <dt>\--astc-quality &lt;level&gt;</dt>
             <dd>The quality level configures the quality-performance
                 tradeoff for the compressor; more complete searches of the
                 search space improve image quality at the expense of
@@ -634,51 +704,51 @@ Create a KTX2 file from various input files.
                     <tr><td>exhaustive </td> <td>(equivalent to quality = 100) </td></tr>
                 </table>
             </dd>
-            <dt>--astc-perceptual</dt>
+            <dt>\--astc-perceptual</dt>
             <dd>The codec should optimize for perceptual error, instead of
                 direct RMS error. This aims to improve perceived image quality,
                 but typically lowers the measured PSNR score. Perceptual
                 methods are currently only available for normal maps and RGB
                 color data.</dd>
         </dl>
-        <dt>--1d</dt>
+        <dt>\--1d</dt>
         <dd>Create a 1D texture. If not set the texture will be a 2D or 3D texture.</dd>
-        <dt>--cubemap</dt>
+        <dt>\--cubemap</dt>
         <dd>Create a cubemap texture. If not set the texture will be a 2D or 3D texture.</dd>
-        <dt>--raw</dt>
+        <dt>\--raw</dt>
         <dd>Create from raw image data.</dd>
-        <dt>--width</dt>
+        <dt>\--width</dt>
         <dd>Base level width in pixels.</dd>
-        <dt>--height</dt>
+        <dt>\--height</dt>
         <dd>Base level height in pixels.</dd>
-        <dt>--depth</dt>
+        <dt>\--depth</dt>
         <dd>Base level depth in pixels.
             If set the texture will be a 3D texture.</dd>
-        <dt>--layers</dt>
+        <dt>\--layers</dt>
         <dd>Number of layers.
             If set the texture will be an array texture.</dd>
-        <dt>--runtime-mipmap</dt>
+        <dt>\--runtime-mipmap</dt>
         <dd>Runtime mipmap generation mode.
             Sets up the texture to request the mipmaps to be generated by the client application at
             runtime.</dd>
-        <dt>--generate-mipmap</dt>
+        <dt>\--generate-mipmap</dt>
         <dd>Causes mipmaps to be generated during texture creation.
             If the --levels is not specified the maximum possible mip level will be generated.
             This option is mutually exclusive with --runtime-mipmap and cannot be used with SINT,
             UINT or 3D textures.</dd>
             When set it enables the use of the following \'Generate Mipmap\' options.
         <dl>
-            <dt>--mipmap-filter &lt;filter&gt;</dt>
+            <dt>\--mipmap-filter &lt;filter&gt;</dt>
             <dd>Specifies the filter to use when generating the mipmaps. Case insensitive.<br />
                 Possible options are:
                 box | tent | bell | b-spline | mitchell | blackman | lanczos3 | lanczos4 | lanczos6 |
                 lanczos12 | kaiser | gaussian | catmullrom | quadratic_interp | quadratic_approx |
                 quadratic_mix.
                 Defaults to lanczos4.</dd>
-            <dt>--mipmap-filter-scale &lt;float&gt;</dt>
+            <dt>\--mipmap-filter-scale &lt;float&gt;</dt>
             <dd>The filter scale to use.
                 Defaults to 1.0.</dd>
-            <dt>--mipmap-wrap &lt;mode&gt;</dt>
+            <dt>\--mipmap-wrap &lt;mode&gt;</dt>
             <dd>Specify how to sample pixels near the image boundaries. Case insensitive.<br />
                 Possible options are:
                 wrap | reflect | clamp.
@@ -686,9 +756,9 @@ Create a KTX2 file from various input files.
         </dl>
     </dl>
     <dl>
-        <dt>--encode basis-lz | uastc<</dt>
+        <dt>\--encode basis-lz | uastc<</dt>
         <dd>Encode the texture with the specified codec before saving it.
-            This option matches the functionality of the @ref ktxtools_encode "ktx encode" command.
+            This option matches the functionality of the @ref ktx_encode "ktx encode" command.
             With each encoding option the following encoder specific options become valid,
             otherwise they are ignored. Case-insensitive.</dd>
 
@@ -696,24 +766,24 @@ Create a KTX2 file from various input files.
         @snippet{doc} ktx/metrics_utils.h command options_metrics
     </dl>
     <dl>
-        <dt>--swizzle [rgba01]{4}</dt>
+        <dt>\--swizzle [rgba01]{4}</dt>
         <dd>KTX swizzle metadata.</dd>
-        <dt>--input-swizzle [rgba01]{4}</dt>
+        <dt>\--input-swizzle [rgba01]{4}</dt>
         <dd>Pre-swizzle input channels.</dd>
-        <dt>--assign-oetf &lt;oetf&gt;</dt>
+        <dt>\--assign-oetf &lt;oetf&gt;</dt>
         <dd>Force the created texture to have the specified transfer function, ignoring
             the transfer function of the input file(s). Case insensitive.
             Possible options are:
             linear | srgb
             </dd>
-        <dt>--assign-primaries &lt;primaries&gt;</dt>
+        <dt>\--assign-primaries &lt;primaries&gt;</dt>
         <dd>Force the created texture to have the specified color primaries, ignoring
             the color primaries of the input file(s). Case insensitive.
             Possible options are:
-            bt709 | srgb | bt601-ebu | bt601-smpte | bt2020 | ciexyz | aces | acescc | ntsc1953 |
-            pal525 | displayp3 | adobergb
+            none | bt709 | srgb | bt601-ebu | bt601-smpte | bt2020 | ciexyz | aces | acescc |
+            ntsc1953 | pal525 | displayp3 | adobergb
             </dd>
-        <dt>--convert-oetf &lt;oetf&gt;</dt>
+        <dt>\--convert-oetf &lt;oetf&gt;</dt>
         <dd>Convert the input image(s) to the specified transfer function, if different
             from the transfer function of the input file(s). If both this and --assign-oetf are
             specified, conversion will be performed from the assigned transfer function to the
@@ -721,33 +791,34 @@ Create a KTX2 file from various input files.
             Possible options are:
             linear | srgb
             </dd>
-        <dt>--convert-primaries &lt;primaries&gt;</dt>
+        <dt>\--convert-primaries &lt;primaries&gt;</dt>
         <dd>Convert the image image(s) to the specified color primaries, if different
             from the color primaries of the input file(s) or the one specified by --assign-primaries.
             If both this and --assign-primaries are specified, conversion will be performed from
             the assigned primaries to the primaries specified by this option, if different.
+            This option is not allowed to be specified when --assign-primaries is set to 'none'.
             Case insensitive.
             Possible options are:
             bt709 | srgb | bt601-ebu | bt601-smpte | bt2020 | ciexyz | aces | acescc | ntsc1953 |
             pal525 | displayp3 | adobergb
             </dd>
-        <dt>--fail-on-color-conversions</dt>
+        <dt>\--fail-on-color-conversions</dt>
         <dd>Generates an error if any of the input images would need to be color converted.</dd>
-        <dt>--warn-on-color-conversions</dt>
+        <dt>\--warn-on-color-conversions</dt>
         <dd>Generates a warning if any of the input images are color converted.</dd>
     </dl>
     @snippet{doc} ktx/compress_utils.h command options_compress
     @snippet{doc} ktx/command.h command options_generic
 
-@section ktxtools_create_exitstatus EXIT STATUS
+@section ktx_create_exitstatus EXIT STATUS
     @snippet{doc} ktx/command.h command exitstatus
 
-@section ktxtools_create_history HISTORY
+@section ktx_create_history HISTORY
 
 @par Version 4.0
  - Initial version
 
-@section ktxtools_create_author AUTHOR
+@section ktx_create_author AUTHOR
     - Mátyás Császár [Vader], RasterGrid www.rastergrid.com
     - Daniel Rákos, RasterGrid www.rastergrid.com
 */
@@ -760,10 +831,10 @@ private:
     uint32_t numLevels = 0;
     uint32_t numLayers = 0;
     uint32_t numFaces = 0;
-    uint32_t numBaseDepths = 0;
+    uint32_t baseDepth = 0;
 
 public:
-    virtual int main(int argc, _TCHAR* argv[]) override;
+    virtual int main(int argc, char* argv[]) override;
     virtual void initOptions(cxxopts::Options& opts) override;
     virtual void processOptions(cxxopts::Options& opts, cxxopts::ParseResult& args) override;
 
@@ -795,7 +866,7 @@ private:
 
 // -------------------------------------------------------------------------------------------------
 
-int CommandCreate::main(int argc, _TCHAR* argv[]) {
+int CommandCreate::main(int argc, char* argv[]) {
     try {
         parseCommandLine("ktx create",
                 "Create, encode and supercompress a KTX2 file from the input images specified as the\n"
@@ -821,14 +892,14 @@ void CommandCreate::processOptions(cxxopts::Options& opts, cxxopts::ParseResult&
     numLevels = options.levels.value_or(1);
     numLayers = options.layers.value_or(1);
     numFaces = options.cubemap ? 6 : 1;
-    numBaseDepths = options.depth.value_or(1u);
-    // baseDepth is determined by the --depth option. As the loaded images are
-    // 2D "z_slice_of_blocks" their depth is always 1 and not relevant for any kind of deduction
+    baseDepth = options.depth.value_or(1u);
 
+    const auto blockSizeZ = isFormat3DBlockCompressed(options.vkFormat) ?
+            createFormatDescriptor(options.vkFormat, *this).basic.texelBlockDimension2 + 1u : 1u;
     uint32_t expectedInputImages = 0;
     for (uint32_t i = 0; i < (options.mipmapGenerate ? 1 : numLevels); ++i)
         // If --generate-mipmap is set the input only contains the base level images
-        expectedInputImages += numLayers * numFaces * std::max(numBaseDepths >> i, 1u);
+        expectedInputImages += numLayers * numFaces * ceil_div(std::max(baseDepth >> i, 1u), blockSizeZ);
     if (options.inputFilepaths.size() != expectedInputImages) {
         fatal_usage("Too {} input image for {} level{}, {} layer, {} face and {} depth. Provided {} but expected {}.",
                 options.inputFilepaths.size() > expectedInputImages ? "many" : "few",
@@ -836,8 +907,14 @@ void CommandCreate::processOptions(cxxopts::Options& opts, cxxopts::ParseResult&
                 options.mipmapGenerate ? " (mips generated)" : "",
                 numLayers,
                 numFaces,
-                numBaseDepths,
+                baseDepth,
                 options.inputFilepaths.size(), expectedInputImages);
+    }
+
+    if (!isFormatAstc(options.vkFormat)) {
+        for (const char* astcOption : OptionsASTC::kAstcOptions)
+            if (args[astcOption].count())
+                fatal_usage("--{} can only be used with ASTC formats.", astcOption);
     }
 
     if (options.codec == EncodeCodec::BasisLZ) {
@@ -874,63 +951,77 @@ void CommandCreate::processOptions(cxxopts::Options& opts, cxxopts::ParseResult&
         fatal_usage("--compare-psnr can only be used with BasisLZ or UASTC encoding.");
 
     if (isFormatAstc(options.vkFormat) && !options.raw) {
-        options.astc = true;
+        options.encodeASTC = true;
 
         switch (options.vkFormat) {
         case VK_FORMAT_ASTC_4x4_UNORM_BLOCK: [[fallthrough]];
         case VK_FORMAT_ASTC_4x4_SRGB_BLOCK:
+            options.mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
             options.blockDimension = KTX_PACK_ASTC_BLOCK_DIMENSION_4x4;
             break;
         case VK_FORMAT_ASTC_5x4_UNORM_BLOCK: [[fallthrough]];
         case VK_FORMAT_ASTC_5x4_SRGB_BLOCK:
+            options.mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
             options.blockDimension = KTX_PACK_ASTC_BLOCK_DIMENSION_5x4;
             break;
         case VK_FORMAT_ASTC_5x5_UNORM_BLOCK: [[fallthrough]];
         case VK_FORMAT_ASTC_5x5_SRGB_BLOCK:
+            options.mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
             options.blockDimension = KTX_PACK_ASTC_BLOCK_DIMENSION_5x5;
             break;
         case VK_FORMAT_ASTC_6x5_UNORM_BLOCK: [[fallthrough]];
         case VK_FORMAT_ASTC_6x5_SRGB_BLOCK:
+            options.mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
             options.blockDimension = KTX_PACK_ASTC_BLOCK_DIMENSION_6x5;
             break;
         case VK_FORMAT_ASTC_6x6_UNORM_BLOCK: [[fallthrough]];
         case VK_FORMAT_ASTC_6x6_SRGB_BLOCK:
+            options.mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
             options.blockDimension = KTX_PACK_ASTC_BLOCK_DIMENSION_6x6;
             break;
         case VK_FORMAT_ASTC_8x5_UNORM_BLOCK: [[fallthrough]];
         case VK_FORMAT_ASTC_8x5_SRGB_BLOCK:
+            options.mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
             options.blockDimension = KTX_PACK_ASTC_BLOCK_DIMENSION_8x5;
             break;
         case VK_FORMAT_ASTC_8x6_UNORM_BLOCK: [[fallthrough]];
         case VK_FORMAT_ASTC_8x6_SRGB_BLOCK:
+            options.mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
             options.blockDimension = KTX_PACK_ASTC_BLOCK_DIMENSION_8x6;
             break;
         case VK_FORMAT_ASTC_8x8_UNORM_BLOCK: [[fallthrough]];
         case VK_FORMAT_ASTC_8x8_SRGB_BLOCK:
+            options.mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
             options.blockDimension = KTX_PACK_ASTC_BLOCK_DIMENSION_8x8;
             break;
         case VK_FORMAT_ASTC_10x5_UNORM_BLOCK: [[fallthrough]];
         case VK_FORMAT_ASTC_10x5_SRGB_BLOCK:
+            options.mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
             options.blockDimension = KTX_PACK_ASTC_BLOCK_DIMENSION_10x5;
             break;
         case VK_FORMAT_ASTC_10x6_UNORM_BLOCK: [[fallthrough]];
         case VK_FORMAT_ASTC_10x6_SRGB_BLOCK:
+            options.mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
             options.blockDimension = KTX_PACK_ASTC_BLOCK_DIMENSION_10x6;
             break;
         case VK_FORMAT_ASTC_10x8_UNORM_BLOCK: [[fallthrough]];
         case VK_FORMAT_ASTC_10x8_SRGB_BLOCK:
+            options.mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
             options.blockDimension = KTX_PACK_ASTC_BLOCK_DIMENSION_10x8;
             break;
         case VK_FORMAT_ASTC_10x10_UNORM_BLOCK: [[fallthrough]];
         case VK_FORMAT_ASTC_10x10_SRGB_BLOCK:
+            options.mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
             options.blockDimension = KTX_PACK_ASTC_BLOCK_DIMENSION_10x10;
             break;
         case VK_FORMAT_ASTC_12x10_UNORM_BLOCK: [[fallthrough]];
         case VK_FORMAT_ASTC_12x10_SRGB_BLOCK:
+            options.mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
             options.blockDimension = KTX_PACK_ASTC_BLOCK_DIMENSION_12x10;
             break;
         case VK_FORMAT_ASTC_12x12_UNORM_BLOCK: [[fallthrough]];
         case VK_FORMAT_ASTC_12x12_SRGB_BLOCK:
+            options.mode = KTX_PACK_ASTC_ENCODER_MODE_LDR;
             options.blockDimension = KTX_PACK_ASTC_BLOCK_DIMENSION_12x12;
             break;
         default:
@@ -939,7 +1030,7 @@ void CommandCreate::processOptions(cxxopts::Options& opts, cxxopts::ParseResult&
         }
     }
 
-    if (options._1d && options.astc)
+    if (options._1d && options.encodeASTC)
         fatal_usage("ASTC format {} cannot be used for 1 dimensional textures (indicated by --1d).",
                 toString(options.vkFormat));
 }
@@ -954,12 +1045,10 @@ void CommandCreate::foreachImage(const FormatDescriptor& format, F&& func) {
     auto inputFileIt = options.inputFilepaths.begin();
 
     for (uint32_t levelIndex = 0; levelIndex < (options.mipmapGenerate ? 1 : numLevels); ++levelIndex) {
-        // TODO: Tools P5: 3D BC formats currently discard the last partial z block slice
-        //          This should be: ceil_div instead of div
-        const auto numimageDepth = std::max(numBaseDepths >> levelIndex, 1u) / (format.basic.texelBlockDimension2 + 1);
+        const auto numDepthSlices = ceil_div(std::max(baseDepth >> levelIndex, 1u), format.basic.texelBlockDimension2 + 1u);
         for (uint32_t layerIndex = 0; layerIndex < numLayers; ++layerIndex) {
             for (uint32_t faceIndex = 0; faceIndex < numFaces; ++faceIndex) {
-                for (uint32_t depthSliceIndex = 0; depthSliceIndex < numimageDepth; ++depthSliceIndex) {
+                for (uint32_t depthSliceIndex = 0; depthSliceIndex < numDepthSlices; ++depthSliceIndex) {
                     assert(inputFileIt != options.inputFilepaths.end() && "Internal error"); // inputFilepaths size was already validated during arg parsing
                     func(*inputFileIt++, levelIndex, layerIndex, faceIndex, depthSliceIndex);
                 }
@@ -971,18 +1060,20 @@ void CommandCreate::foreachImage(const FormatDescriptor& format, F&& func) {
 
 std::string CommandCreate::readRawFile(const std::filesystem::path& filepath) {
     std::string result;
-    std::ifstream file(filepath, std::ios::binary | std::ios::in | std::ios::ate);
-    if (!file)
-        fatal(rc::IO_FAILURE, "Failed to open file \"{}\": {}.", filepath.generic_string(), errnoMessage());
+    InputStream inputStream(filepath.string(), *this);
 
-    const auto size = file.tellg();
-    file.seekg(0);
-    if (file.fail())
+    inputStream->seekg(0, std::ios::end);
+    if (inputStream->fail())
+        fatal(rc::IO_FAILURE, "Failed to seek file \"{}\": {}.", filepath.generic_string(), errnoMessage());
+
+    const auto size = inputStream->tellg();
+    inputStream->seekg(0);
+    if (inputStream->fail())
         fatal(rc::IO_FAILURE, "Failed to seek file \"{}\": {}.", filepath.generic_string(), errnoMessage());
 
     result.resize(size);
-    file.read(result.data(), size);
-    if (file.fail())
+    inputStream->read(result.data(), size);
+    if (inputStream->fail())
         fatal(rc::IO_FAILURE, "Failed to read file \"{}\": {}.", filepath.generic_string(), errnoMessage());
 
     return result;
@@ -998,7 +1089,6 @@ void CommandCreate::executeCreate() {
 
     bool firstImage = true;
     ImageSpec firstImageSpec{};
-    ColorSpaceInfo colorSpaceInfo{};
 
     foreachImage(options.formatDesc, [&](
             const auto& inputFilepath,
@@ -1017,7 +1107,13 @@ void CommandCreate::executeCreate() {
 
                 if (options.cubemap && target.width() != target.height())
                     fatal(rc::INVALID_FILE, "--cubemap specified but the input image \"{}\" with size {}x{} is not square.",
-                            inputFilepath, target.width(), target.height());
+                            fmtInFile(inputFilepath), target.width(), target.height());
+
+                if (options.assignOETF.has_value())
+                    target.format().setTransfer(options.assignOETF.value());
+
+                if (options.assignPrimaries.has_value())
+                    target.format().setPrimaries(options.assignPrimaries.value());
 
                 texture = createTexture(target);
             }
@@ -1027,7 +1123,7 @@ void CommandCreate::executeCreate() {
             const auto expectedFileSize = ktxTexture_GetImageSize(texture, levelIndex);
             if (rawData.size() != expectedFileSize)
                 fatal(rc::INVALID_FILE, "Raw input file \"{}\" with {} bytes for level {} does not match the expected size of {} bytes.",
-                        inputFilepath, rawData.size(), levelIndex, expectedFileSize);
+                        fmtInFile(inputFilepath), rawData.size(), levelIndex, expectedFileSize);
 
             const auto ret = ktxTexture_SetImageFromMemory(
                     texture,
@@ -1041,43 +1137,45 @@ void CommandCreate::executeCreate() {
             const auto inputImageFile = ImageInput::open(inputFilepath, nullptr, warningFn);
             inputImageFile->seekSubimage(0, 0); // Loading multiple subimage from the same input is not supported
 
-            if (std::exchange(firstImage, false)) {
-                target = ImageSpec{
-                        inputImageFile->spec().width(),
-                        inputImageFile->spec().height(),
-                        inputImageFile->spec().depth(),
-                        options.formatDesc};
+            target = ImageSpec{
+                    inputImageFile->spec().width(),
+                    inputImageFile->spec().height(),
+                    options.depth.value_or(1u),
+                    options.formatDesc};
 
+            ColorSpaceInfo colorSpaceInfo{};
+            determineTargetColorSpace(*inputImageFile, target, colorSpaceInfo);
+
+            if (std::exchange(firstImage, false)) {
                 if (options.cubemap && target.width() != target.height())
                     fatal(rc::INVALID_FILE, "--cubemap specified but the input image \"{}\" with size {}x{} is not square.",
-                            inputFilepath, target.width(), target.height());
+                            fmtInFile(inputFilepath), target.width(), target.height());
 
                 if (options._1d && target.height() != 1)
                     fatal(rc::INVALID_FILE, "For --1d textures the input image height must be 1, but for \"{}\" it was {}.",
-                            inputFilepath, target.height());
+                            fmtInFile(inputFilepath), target.height());
 
-                const auto maxDimension = std::max(target.width(), std::max(target.height(), numBaseDepths));
+                const auto maxDimension = std::max(target.width(), std::max(target.height(), baseDepth));
                 const auto maxLevels = log2(maxDimension) + 1;
                 if (options.levels.value_or(1) > maxLevels)
                     fatal_usage("Requested {} levels is too many. With input image \"{}\" sized {}x{} and depth {} the texture can only have {} levels at most.",
-                            options.levels.value_or(1), inputFilepath, target.width(), target.height(), numBaseDepths, maxLevels);
+                            options.levels.value_or(1), fmtInFile(inputFilepath), target.width(), target.height(), baseDepth, maxLevels);
 
-                if (options.astc)
+                if (options.encodeASTC)
                     selectASTCMode(inputImageFile->spec().format().largestChannelBitLength());
 
                 firstImageSpec = inputImageFile->spec();
-                determineTargetColorSpace(*inputImageFile, target, colorSpaceInfo);
                 texture = createTexture(target);
             } else {
                 checkSpecsMatch(*inputImageFile, firstImageSpec);
             }
 
-            const uint32_t imageWidth = std::max(target.width() >> levelIndex, 1u);
-            const uint32_t imageHeight = std::max(target.height() >> levelIndex, 1u);
+            const uint32_t imageWidth = std::max(firstImageSpec.width() >> levelIndex, 1u);
+            const uint32_t imageHeight = std::max(firstImageSpec.height() >> levelIndex, 1u);
 
             if (inputImageFile->spec().width() != imageWidth || inputImageFile->spec().height() != imageHeight)
                 fatal(rc::INVALID_FILE, "Input image \"{}\" with size {}x{} does not match expected size {}x{} for level {}.",
-                        inputFilepath, inputImageFile->spec().width(), inputImageFile->spec().height(), imageWidth, imageHeight, levelIndex);
+                        fmtInFile(inputFilepath), inputImageFile->spec().width(), inputImageFile->spec().height(), imageWidth, imageHeight, levelIndex);
 
             auto image = loadInputImage(*inputImageFile);
 
@@ -1091,12 +1189,12 @@ void CommandCreate::executeCreate() {
                         fatal(rc::INVALID_FILE,
                             "Input file \"{}\" would need color conversion as input and output primaries are different. "
                             "Use --assign-primaries and do not use --convert-primaries to avoid unwanted color conversions.",
-                            inputFilepath);
+                            fmtInFile(inputFilepath));
 
                     if (options.warnOnColorConversions)
                         warning("Input file \"{}\" is color converted as input and output primaries are different. "
                             "Use --assign-primaries and do not use --convert-primaries to avoid unwanted color conversions.",
-                            inputFilepath);
+                            fmtInFile(inputFilepath));
 
                     // Transform OETF with primary transform
                     image->transformColorSpace(*colorSpaceInfo.srcTransferFunction, *colorSpaceInfo.dstTransferFunction, &primaryTransform);
@@ -1105,12 +1203,12 @@ void CommandCreate::executeCreate() {
                         fatal(rc::INVALID_FILE,
                             "Input file \"{}\" would need color conversion as input and output transfer functions are different. "
                             "Use --assign-oetf and do not use --convert-oetf to avoid unwanted color conversions.",
-                            inputFilepath);
+                            fmtInFile(inputFilepath));
 
                     if (options.warnOnColorConversions)
                         warning("Input file \"{}\" is color converted as input and output transfer functions are different. "
                             "Use --assign-oetf and do not use --convert-oetf to avoid unwanted color conversions.",
-                            inputFilepath);
+                            fmtInFile(inputFilepath));
 
                     // Transform OETF without primary transform
                     image->transformColorSpace(*colorSpaceInfo.srcTransferFunction, *colorSpaceInfo.dstTransferFunction);
@@ -1132,7 +1230,7 @@ void CommandCreate::executeCreate() {
             assert(ret == KTX_SUCCESS && "Internal error"); (void) ret;
 
             if (options.mipmapGenerate) {
-                const auto maxDimension = std::max(target.width(), std::max(target.height(), numBaseDepths));
+                const auto maxDimension = std::max(target.width(), std::max(target.height(), baseDepth));
                 const auto maxLevels = log2(maxDimension) + 1;
                 uint32_t numMipLevels = options.levels.value_or(maxLevels);
                 generateMipLevels(texture, std::move(image), *inputImageFile, numMipLevels, layerIndex, faceIndex, depthSliceIndex);
@@ -1158,28 +1256,23 @@ void CommandCreate::executeCreate() {
     encodeASTC(texture, options);
     compress(texture, options);
 
-    // Save output file
-    if (std::filesystem::path(options.outputFilepath).has_parent_path())
-        std::filesystem::create_directories(std::filesystem::path(options.outputFilepath).parent_path());
-    FILE* f = _tfopen(options.outputFilepath.c_str(), "wb");
-    if (!f)
-        fatal(rc::IO_FAILURE, "Could not open output file \"{}\": {}.", options.outputFilepath, errnoMessage());
-
-    // #if defined(_WIN32)
-    //     if (f == stdout) {
-    //         /* Set "stdout" to have binary mode */
-    //         (void) _setmode(_fileno(stdout), _O_BINARY);
-    //     }
-    // #endif
-
-    const auto ret = ktxTexture_WriteToStdioStream(texture, f);
-    fclose(f);
-
-    if (KTX_SUCCESS != ret) {
-        if (f != stdout)
-            std::filesystem::remove(options.outputFilepath);
-        fatal(rc::IO_FAILURE, "Failed to write KTX file \"{}\": KTX error: {}", options.outputFilepath, ktxErrorString(ret));
+    // Add KTXwriterScParams metadata if ASTC encoding, BasisU encoding, or other supercompression was used
+    const auto writerScParams = fmt::format("{}{}{}", options.astcOptions, options.codecOptions, options.compressOptions);
+    if (writerScParams.size() > 0) {
+        // Options always contain a leading space
+        assert(writerScParams[0] == ' ');
+        ktxHashList_AddKVPair(&texture->kvDataHead, KTX_WRITER_SCPARAMS_KEY,
+            static_cast<uint32_t>(writerScParams.size()),
+            writerScParams.c_str() + 1); // +1 to exclude leading space
     }
+
+    // Save output file
+    const auto outputPath = std::filesystem::path(DecodeUTF8Path(options.outputFilepath));
+    if (outputPath.has_parent_path())
+        std::filesystem::create_directories(outputPath.parent_path());
+
+    OutputStream outputFile(options.outputFilepath, *this);
+    outputFile.writeKTX2(texture, *this);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -1199,7 +1292,7 @@ void CommandCreate::encode(KTXTexture2& texture, OptionsCodec<false>& opts) {
 }
 
 void CommandCreate::encodeASTC(KTXTexture2& texture, OptionsASTC& opts) {
-    if (opts.astc) {
+    if (opts.encodeASTC) {
         const auto ret = ktxTexture2_CompressAstcEx(texture, &opts);
         if (ret != KTX_SUCCESS)
             fatal(rc::KTX_FAILURE, "Failed to encode KTX2 file with codec ASTC. KTX Error: {}", ktxErrorString(ret));
@@ -1230,119 +1323,49 @@ std::unique_ptr<Image> CommandCreate::loadInputImage(ImageInput& inputImageFile)
     const auto height = inputImageFile.spec().height();
 
     const auto inputBitLength = inputFormat.largestChannelBitLength();
-    const auto requestBitLength = std::max(bit_ceil(inputBitLength), 8u);
-    const auto requestChannelCount = [&]() -> uint32_t {
-        switch (inputImageFile.formatType()) {
-        case ImageInputFormatType::png_l:
-            // Load luminance images as RGB for processing as: L -> LLL1
-            return 3;
-        case ImageInputFormatType::png_la:
-            // Load luminance-alpha images as RGBA for processing as: L -> LLLA
-            return 4;
-        default:
-            return inputFormat.channelCount();
-        }
-    }();
+    const auto requestBitLength = std::max(imageio::bit_ceil(inputBitLength), 8u);
     FormatDescriptor loadFormat;
 
-    if (inputImageFile.formatType() == ImageInputFormatType::exr_float) {
-        switch (requestChannelCount) {
-        case 1:
-            image = std::make_unique<r32fimage>(width, height);
-            loadFormat = createFormatDescriptor(VK_FORMAT_R32_SFLOAT, *this);
-            break;
-        case 2:
-            image = std::make_unique<rg32fimage>(width, height);
-            loadFormat = createFormatDescriptor(VK_FORMAT_R32G32_SFLOAT, *this);
-            break;
-        case 3:
-            image = std::make_unique<rgb32fimage>(width, height);
-            loadFormat = createFormatDescriptor(VK_FORMAT_R32G32B32_SFLOAT, *this);
-            break;
-        case 4:
-            image = std::make_unique<rgba32fimage>(width, height);
-            loadFormat = createFormatDescriptor(VK_FORMAT_R32G32B32A32_SFLOAT, *this);
-            break;
-        }
-    } else if (requestBitLength == 8) {
-        switch (requestChannelCount) {
-        case 1:
-            image = std::make_unique<r8image>(width, height);
-            loadFormat = createFormatDescriptor(VK_FORMAT_R8_UNORM, *this);
-            break;
-        case 2:
-            image = std::make_unique<rg8image>(width, height);
-            loadFormat = createFormatDescriptor(VK_FORMAT_R8G8_UNORM, *this);
-            break;
-        case 3:
-            image = std::make_unique<rgb8image>(width, height);
-            loadFormat = createFormatDescriptor(VK_FORMAT_R8G8B8_UNORM, *this);
-            break;
-        case 4:
+    switch (inputImageFile.formatType()) {
+    case ImageInputFormatType::exr_uint:
+        image = std::make_unique<rgba32image>(width, height);
+        loadFormat = createFormatDescriptor(VK_FORMAT_R32G32B32A32_UINT, *this);
+        break;
+
+    case ImageInputFormatType::exr_float:
+        image = std::make_unique<rgba32fimage>(width, height);
+        loadFormat = createFormatDescriptor(VK_FORMAT_R32G32B32A32_SFLOAT, *this);
+        break;
+
+    case ImageInputFormatType::npbm: [[fallthrough]];
+    case ImageInputFormatType::jpg: [[fallthrough]];
+    case ImageInputFormatType::png_l: [[fallthrough]];
+    case ImageInputFormatType::png_la: [[fallthrough]];
+    case ImageInputFormatType::png_rgb: [[fallthrough]];
+    case ImageInputFormatType::png_rgba:
+        if (requestBitLength == 8) {
             image = std::make_unique<rgba8image>(width, height);
             loadFormat = createFormatDescriptor(VK_FORMAT_R8G8B8A8_UNORM, *this);
             break;
-        }
-    } else if (requestBitLength == 16) {
-        switch (requestChannelCount) {
-        case 1:
-            image = std::make_unique<r16image>(width, height);
-            loadFormat = createFormatDescriptor(VK_FORMAT_R16_UNORM, *this);
-            break;
-        case 2:
-            image = std::make_unique<rg16image>(width, height);
-            loadFormat = createFormatDescriptor(VK_FORMAT_R16G16_UNORM, *this);
-            break;
-        case 3:
-            image = std::make_unique<rgb16image>(width, height);
-            loadFormat = createFormatDescriptor(VK_FORMAT_R16G16B16_UNORM, *this);
-            break;
-        case 4:
+        } else if (requestBitLength == 16) {
             image = std::make_unique<rgba16image>(width, height);
             loadFormat = createFormatDescriptor(VK_FORMAT_R16G16B16A16_UNORM, *this);
             break;
+        } else {
+            fatal(rc::INVALID_FILE, "Unsupported format with {}-bit channels.", requestBitLength);
         }
-    } else if (requestBitLength == 32) {
-        switch (requestChannelCount) {
-        case 1:
-            image = std::make_unique<r32image>(width, height);
-            loadFormat = createFormatDescriptor(VK_FORMAT_R32_UINT, *this);
-            break;
-        case 2:
-            image = std::make_unique<rg32image>(width, height);
-            loadFormat = createFormatDescriptor(VK_FORMAT_R32G32_UINT, *this);
-            break;
-        case 3:
-            image = std::make_unique<rgb32image>(width, height);
-            loadFormat = createFormatDescriptor(VK_FORMAT_R32G32B32_UINT, *this);
-            break;
-        case 4:
-            image = std::make_unique<rgba32image>(width, height);
-            loadFormat = createFormatDescriptor(VK_FORMAT_R32G32B32A32_UINT, *this);
-            break;
-        }
-    } else {
-        fatal(rc::INVALID_FILE, "Unsupported format with {}-bit and {} channel.",
-                requestBitLength, requestChannelCount);
+        break;
     }
 
     inputImageFile.readImage(static_cast<uint8_t*>(*image), image->getByteCount(), 0, 0, loadFormat);
     return image;
 }
 
-std::vector<uint8_t> convertUNORMPackedPadded(const std::unique_ptr<Image>& image,
-        uint32_t c0 = 0, uint32_t c0Pad = 0, uint32_t c1 = 0, uint32_t c1Pad = 0,
-        uint32_t c2 = 0, uint32_t c2Pad = 0, uint32_t c3 = 0, uint32_t c3Pad = 0,
-        std::string_view swizzle = "") {
-
+std::vector<uint8_t> convertUNORMPacked(const std::unique_ptr<Image>& image, uint32_t C0, uint32_t C1, uint32_t C2, uint32_t C3, std::string_view swizzle = "") {
     if (!swizzle.empty())
         image->swizzle(swizzle);
 
-    return image->getUNORMPackedPadded(c0, c0Pad, c1, c1Pad, c2, c2Pad, c3, c3Pad);
-}
-
-std::vector<uint8_t> convertUNORMPacked(const std::unique_ptr<Image>& image, uint32_t C0, uint32_t C1, uint32_t C2, uint32_t C3, std::string_view swizzle = "") {
-    return convertUNORMPackedPadded(image, C0, 0, C1, 0, C2, 0, C3, 0, swizzle);
+    return image->getUNORMPacked(C0, C1, C2, C3);
 }
 
 template <typename T>
@@ -1359,6 +1382,19 @@ std::vector<uint8_t> convertUNORM(const std::unique_ptr<Image>& image, std::stri
 }
 
 template <typename T>
+std::vector<uint8_t> convertUNORMSBits(const std::unique_ptr<Image>& image, uint32_t sBits, std::string_view swizzle = "") {
+    using ComponentT = typename T::Color::value_type;
+    static constexpr auto componentCount = T::Color::getComponentCount();
+    static constexpr auto bytesPerComponent = sizeof(ComponentT);
+    static constexpr auto bits = bytesPerComponent * 8;
+
+    if (!swizzle.empty())
+        image->swizzle(swizzle);
+
+    return image->getUNORM(componentCount, bits, sBits);
+}
+
+template <typename T>
 std::vector<uint8_t> convertSFLOAT(const std::unique_ptr<Image>& image, std::string_view swizzle = "") {
     using ComponentT = typename T::Color::value_type;
     static constexpr auto componentCount = T::Color::getComponentCount();
@@ -1369,6 +1405,14 @@ std::vector<uint8_t> convertSFLOAT(const std::unique_ptr<Image>& image, std::str
         image->swizzle(swizzle);
 
     return image->getSFloat(componentCount, bits);
+}
+
+std::vector<uint8_t> convertB10G11R11(const std::unique_ptr<Image>& image) {
+    return image->getB10G11R11();
+}
+
+std::vector<uint8_t> convertE5B9G9R9(const std::unique_ptr<Image>& image) {
+    return image->getE5B9G9R9();
 }
 
 template <typename T>
@@ -1420,22 +1464,17 @@ std::vector<uint8_t> convertSINT(const std::unique_ptr<Image>& image, std::strin
 std::vector<uint8_t> CommandCreate::convert(const std::unique_ptr<Image>& image, VkFormat vkFormat,
         ImageInput& inputFile) {
 
-    const uint32_t inputChannelCount = image->getComponentCount();
     const uint32_t inputBitDepth = std::max(8u, inputFile.spec().format().largestChannelBitLength());
 
-    const auto require = [&](uint32_t channelCount, uint32_t bitDepth) {
-        if (inputChannelCount < channelCount)
-            fatal(rc::INVALID_FILE, "{}: Input file channel count {} is less than the required {} for {}.",
-                    inputFile.filename(), inputChannelCount, channelCount, toString(vkFormat));
-
+    const auto require = [&](uint32_t bitDepth) {
         if (inputBitDepth < bitDepth)
             fatal(rc::INVALID_FILE, "{}: Not enough precision to convert {} bit input to {} bit output for {}.",
                     inputFile.filename(), inputBitDepth, bitDepth, toString(vkFormat));
-        if (inputBitDepth > bit_ceil(bitDepth))
+      if (inputBitDepth > imageio::bit_ceil(bitDepth))
             warning("{}: Possible loss of precision with converting {} bit input to {} bit output for {}.",
                     inputFile.filename(), inputBitDepth, bitDepth, toString(vkFormat));
     };
-    const auto requireUNORM = [&](uint32_t channelCount, uint32_t bitDepth) {
+    const auto requireUNORM = [&](uint32_t bitDepth) {
         switch (inputFile.formatType()) {
         case ImageInputFormatType::png_l: [[fallthrough]];
         case ImageInputFormatType::png_la: [[fallthrough]];
@@ -1449,9 +1488,9 @@ std::vector<uint8_t> CommandCreate::convert(const std::unique_ptr<Image>& image,
             fatal(rc::INVALID_FILE, "{}: Input file data type \"{}\" does not match the expected input data type of {} bit \"{}\" for {}.",
                     inputFile.filename(), toString(inputFile.formatType()), bitDepth, "UNORM", toString(vkFormat));
         }
-        require(channelCount, bitDepth);
+        require(bitDepth);
     };
-    const auto requireSFloat = [&](uint32_t channelCount, uint32_t bitDepth) {
+    const auto requireSFloat = [&](uint32_t bitDepth) {
         switch (inputFile.formatType()) {
         case ImageInputFormatType::exr_float:
             break; // Accept
@@ -1465,9 +1504,9 @@ std::vector<uint8_t> CommandCreate::convert(const std::unique_ptr<Image>& image,
             fatal(rc::INVALID_FILE, "{}: Input file data type \"{}\" does not match the expected input data type of {} bit \"{}\" for {}.",
                     inputFile.filename(), toString(inputFile.formatType()), bitDepth, "SFLOAT", toString(vkFormat));
         }
-        require(channelCount, bitDepth);
+        require(bitDepth);
     };
-    const auto requireUINT = [&](uint32_t channelCount, uint32_t bitDepth) {
+    const auto requireUINT = [&](uint32_t bitDepth) {
         switch (inputFile.formatType()) {
         case ImageInputFormatType::exr_uint:
             break; // Accept
@@ -1481,7 +1520,7 @@ std::vector<uint8_t> CommandCreate::convert(const std::unique_ptr<Image>& image,
             fatal(rc::INVALID_FILE, "{}: Input file data type \"{}\" does not match the expected input data type of {} bit \"{}\" for {}.",
                     inputFile.filename(), toString(inputFile.formatType()), bitDepth, "UINT", toString(vkFormat));
         }
-        require(channelCount, bitDepth);
+        require(bitDepth);
     };
 
     // ------------
@@ -1491,19 +1530,19 @@ std::vector<uint8_t> CommandCreate::convert(const std::unique_ptr<Image>& image,
 
     case VK_FORMAT_R8_UNORM: [[fallthrough]];
     case VK_FORMAT_R8_SRGB:
-        requireUNORM(1, 8);
+        requireUNORM(8);
         return convertUNORM<r8image>(image);
     case VK_FORMAT_R8G8_UNORM: [[fallthrough]];
     case VK_FORMAT_R8G8_SRGB:
-        requireUNORM(2, 8);
+        requireUNORM(8);
         return convertUNORM<rg8image>(image);
     case VK_FORMAT_R8G8B8_UNORM: [[fallthrough]];
     case VK_FORMAT_R8G8B8_SRGB:
-        requireUNORM(3, 8);
+        requireUNORM(8);
         return convertUNORM<rgb8image>(image);
     case VK_FORMAT_B8G8R8_UNORM: [[fallthrough]];
     case VK_FORMAT_B8G8R8_SRGB:
-        requireUNORM(3, 8);
+        requireUNORM(8);
         return convertUNORM<rgb8image>(image, "bgr1");
 
         // Verbatim copy with component reordering if needed, extra channels must be dropped.
@@ -1512,12 +1551,14 @@ std::vector<uint8_t> CommandCreate::convert(const std::unique_ptr<Image>& image,
         // 8 bits with a right-shift and a warning must be generated in the stderr.
 
     case VK_FORMAT_R8G8B8A8_UNORM: [[fallthrough]];
-    case VK_FORMAT_R8G8B8A8_SRGB:
-        requireUNORM(4, 8);
+    case VK_FORMAT_R8G8B8A8_SRGB: [[fallthrough]];
+    case VK_FORMAT_A8B8G8R8_UNORM_PACK32: [[fallthrough]];
+    case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
+        requireUNORM(8);
         return convertUNORM<rgba8image>(image);
     case VK_FORMAT_B8G8R8A8_UNORM: [[fallthrough]];
     case VK_FORMAT_B8G8R8A8_SRGB:
-        requireUNORM(4, 8);
+        requireUNORM(8);
         return convertUNORM<rgba8image>(image, "bgra");
 
         // Verbatim copy with component reordering if needed, extra channels must be dropped.
@@ -1555,91 +1596,94 @@ std::vector<uint8_t> CommandCreate::convert(const std::unique_ptr<Image>& image,
     case VK_FORMAT_ASTC_12x12_SRGB_BLOCK:
         // ASTC texture data composition is performed via
         // R8G8B8A8_UNORM followed by the ASTC encoding
-        requireUNORM(4, 8);
+        requireUNORM(8);
         assert(false && "Internal error");
         return {};
 
         // Passthrough CLI options to the ASTC encoder.
 
     case VK_FORMAT_R4G4_UNORM_PACK8:
-        requireUNORM(2, 8);
+        requireUNORM(8);
         return convertUNORMPacked(image, 4, 4, 0, 0);
     case VK_FORMAT_R5G6B5_UNORM_PACK16:
-        requireUNORM(3, 8);
+        requireUNORM(8);
         return convertUNORMPacked(image, 5, 6, 5, 0);
     case VK_FORMAT_B5G6R5_UNORM_PACK16:
-        requireUNORM(3, 8);
+        requireUNORM(8);
         return convertUNORMPacked(image, 5, 6, 5, 0, "bgr1");
 
     case VK_FORMAT_R4G4B4A4_UNORM_PACK16:
-        requireUNORM(4, 8);
+        requireUNORM(8);
         return convertUNORMPacked(image, 4, 4, 4, 4);
     case VK_FORMAT_B4G4R4A4_UNORM_PACK16:
-        requireUNORM(4, 8);
+        requireUNORM(8);
         return convertUNORMPacked(image, 4, 4, 4, 4, "bgra");
     case VK_FORMAT_R5G5B5A1_UNORM_PACK16:
-        requireUNORM(4, 8);
+        requireUNORM(8);
         return convertUNORMPacked(image, 5, 5, 5, 1);
     case VK_FORMAT_B5G5R5A1_UNORM_PACK16:
-        requireUNORM(4, 8);
+        requireUNORM(8);
         return convertUNORMPacked(image, 5, 5, 5, 1, "bgra");
     case VK_FORMAT_A1R5G5B5_UNORM_PACK16:
-        requireUNORM(4, 8);
+        requireUNORM(8);
         return convertUNORMPacked(image, 1, 5, 5, 5, "argb");
-    case VK_FORMAT_A4R4G4B4_UNORM_PACK16_EXT:
-        requireUNORM(4, 8);
+    case VK_FORMAT_A1B5G5R5_UNORM_PACK16_KHR:
+        requireUNORM(8);
+        return convertUNORMPacked(image, 1, 5, 5, 5, "abgr");
+    case VK_FORMAT_A4R4G4B4_UNORM_PACK16:
+        requireUNORM(8);
         return convertUNORMPacked(image, 4, 4, 4, 4, "argb");
-    case VK_FORMAT_A4B4G4R4_UNORM_PACK16_EXT:
-        requireUNORM(4, 8);
+    case VK_FORMAT_A4B4G4R4_UNORM_PACK16:
+        requireUNORM(8);
         return convertUNORMPacked(image, 4, 4, 4, 4, "abgr");
 
         // Input values must be rounded to the target precision.
         // When the input file contains an sBIT chunk, its values must be taken into account.
 
     case VK_FORMAT_R10X6_UNORM_PACK16:
-        requireUNORM(1, 10);
-        return convertUNORMPackedPadded(image, 10, 6);
+        requireUNORM(10);
+        return convertUNORMSBits<r16image>(image, 10);
     case VK_FORMAT_R10X6G10X6_UNORM_2PACK16:
-        requireUNORM(2, 10);
-        return convertUNORMPackedPadded(image, 10, 6, 10, 6);
+        requireUNORM(10);
+        return convertUNORMSBits<rg16image>(image, 10);
     case VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16:
-        requireUNORM(4, 10);
-        return convertUNORMPackedPadded(image, 10, 6, 10, 6, 10, 6, 10, 6);
+        requireUNORM(10);
+        return convertUNORMSBits<rgba16image>(image, 10);
 
     case VK_FORMAT_R12X4_UNORM_PACK16:
-        requireUNORM(1, 12);
-        return convertUNORMPackedPadded(image, 12, 4);
+        requireUNORM(12);
+        return convertUNORMSBits<r16image>(image, 12);
     case VK_FORMAT_R12X4G12X4_UNORM_2PACK16:
-        requireUNORM(2, 12);
-        return convertUNORMPackedPadded(image, 12, 4, 12, 4);
+        requireUNORM(12);
+        return convertUNORMSBits<rg16image>(image, 12);
     case VK_FORMAT_R12X4G12X4B12X4A12X4_UNORM_4PACK16:
-        requireUNORM(4, 12);
-        return convertUNORMPackedPadded(image, 12, 4, 12, 4, 12, 4, 12, 4);
+        requireUNORM(12);
+        return convertUNORMSBits<rgba16image>(image, 12);
 
         // Input values must be rounded to the target precision.
         // When the input file contains an sBIT chunk, its values must be taken into account.
 
     case VK_FORMAT_R16_UNORM:
-        requireUNORM(1, 16);
+        requireUNORM(16);
         return convertUNORM<r16image>(image);
     case VK_FORMAT_R16G16_UNORM:
-        requireUNORM(2, 16);
+        requireUNORM(16);
         return convertUNORM<rg16image>(image);
     case VK_FORMAT_R16G16B16_UNORM:
-        requireUNORM(3, 16);
+        requireUNORM(16);
         return convertUNORM<rgb16image>(image);
     case VK_FORMAT_R16G16B16A16_UNORM:
-        requireUNORM(4, 16);
+        requireUNORM(16);
         return convertUNORM<rgba16image>(image);
 
         // Verbatim copy, extra channels must be dropped.
         // Input PNG file must be 16-bit with sBIT chunk missing or signaling 16 bits.
 
     case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
-        requireUNORM(4, 10);
+        requireUNORM(10);
         return convertUNORMPacked(image, 2, 10, 10, 10, "argb");
     case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
-        requireUNORM(4, 10);
+        requireUNORM(10);
         return convertUNORMPacked(image, 2, 10, 10, 10, "abgr");
 
         // Input values must be rounded to the target precision.
@@ -1659,127 +1703,131 @@ std::vector<uint8_t> CommandCreate::convert(const std::unique_ptr<Image>& image,
     // EXR:
 
     case VK_FORMAT_R8_UINT:
-        requireSFloat(1, 16);
+        requireSFloat(16);
         return convertUINT<r8image>(image);
     case VK_FORMAT_R8_SINT:
-        requireSFloat(1, 16);
+        requireSFloat(16);
         return convertSINT<r8image>(image);
     case VK_FORMAT_R16_UINT:
-        requireSFloat(1, 32);
+        requireSFloat(32);
         return convertUINT<r16image>(image);
     case VK_FORMAT_R16_SINT:
-        requireSFloat(1, 32);
+        requireSFloat(32);
         return convertSINT<r16image>(image);
     case VK_FORMAT_R32_UINT:
-        requireUINT(1, 32);
+        requireUINT(32);
         return convertUINT<r32image>(image);
     case VK_FORMAT_R8G8_UINT:
-        requireSFloat(2, 16);
+        requireSFloat(16);
         return convertUINT<rg8image>(image);
     case VK_FORMAT_R8G8_SINT:
-        requireSFloat(2, 16);
+        requireSFloat(16);
         return convertSINT<rg8image>(image);
     case VK_FORMAT_R16G16_UINT:
-        requireSFloat(2, 32);
+        requireSFloat(32);
         return convertUINT<rg16image>(image);
     case VK_FORMAT_R16G16_SINT:
-        requireSFloat(2, 32);
+        requireSFloat(32);
         return convertSINT<rg16image>(image);
     case VK_FORMAT_R32G32_UINT:
-        requireUINT(2, 32);
+        requireUINT(32);
         return convertUINT<rg32image>(image);
     case VK_FORMAT_R8G8B8_UINT:
-        requireSFloat(3, 16);
+        requireSFloat(16);
         return convertUINT<rgb8image>(image);
     case VK_FORMAT_R8G8B8_SINT:
-        requireSFloat(3, 16);
+        requireSFloat(16);
         return convertSINT<rgb8image>(image);
     case VK_FORMAT_B8G8R8_UINT:
-        requireSFloat(3, 16);
+        requireSFloat(16);
         return convertUINT<rgb8image>(image, "bgr1");
     case VK_FORMAT_B8G8R8_SINT:
-        requireSFloat(3, 16);
+        requireSFloat(16);
         return convertSINT<rgb8image>(image, "bgr1");
     case VK_FORMAT_R16G16B16_UINT:
-        requireSFloat(3, 32);
+        requireSFloat(32);
         return convertUINT<rgb16image>(image);
     case VK_FORMAT_R16G16B16_SINT:
-        requireSFloat(3, 32);
+        requireSFloat(32);
         return convertSINT<rgb16image>(image);
     case VK_FORMAT_R32G32B32_UINT:
-        requireUINT(3, 32);
+        requireUINT(32);
         return convertUINT<rgb32image>(image);
-    case VK_FORMAT_R8G8B8A8_UINT:
-        requireSFloat(4, 16);
+    case VK_FORMAT_R8G8B8A8_UINT: [[fallthrough]];
+    case VK_FORMAT_A8B8G8R8_UINT_PACK32:
+        requireSFloat(16);
         return convertUINT<rgba8image>(image);
-    case VK_FORMAT_R8G8B8A8_SINT:
-        requireSFloat(4, 16);
+    case VK_FORMAT_R8G8B8A8_SINT: [[fallthrough]];
+    case VK_FORMAT_A8B8G8R8_SINT_PACK32:
+        requireSFloat(16);
         return convertSINT<rgba8image>(image);
     case VK_FORMAT_B8G8R8A8_UINT:
-        requireSFloat(4, 16);
+        requireSFloat(16);
         return convertUINT<rgba8image>(image, "bgra");
     case VK_FORMAT_B8G8R8A8_SINT:
-        requireSFloat(4, 16);
+        requireSFloat(16);
         return convertSINT<rgba8image>(image, "bgra");
     case VK_FORMAT_R16G16B16A16_UINT:
-        requireSFloat(4, 32);
+        requireSFloat(32);
         return convertUINT<rgba16image>(image);
     case VK_FORMAT_R16G16B16A16_SINT:
-        requireSFloat(4, 32);
+        requireSFloat(32);
         return convertSINT<rgba16image>(image);
     case VK_FORMAT_R32G32B32A32_UINT:
-        requireUINT(4, 32);
+        requireUINT(32);
         return convertUINT<rgba32image>(image);
 
     case VK_FORMAT_A2R10G10B10_UINT_PACK32:
-        requireSFloat(4, 16);
+        requireSFloat(16);
         return convertUINTPacked(image, 2, 10, 10, 10, "argb");
     case VK_FORMAT_A2R10G10B10_SINT_PACK32:
-        requireSFloat(4, 16);
+        requireSFloat(16);
         return convertSINTPacked(image, 2, 10, 10, 10, "argb");
     case VK_FORMAT_A2B10G10R10_UINT_PACK32:
-        requireSFloat(4, 16);
+        requireSFloat(16);
         return convertUINTPacked(image, 2, 10, 10, 10, "abgr");
     case VK_FORMAT_A2B10G10R10_SINT_PACK32:
-        requireSFloat(4, 16);
+        requireSFloat(16);
         return convertSINTPacked(image, 2, 10, 10, 10, "abgr");
 
         // The same EXR pixel types as for the decoding must be enforced.
         // Extra channels must be dropped.
 
     case VK_FORMAT_R16_SFLOAT:
-        requireSFloat(1, 16);
+        requireSFloat(16);
         return convertSFLOAT<r16image>(image);
     case VK_FORMAT_R16G16_SFLOAT:
-        requireSFloat(2, 16);
+        requireSFloat(16);
         return convertSFLOAT<rg16image>(image);
     case VK_FORMAT_R16G16B16_SFLOAT:
-        requireSFloat(3, 16);
+        requireSFloat(16);
         return convertSFLOAT<rgb16image>(image);
     case VK_FORMAT_R16G16B16A16_SFLOAT:
-        requireSFloat(4, 16);
+        requireSFloat(16);
         return convertSFLOAT<rgba16image>(image);
 
     case VK_FORMAT_R32_SFLOAT:
-        requireSFloat(1, 32);
+        requireSFloat(32);
         return convertSFLOAT<r32image>(image);
     case VK_FORMAT_R32G32_SFLOAT:
-        requireSFloat(2, 32);
+        requireSFloat(32);
         return convertSFLOAT<rg32image>(image);
     case VK_FORMAT_R32G32B32_SFLOAT:
-        requireSFloat(3, 32);
+        requireSFloat(32);
         return convertSFLOAT<rgb32image>(image);
     case VK_FORMAT_R32G32B32A32_SFLOAT:
-        requireSFloat(4, 32);
+        requireSFloat(32);
         return convertSFLOAT<rgba32image>(image);
 
         // The same EXR pixel types as for the decoding must be enforced.
         // Extra channels must be dropped.
 
-    // case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
-    // TODO: Tools P4: Create B10G11R11_UFLOAT_PACK32
-    // case VK_FORMAT_E5B9G9R9_UFLOAT_PACK32:
-    // TODO: Tools P4: Create E5B9G9R9_UFLOAT_PACK32
+    case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
+        requireSFloat(16);
+        return convertB10G11R11(image);
+    case VK_FORMAT_E5B9G9R9_UFLOAT_PACK32:
+        requireSFloat(16);
+        return convertE5B9G9R9(image);
 
         // Input data must be rounded to the target precision.
 
@@ -1791,6 +1839,12 @@ std::vector<uint8_t> CommandCreate::convert(const std::unique_ptr<Image>& image,
     case VK_FORMAT_D24_UNORM_S8_UINT: [[fallthrough]];
     case VK_FORMAT_D32_SFLOAT_S8_UINT:
         fatal(rc::INVALID_ARGUMENTS, "Unsupported format for non-raw create: {}.", toString(options.vkFormat));
+        break;
+
+    case VK_FORMAT_A8_UNORM_KHR:
+        // Special case for alpha-only
+        requireUNORM(8);
+        return convertUNORM<r8image>(image, "a000");
         break;
 
         // Not supported
@@ -1806,6 +1860,8 @@ std::vector<uint8_t> CommandCreate::convert(const std::unique_ptr<Image>& image,
 KTXTexture2 CommandCreate::createTexture(const ImageSpec& target) {
     ktxTextureCreateInfo createInfo;
     std::memset(&createInfo, 0, sizeof(createInfo));
+
+    assert(target.depth() == baseDepth);
 
     createInfo.vkFormat = options.vkFormat;
     createInfo.numFaces = numFaces;
@@ -1835,9 +1891,8 @@ KTXTexture2 CommandCreate::createTexture(const ImageSpec& target) {
     if (KTX_SUCCESS != ret)
         fatal(rc::KTX_FAILURE, "Failed to create ktxTexture: libktx error: {}", ktxErrorString(ret));
 
-    // BT709 is the default for DFDs.
-    if (target.format().primaries() != KHR_DF_PRIMARIES_BT709)
-        KHR_DFDSETVAL(((ktxTexture2*) texture)->pDfd + 1, PRIMARIES, target.format().primaries());
+    KHR_DFDSETVAL(texture->pDfd + 1, PRIMARIES, target.format().primaries());
+    KHR_DFDSETVAL(texture->pDfd + 1, TRANSFER, target.format().transfer());
 
     return texture;
 }
@@ -1948,9 +2003,9 @@ void CommandCreate::determineTargetColorSpace(const ImageInput& in, ImageSpec& t
 
     // Set Primaries
     colorSpaceInfo.usedInputPrimaries = spec.format().primaries();
-    if (options.assignPrimaries != KHR_DF_PRIMARIES_UNSPECIFIED) {
-        colorSpaceInfo.usedInputPrimaries = options.assignPrimaries;
-        target.format().setPrimaries(options.assignPrimaries);
+    if (options.assignPrimaries.has_value()) {
+        colorSpaceInfo.usedInputPrimaries = options.assignPrimaries.value();
+        target.format().setPrimaries(options.assignPrimaries.value());
     } else if (spec.format().primaries() != KHR_DF_PRIMARIES_UNSPECIFIED) {
         target.format().setPrimaries(spec.format().primaries());
     } else {
@@ -1964,19 +2019,20 @@ void CommandCreate::determineTargetColorSpace(const ImageInput& in, ImageSpec& t
         }
     }
 
-    if (options.convertPrimaries != KHR_DF_PRIMARIES_UNSPECIFIED) {
+    if (options.convertPrimaries.has_value()) {
         if (colorSpaceInfo.usedInputPrimaries == KHR_DF_PRIMARIES_UNSPECIFIED) {
             fatal(rc::INVALID_FILE, "Cannot convert primaries as no information about the color primaries "
                 "is available in the input file \"{}\". Use --assign-primaries to specify one.", in.filename());
-        } else if (options.convertPrimaries != colorSpaceInfo.usedInputPrimaries) {
+        } else if (options.convertPrimaries.value() != colorSpaceInfo.usedInputPrimaries) {
             colorSpaceInfo.srcColorPrimaries = createColorPrimaries(colorSpaceInfo.usedInputPrimaries);
-            colorSpaceInfo.dstColorPrimaries = createColorPrimaries(options.convertPrimaries);
+            colorSpaceInfo.dstColorPrimaries = createColorPrimaries(options.convertPrimaries.value());
+            target.format().setPrimaries(options.convertPrimaries.value());
         }
     }
 
     // OETF / Transfer function handling in priority order:
     //
-    // 1. Use assign_oetf option value, if set.
+    // 1. Use assign-oetf option value, if set.
     // 2. Use OETF signalled by plugin as the input transfer function if
     //    linear, sRGB, ITU, or PQ EOTF. For all others, throw error.
     // 3. If ICC profile signalled, throw error. Known ICC profiles are
@@ -1993,14 +2049,15 @@ void CommandCreate::determineTargetColorSpace(const ImageInput& in, ImageSpec& t
     //    above.
 
     colorSpaceInfo.usedInputTransferFunction = KHR_DF_TRANSFER_UNSPECIFIED;
-    if (options.assignOETF != KHR_DF_TRANSFER_UNSPECIFIED) {
+    if (options.assignOETF.has_value()) {
         if (options.assignOETF == KHR_DF_TRANSFER_SRGB) {
             colorSpaceInfo.srcTransferFunction = std::make_unique<TransferFunctionSRGB>();
         } else {
+            assert(options.assignOETF == KHR_DF_TRANSFER_LINEAR);
             colorSpaceInfo.srcTransferFunction = std::make_unique<TransferFunctionLinear>();
         }
-        colorSpaceInfo.usedInputTransferFunction = options.assignOETF;
-        target.format().setTransfer(options.assignOETF);
+        colorSpaceInfo.usedInputTransferFunction = options.assignOETF.value();
+        target.format().setTransfer(options.assignOETF.value());
     } else {
         // Set image's OETF as indicated by metadata.
         if (spec.format().transfer() != KHR_DF_TRANSFER_UNSPECIFIED) {
@@ -2062,7 +2119,7 @@ void CommandCreate::determineTargetColorSpace(const ImageInput& in, ImageSpec& t
                         "Input file \"{}\" has gamma 0.0f. Use --assign-oetf to specify transfer function.");
                 }
             } else {
-                if (options.convertOETF == KHR_DF_TRANSFER_UNSPECIFIED) {
+                if (!options.convertOETF.has_value()) {
                     fatal(rc::INVALID_FILE, "Gamma {} not automatically supported by KTX. Specify handing with "
                         "--convert-oetf or --assign-oetf.");
                 }
@@ -2081,8 +2138,8 @@ void CommandCreate::determineTargetColorSpace(const ImageInput& in, ImageSpec& t
         }
     }
 
-    if (options.convertOETF != KHR_DF_TRANSFER_UNSPECIFIED) {
-        target.format().setTransfer(options.convertOETF);
+    if (options.convertOETF.has_value()) {
+        target.format().setTransfer(options.convertOETF.value());
     }
 
     // Need to do color conversion if either the transfer functions don't match or the primaries
@@ -2110,24 +2167,61 @@ void CommandCreate::checkSpecsMatch(const ImageInput& currentFile, const ImageSp
     const FormatDescriptor& firstFormat = firstSpec.format();
     const FormatDescriptor& currentFormat = currentFile.spec().format();
 
-    // TODO: Tools P5: Question: Should we allow these with warnings? Spec says fatal, but if a conversion is possible this would just stop valid usecases
     if (currentFormat.transfer() != firstFormat.transfer()) {
-        fatal(rc::INVALID_FILE, "Input image \"{}\" has different transfer function ({}) than preceding image(s) ({}).",
-            currentFile.filename(), toString(currentFormat.transfer()), toString(firstFormat.transfer()));
-    }
-
-    if (currentFormat.primaries() != firstFormat.primaries()) {
-        fatal(rc::INVALID_FILE, "Input image \"{}\" has different primaries ({}) than preceding image(s) ({}).",
-            currentFile.filename(), toString(currentFormat.primaries()), toString(firstFormat.primaries()));
+        if (options.assignOETF.has_value()) {
+            warning("Input image \"{}\" has different transfer function ({}) than the first image ({})"
+                " but will be treated identically as specified by the --assign-oetf option.",
+                currentFile.filename(), toString(currentFormat.transfer()), toString(firstFormat.transfer()));
+        } else if (options.convertOETF.has_value()) {
+            warning("Input image \"{}\" has different transfer function ({}) than the first image ({})"
+                " and thus will go through different transfer function conversion to the target transfer"
+                " function specified by the --convert-oetf option.",
+                currentFile.filename(), toString(currentFormat.transfer()), toString(firstFormat.transfer()));
+        } else {
+            fatal(rc::INVALID_FILE, "Input image \"{}\" has different transfer function ({}) than the first image ({})."
+                " Use --assign-oetf or --convert-oetf to specify handling and stop this error.",
+                currentFile.filename(), toString(currentFormat.transfer()), toString(firstFormat.transfer()));
+        }
     }
 
     if (currentFormat.oeGamma() != firstFormat.oeGamma()) {
-        fatal(rc::INVALID_FILE, "Input image \"{}\" has different gamma ({:.4}f) than preceding image(s) ({:.4}f).",
-            currentFile.filename(), currentFormat.oeGamma(), firstFormat.oeGamma());
+        auto currentGamma = currentFormat.oeGamma() != -1 ? std::to_string(currentFormat.oeGamma()) : "no gamma";
+        auto firstGamma = firstFormat.oeGamma() != -1 ? std::to_string(firstFormat.oeGamma()) : "no gamma";
+        if (options.assignOETF.has_value()) {
+            warning("Input image \"{}\" has different gamma ({}) than the first image ({})"
+                " but will be treated identically as specified by the --assign-oetf option.",
+                currentFile.filename(), currentGamma, firstGamma);
+        } else if (options.convertOETF.has_value()) {
+            warning("Input image \"{}\" has different gamma ({}) than the first image ({})"
+                " and thus will go through different transfer function conversion to the target transfer"
+                " function specified by the --convert-oetf option.",
+                currentFile.filename(), currentGamma, firstGamma);
+        } else {
+            fatal(rc::INVALID_FILE, "Input image \"{}\" has different gamma ({}) than the first image ({})."
+                " Use --assign-oetf or --convert-oetf to specify handling and stop this error.",
+                currentFile.filename(), currentGamma, firstGamma);
+        }
+    }
+
+    if (currentFormat.primaries() != firstFormat.primaries()) {
+        if (options.assignPrimaries.has_value()) {
+            warning("Input image \"{}\" has different primaries ({}) than the first image ({})"
+                " but will be treated identically as specified by the --assign-primaries option.",
+                currentFile.filename(), toString(currentFormat.primaries()), toString(firstFormat.primaries()));
+        } else if (options.convertPrimaries.has_value()) {
+            warning("Input image \"{}\" has different primaries ({}) than the first image ({})"
+                " and thus will go through different primaries conversion to the target primaries"
+                " specified by the --convert-primaries option.",
+                currentFile.filename(), toString(currentFormat.primaries()), toString(firstFormat.primaries()));
+        } else {
+            fatal(rc::INVALID_FILE, "Input image \"{}\" has different primaries ({}) than the first image ({})."
+                " Use --assign-primaries or --convert-primaries to specify handling and stop this error.",
+                currentFile.filename(), toString(currentFormat.primaries()), toString(firstFormat.primaries()));
+        }
     }
 
     if (currentFormat.channelCount() != firstFormat.channelCount()) {
-        warning("Input image \"{}\" has a different component count than preceding image(s).", currentFile.filename());
+        warning("Input image \"{}\" has a different component count than the first image.", currentFile.filename());
     }
 }
 
