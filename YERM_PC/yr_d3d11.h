@@ -11,9 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef YR_USE_D3D11
-#error "This project is not configured for using d3d 11. Please re-generate project with CMake or remove yr_d3d11.cpp from project"
-#endif
 #ifndef __YR_D3D11_H__
 #define __YR_D3D11_H__
 #include "yr_string.hpp"

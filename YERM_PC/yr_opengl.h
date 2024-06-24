@@ -11,9 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef YR_USE_OPENGL
-#error "This project is not configured for using opengl. Please re-generate project with CMake or remove yr_opengl.cpp from project"
-#endif
 #ifndef __YR_OPENGL_H__
 #define __YR_OPENGL_H__
 

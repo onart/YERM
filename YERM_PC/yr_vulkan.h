@@ -11,9 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef YR_USE_VULKAN
-#error "This project is not configured for using vulkan. Please re-generate project with CMake or remove yr_vulkan.cpp from project"
-#endif
 #ifndef __YR_VULKAN_H__
 #define __YR_VULKAN_H__
 
