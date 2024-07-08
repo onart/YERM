@@ -30,6 +30,8 @@ namespace onart{
 #define YRGraphics WGMachine
 #elif defined(YR_USE_D3D11)
 #define YRGraphics D3D11Machine
+#elif defined(YR_USE_WEBGL)
+#define YRGraphics WGLMachine
 #endif
     class YRGraphics;
 

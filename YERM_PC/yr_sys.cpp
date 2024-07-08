@@ -338,6 +338,12 @@ namespace onart{
 #undef _HAPP
 }
 
+#elif defined(EMSCRIPTEN)
+#include "../externals/glfw/include/GLFW/glfw3.h"
+namespace onart{
+    
+}
+
 #else
 
 #if BOOST_OS_WINDOWS

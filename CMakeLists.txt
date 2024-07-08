@@ -42,29 +42,32 @@ elseif (EMSCRIPTEN)
     option(YERM_LINK_WEBGL "Link WebGL." OFF)
 
     set(YERM_WEBGPU_SOURCE externals/wasm_webgpu/lib_webgpu.cpp externals/wasm_webgpu/lib_webgpu_cpp11.cpp)
-    set(YERM_WEBGL_SOURCE externals/wasm_webgpu/lib_webgpu.cpp externals/wasm_webgpu/lib_webgpu_cpp11.cpp)
+    set(YERM_WEBGL_SOURCE yerm_web/yr_webgl.h yerm_web/yr_webgl.cpp)
 
     if(${YERM_BUILD_WEBGPU} OR ${YERM_LINK_WEBGPU})
         message(STATUS "Building for WebGPU..")
         set(YERM_BUILD_WEBGPU ON)
-        add_library(webgpu STATIC ${YERM_WEBGPU_SOURCE})
+        add_library(YRGraphics_webgpu STATIC ${YERM_WEBGPU_SOURCE})
+        target_include_directories(YRGraphics_webgpu PUBLIC externals)
     endif()
     if(${YERM_BUILD_WEBGL} OR ${YERM_LINK_WEBGL})
         message(STATUS "Building for WebGL..")
         set(YERM_BUILD_WEBGL ON)
-        add_library(webgl STATIC ${YERM_WEBGL_SOURCE})
+        add_library(YRGraphics_webgl STATIC ${YERM_WEBGL_SOURCE})
+        target_include_directories(YRGraphics_webgl PUBLIC externals)
     elseif(NOT ${YERM_BUILD_WEBGPU})
         message(STATUS "No web graphics base configured to be built. Building for WebGL")
         set(YERM_BUILD_WEBGL ON)
-        add_library(webgl STATIC ${${YERM_WEBGL_SOURCE}})
+        add_library(YRGraphics_webgl STATIC ${${YERM_WEBGL_SOURCE}})
+        target_include_directories(YRGraphics_webgl PUBLIC externals)
     endif()
 
     if(${YERM_LINK_WEBGPU})
         add_compile_definitions(YR_USE_WEBGPU)
-        set(YERM_GRAPHICS webgpu)
+        set(YERM_GRAPHICS YRGraphics_webgpu)
     elseif(${YERM_LINK_WEBGL})
         add_compile_definitions(YR_USE_WEBGL)
-        set(YERM_GRAPHICS webgl)
+        set(YERM_GRAPHICS YRGraphics_webgl)
     endif()
 
     set(CMAKE_EXECUTABLE_SUFFIX ".html")
@@ -103,7 +106,7 @@ elseif (EMSCRIPTEN)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     add_executable(yerm
-        YERM_webgpu/hello_triangle_minimal.c
+        YERM_web/wmain.cpp
     )
     
     # Additional library

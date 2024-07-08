@@ -963,7 +963,7 @@ namespace onart{
 
     inline void mulAll(int16_t* vec, float val, size_t size) {
         assert(val <= 1.0f && val >= 0.0f && "이 함수에서 곱해지는 실수의 값은 [0,1] 범위만 허용됩니다.");
-        int16_t v2 = (int16_t)((float)val * 32768.0f);
+        //int16_t v2 = (int16_t)((float)val * 32768.0f);
         for (size_t i = 0; i < size; i++) {
             vec[i] *= val;
         }

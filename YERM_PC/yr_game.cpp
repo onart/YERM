@@ -31,6 +31,8 @@
 
 #if BOOST_PLAT_ANDROID
 #include <game-activity/native_app_glue/android_native_app_glue.h>
+#elif defined(EMSCRIPTEN)
+#include <emscripten.h>
 #endif
 
 namespace onart{
