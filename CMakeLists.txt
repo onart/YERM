@@ -36,13 +36,16 @@ elseif (EMSCRIPTEN)
     endmacro()
 
     # Build Settings
-    option(YERM_BUILD_WEBGPU "Build WebGPU based graphics." ON)
+    option(YERM_BUILD_WEBGPU "Build WebGPU based graphics." OFF)
     option(YERM_BUILD_WEBGL "Build WebGL based graphics." ON)
-    option(YERM_LINK_WEBGPU "Link WebGPU." ON)
-    option(YERM_LINK_WEBGL "Link WebGL." OFF)
+    option(YERM_LINK_WEBGPU "Link WebGPU." OFF)
+    option(YERM_LINK_WEBGL "Link WebGL." ON)
 
-    set(YERM_WEBGPU_SOURCE externals/wasm_webgpu/lib_webgpu.cpp externals/wasm_webgpu/lib_webgpu_cpp11.cpp)
-    set(YERM_WEBGL_SOURCE yerm_web/yr_webgl.h yerm_web/yr_webgl.cpp)
+    set(YERM_BUILD_WEBGPU OFF)
+    set(YERM_LINK_WEBGPU OFF)
+
+    set(YERM_WEBGPU_SOURCE externals/wasm_webgpu/lib_webgpu.cpp externals/wasm_webgpu/lib_webgpu_cpp11.cpp YERM_PC/yr_singleheader.cpp)
+    set(YERM_WEBGL_SOURCE yerm_web/yr_webgl.h yerm_web/yr_webgl.cpp YERM_PC/yr_singleheader.cpp)
 
     if(${YERM_BUILD_WEBGPU} OR ${YERM_LINK_WEBGPU})
         message(STATUS "Building for WebGPU..")
@@ -73,26 +76,31 @@ elseif (EMSCRIPTEN)
     set(CMAKE_EXECUTABLE_SUFFIX ".html")
     
     # Flags for Emscripten
-	append_compiler_flags("-Wall -Wno-deprecated-declarations -fno-exceptions")
+	append_compiler_flags("-Wall -Wno-deprecated-declarations -Wno-nullability-completeness -Wno-unused-variable -fno-exceptions")
 	append_compiler_flags_debug("-g3")
 
 	append_linker_flags("-Wall")
 	append_linker_flags_debug("-g3")
-	append_linker_flags_debug("-sASSERTIONS=1 -jsDWEBGPU_DEBUG=1")
 
-	append_linker_flags("--js-library ${CMAKE_CURRENT_SOURCE_DIR}/externals/wasm_webgpu/lib_webgpu.js")
-    append_linker_flags("--js-library ${CMAKE_CURRENT_SOURCE_DIR}/externals/wasm_webgpu/lib_demo.js")
-    append_linker_flags("--js-library ${CMAKE_CURRENT_SOURCE_DIR}/externals/wasm_webgpu/library_miniprintf.js")
-    append_linker_flags("--shell-file \"${CMAKE_CURRENT_SOURCE_DIR}/externals/wasm_webgpu/shell.html\"")
-	append_linker_flags("-sMINIMAL_RUNTIME=2 -sTEXTDECODER=2 -sABORTING_MALLOC=0 -sSUPPORT_ERRNO=0")
+    if(${YERM_BUILD_WEBGPU})
+        append_linker_flags_debug("-sASSERTIONS=1 -jsDWEBGPU_DEBUG=1")
+	    append_linker_flags("--js-library ${CMAKE_CURRENT_SOURCE_DIR}/externals/wasm_webgpu/lib_webgpu.js")
+        append_linker_flags("--js-library ${CMAKE_CURRENT_SOURCE_DIR}/externals/wasm_webgpu/lib_demo.js")
+        append_linker_flags("--js-library ${CMAKE_CURRENT_SOURCE_DIR}/externals/wasm_webgpu/library_miniprintf.js")
+        append_linker_flags("--shell-file \"${CMAKE_CURRENT_SOURCE_DIR}/externals/wasm_webgpu/shell.html\"")
+	    append_linker_flags("--closure-args=--externs=externals/wasm_webgpu//webgpu-closure-externs.js")
+    endif()
+    if(${YERM_BUILD_WEBGL})
+        append_linker_flags("-sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 --bind -sUSE_GLFW=3 -sWASM=1")
+    endif()
+    
+	append_linker_flags("-sINITIAL_MEMORY=16MB -sMALLOC=emmalloc ")
+    append_linker_flags("-sTEXTDECODER=2 -sABORTING_MALLOC=0 -sSUPPORT_ERRNO=0")
 	append_linker_flags("-sENVIRONMENT=web -sMIN_FIREFOX_VERSION=87 -sMIN_SAFARI_VERSION=140000 -sMIN_CHROME_VERSION=90")
-	append_linker_flags("-sTOTAL_STACK=16KB -sINITIAL_MEMORY=128KB")
+	append_linker_flags("-sTOTAL_STACK=16KB")
 	append_linker_flags("-sALLOW_MEMORY_GROWTH=1")
 	append_linker_flags("-sUSE_SDL=0 -sFILESYSTEM=0 -sAUTO_JS_LIBRARIES=0 -sDISABLE_EXCEPTION_THROWING=1")
-	append_linker_flags("-lmath.js -lhtml5.js -lint53.js")
-	append_linker_flags("--closure-args=--externs=externals/wasm_webgpu//webgpu-closure-externs.js")
-    
-	append_linker_flags("-sINITIAL_MEMORY=16MB -sMALLOC=emmalloc --memory-init-file 0")
+    append_linker_flags("-lmath.js -lhtml5.js -lint53.js")
 
 	append_linker_flags("-sMAXIMUM_MEMORY=4GB")
 
@@ -107,6 +115,8 @@ elseif (EMSCRIPTEN)
 
     add_executable(yerm
         YERM_web/wmain.cpp
+        YERM_PC/yr_sys.h
+        YERM_PC/yr_sys.cpp
     )
     
     # Additional library
@@ -114,7 +124,7 @@ elseif (EMSCRIPTEN)
     add_subdirectory(externals/ktx)
     target_link_directories(yerm PUBLIC externals/ktx)
     target_include_directories(yerm PUBLIC externals)
-    target_link_libraries(yerm PUBLIC ${YERM_GRAPHICS} glfw ktx)
+    target_link_libraries(yerm PUBLIC ${YERM_GRAPHICS} glfw ${OPENGL_LIBRARIES})
 else()
 
 function(get_all_targets var dir)

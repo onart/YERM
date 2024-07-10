@@ -337,20 +337,17 @@ namespace onart{
 
 #undef _HAPP
 }
-
-#elif defined(EMSCRIPTEN)
-#include "../externals/glfw/include/GLFW/glfw3.h"
-namespace onart{
-    
-}
-
 #else
 
 #if BOOST_OS_WINDOWS
 #define GLFW_EXPOSE_NATIVE_WIN32
 #endif
 #include "../externals/glfw/include/GLFW/glfw3.h"
+#ifdef EMSCRIPTEN
+#include <emscripten.h>
+#else
 #include "../externals/glfw/include/GLFW/glfw3native.h"
+#endif
 
 namespace onart{
 
@@ -395,8 +392,10 @@ namespace onart{
 		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-#elif defined(YR_USE_OPENGLES)
-
+#elif defined(YR_USE_OPENGLES) || defined(YR_USE_WEBGL)
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 #endif
         window = glfwCreateWindow(options->width, options->height, options->title, options->fullScreen ? glfwGetPrimaryMonitor() : nullptr, nullptr);
         if(!window) {
@@ -517,13 +516,13 @@ namespace onart{
     }
 
     void Window::glRefreshInterval(int count) {
-#ifdef YR_USE_OPENGL
+#if defined(YR_USE_OPENGL) || defined(YR_USE_GLES) || defined(YR_USE_WEBGL)
         glfwSwapInterval(count);
 #endif
     }
 
     void Window::glPresent() {
-#ifdef YR_USE_OPENGL
+#if defined(YR_USE_OPENGL) || defined(YR_USE_GLES) || defined(YR_USE_WEBGL)
         glfwSwapBuffers((GLFWwindow*)window);
 #endif
     }

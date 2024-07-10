@@ -872,7 +872,7 @@ get_source_file_property(transcoder_options
 )
 get_source_file_property(zstd_options lib/basisu/zstd/zstd.c COMPILE_OPTIONS)
 
-if(EMSCRIPTEN)
+if(OFF)
     set(
         KTX_EMC_LINK_FLAGS
         --bind
