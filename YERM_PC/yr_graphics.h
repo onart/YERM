@@ -40,19 +40,28 @@ namespace onart{
 #error "Metal not ready"
 //
 #elif defined(YR_USE_WEBGPU)
-#include "../YERM_webgpu/yr_webgpu.h"
+#include "../YERM_web/yr_webgpu.h"
 namespace onart{
     using YRGraphics = WGMachine;
     using pipeline_t = VkPipeline;
     using shader_t = VkShaderModule;
 }
-#else
+#elif defined(YR_USE_VULKAN)
 #include "yr_vulkan.h"
 namespace onart{
     using YRGraphics = VkMachine;
     using pipeline_t = VkMachine::Pipeline*;
     using shader_t = VkShaderModule;
 }
+#elif defined(YR_USE_WEBGL)
+#include "../YERM_web/yr_webgl.h"
+namespace onart{
+    using YRGraphics = WGLMachine;
+    using pipeline_t = WGLMachine::Pipeline*;
+    using shader_t = unsigned;
+}
+#else
+static_assert(0, "No Graphics library selected to be linked");
 #endif
 
 #endif

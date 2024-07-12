@@ -1,7 +1,7 @@
 #include "../YERM_PC/logger.hpp"
-//#include "yr_game.h"
+#include "../YERM_PC/yr_game.h"
 
 int main(){
-  //onart::Game game;
-  //game.start();
+  onart::Game game;
+  game.start();
 }

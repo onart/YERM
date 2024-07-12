@@ -32,6 +32,40 @@
 #include <vector>
 #include <unordered_set>
 
+// extensions
+#ifndef GL_COMPRESSED_RGBA_ASTC_4x4_KHR
+#define GL_COMPRESSED_RGBA_ASTC_4x4_KHR 0x93B0
+#define GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR 0x93D0
+#endif
+
+#ifndef GL_COMPRESSED_RGBA_BPTC_UNORM_ARB
+#define GL_COMPRESSED_RGBA_BPTC_UNORM_ARB 0x8E8C
+#define GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB 0x8E8D
+#define GL_COMPRESSED_RGB_BPTC_SIGNED_FLOAT_ARB 0x8E8E
+#define GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_ARB 0x8E8F
+#endif
+
+#ifndef GL_COMPRESSED_RED_RGTC1
+#define GL_COMPRESSED_RED_RGTC1 0x8DBB
+#define GL_COMPRESSED_SIGNED_RED_RGTC1 0x8DBC
+#define GL_COMPRESSED_RG_RGTC2 0x8DBD
+#define GL_COMPRESSED_SIGNED_RG_RGTC2 0x8DBE
+#endif
+
+#ifndef GL_COMPRESSED_RGB_S3TC_DXT1_EXT
+#define GL_COMPRESSED_RGB_S3TC_DXT1_EXT 0x83F0
+#define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT 0x83F1
+#define GL_COMPRESSED_RGBA_S3TC_DXT3_EXT 0x83F2
+#define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
+#endif /* GL_EXT_texture_compression_s3tc */
+
+#ifndef GL_COMPRESSED_SRGB_S3TC_DXT1_EXT
+#define GL_COMPRESSED_SRGB_S3TC_DXT1_EXT 0x8C4C
+#define GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT 0x8C4D
+#define GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT 0x8C4E
+#define GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT 0x8C4F
+#endif
+
 // https://registry.khronos.org/OpenGL-Refpages/es3.0/
 // https://registry.khronos.org/OpenGL-Refpages/es3/
 
@@ -61,8 +95,8 @@ namespace onart
         //glDebugMessageCallback(textureChecker, 0);
         ktxTextureCreateInfo info{};
         info.baseDepth = 1;
-        info.baseWidth = 4;
-        info.baseHeight = 4;
+        info.baseWidth = 1024;
+        info.baseHeight = 1024;
         info.numFaces = 1;
         info.numLayers = 1;
         info.numLevels = 1;
@@ -83,9 +117,25 @@ namespace onart
             ktxTexture_GLUpload(ktxTexture(texture), &tex, &target, &err);
             ktxTexture_Destroy(ktxTexture(texture));
             if (err == GL_NO_ERROR) { 
-                availableTextureFormats.insert(fmt);
+                availableTextureFormats.insert(fmt);                
+            }
+            else{
+                LOGWITH(fmt);
             }
         }
+         info.glInternalformat = GL_RGBA8;
+        if(ktxTexture1_Create(&info, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture) != KTX_SUCCESS){
+                //continue;
+            }
+            ktxTexture_GLUpload(ktxTexture(texture), &tex, &target, &err);
+            ktxTexture_Destroy(ktxTexture(texture));
+            if (err == GL_NO_ERROR) { 
+                LOGWITH("RGBA8 possible");
+                //availableTextureFormats.insert(fmt);                
+            }
+            else{
+                LOGWITH("RGBA8");
+            }
         glDeleteTextures(1, &tex);
         glBindTexture(GL_TEXTURE_2D, 0);
         //glDisable(GL_DEBUG_OUTPUT);
@@ -99,7 +149,9 @@ namespace onart
 
     WGLMachine::WGLMachine(){
         glEnable(GL_BLEND);
+        LOGWITH(glGetError());
         glBlendFunc(GL_ONE, GL_ZERO);
+        LOGWITH(glGetError());
         singleton = this;
 
         checkTextureAvailable();
@@ -303,7 +355,7 @@ namespace onart
                 return nullptr;
             }
             glBindTexture(GL_TEXTURE_2D, color1);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, linear ? GL_LINEAR : GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, linear ? GL_LINEAR : GL_NEAREST);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color1, 0);
@@ -447,7 +499,7 @@ namespace onart
             uint32_t vkf{};
             switch (textureFormatFallback(nChannels, srgb, hq))
             {
-                /*
+                
             case GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR:
             case GL_COMPRESSED_RGBA_ASTC_4x4_KHR:
                 tf = KTX_TTF_ASTC_4x4_RGBA;
@@ -458,19 +510,19 @@ namespace onart
                 tf = KTX_TTF_BC7_RGBA;
                 vkf = srgb ? VK_FORMAT_BC7_SRGB_BLOCK : VK_FORMAT_BC7_UNORM_BLOCK;
                 break;
-                */
+                
             case GL_COMPRESSED_SRGB8_ALPHA8_ETC2_EAC:
             case GL_COMPRESSED_RGBA8_ETC2_EAC:
                 tf = KTX_TTF_ETC2_RGBA;
                 vkf = srgb ? VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK : VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK;
                 break;
-                /*
+                
             case GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT:
             case GL_COMPRESSED_RGBA_S3TC_DXT5_EXT:
                 tf = KTX_TTF_BC3_RGBA;
                 vkf = srgb ? VK_FORMAT_BC3_SRGB_BLOCK : VK_FORMAT_BC3_UNORM_BLOCK;
                 break;
-                */
+                
             default:
                 tf = KTX_TTF_RGBA32;
                 vkf = srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
@@ -790,12 +842,14 @@ namespace onart
                     }
                     else {
                         unsigned tex = 0, targ, err;
-                        k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
-                        if (k2result != KTX_SUCCESS) {
-                            LOGWITH("Failed to transcode ktx texture:", k2result, err);
-                            ktxTexture_Destroy(ktxTexture(texture));
-                        }
+                        glGenTextures(1, &tex);
+                        //k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
+                        //if (k2result != KTX_SUCCESS) {
+                            //LOGWITH("Failed to transcode ktx texture:", k2result, err);
+                            //ktxTexture_Destroy(ktxTexture(texture));
+                        //}
                         glBindTexture(GL_TEXTURE_2D, tex);
+                        glTexImage2D(GL_TEXTURE_2D, 0, 0x8e8c, texture->baseWidth, texture->baseHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, texture->pData);
                         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
                         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
                         glBindTexture(GL_TEXTURE_2D, 0);
@@ -988,12 +1042,20 @@ namespace onart
                     handler(p);
                 }
                 else {
-                    unsigned tex = 0, targ, err;
-                    k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
-                    if (k2result != KTX_SUCCESS) {
-                        LOGWITH("Failed to upload ktx texture:", k2result, err);
-                        ktxTexture_Destroy(ktxTexture(texture));
-                    }
+                    unsigned tex = 0, targ, err=0;
+                    glBindTexture(GL_TEXTURE_2D, tex);
+                    err = glGetError();
+                    LOGWITH(err);
+                        glTexImage2D(GL_TEXTURE_2D, 0, 0x8e8c, texture->baseWidth, texture->baseHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, texture->pData);
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
+                        glBindTexture(GL_TEXTURE_2D, 0);
+                    //k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
+                    //if (k2result != KTX_SUCCESS) {
+                        //LOGWITH(texture->vkFormat);
+                        //LOGWITH("Failed to upload ktx texture:", k2result, err);
+                        //ktxTexture_Destroy(ktxTexture(texture));
+                    //}
                     glBindTexture(GL_TEXTURE_2D, tex);
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
@@ -2172,65 +2234,65 @@ namespace onart
         {
         case 4:
         if(srgb){
-            //CHECK_N_RETURN(GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR);
-            //CHECK_N_RETURN(GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB);
+            CHECK_N_RETURN(GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR);
+            CHECK_N_RETURN(GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB);
             if(hq) return GL_SRGB8_ALPHA8;
             CHECK_N_RETURN(GL_COMPRESSED_SRGB8_ALPHA8_ETC2_EAC);
-            //CHECK_N_RETURN(GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT);
+            CHECK_N_RETURN(GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT);
             return GL_SRGB8_ALPHA8;
         }
         else{
-            //CHECK_N_RETURN(GL_COMPRESSED_RGBA_ASTC_4x4_KHR);
-            //CHECK_N_RETURN(GL_COMPRESSED_RGBA_BPTC_UNORM_ARB);
+            CHECK_N_RETURN(GL_COMPRESSED_RGBA_ASTC_4x4_KHR);
+            CHECK_N_RETURN(GL_COMPRESSED_RGBA_BPTC_UNORM_ARB);
             if(hq) return GL_RGBA8;
             CHECK_N_RETURN(GL_COMPRESSED_RGBA8_ETC2_EAC);
-            //CHECK_N_RETURN(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT);
+            CHECK_N_RETURN(GL_COMPRESSED_RGBA_S3TC_DXT5_EXT);
             return GL_RGBA8;
         }
             break;
         case 3:
         if(srgb){
-            //CHECK_N_RETURN(GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR);
-            //CHECK_N_RETURN(GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB);
-            //if(hq) return GL_SRGB8;
+            CHECK_N_RETURN(GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR);
+            CHECK_N_RETURN(GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB);
+            if(hq) return GL_SRGB8;
             CHECK_N_RETURN(GL_COMPRESSED_SRGB8_ETC2);
-            //CHECK_N_RETURN(GL_COMPRESSED_SRGB_S3TC_DXT1_EXT);
+            CHECK_N_RETURN(GL_COMPRESSED_SRGB_S3TC_DXT1_EXT);
             return GL_SRGB8;
         }
         else{
-            //CHECK_N_RETURN(GL_COMPRESSED_RGBA_ASTC_4x4_KHR);
-            //CHECK_N_RETURN(GL_COMPRESSED_RGBA_BPTC_UNORM_ARB);
+            CHECK_N_RETURN(GL_COMPRESSED_RGBA_ASTC_4x4_KHR);
+            CHECK_N_RETURN(GL_COMPRESSED_RGBA_BPTC_UNORM_ARB);
             if(hq) return GL_RGB8;
             CHECK_N_RETURN(GL_COMPRESSED_RGB8_ETC2);
-            //CHECK_N_RETURN(GL_COMPRESSED_RGB_S3TC_DXT1_EXT);
+            CHECK_N_RETURN(GL_COMPRESSED_RGB_S3TC_DXT1_EXT);
             return GL_RGB8;
         }
         case 2:
         if(srgb){
-            //CHECK_N_RETURN(GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR);
-            //CHECK_N_RETURN(GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB);
+            CHECK_N_RETURN(GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR);
+            CHECK_N_RETURN(GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB);
             return GL_RG8;
         }
         else{
-            //CHECK_N_RETURN(GL_COMPRESSED_RGBA_ASTC_4x4_KHR);
-            //CHECK_N_RETURN(GL_COMPRESSED_RGBA_BPTC_UNORM_ARB);
+            CHECK_N_RETURN(GL_COMPRESSED_RGBA_ASTC_4x4_KHR);
+            CHECK_N_RETURN(GL_COMPRESSED_RGBA_BPTC_UNORM_ARB);
             if(hq) return GL_RG8;
             CHECK_N_RETURN(GL_COMPRESSED_RG11_EAC);
-            //CHECK_N_RETURN(GL_COMPRESSED_RG_RGTC2);
+            CHECK_N_RETURN(GL_COMPRESSED_RG_RGTC2);
             return GL_RG8;
         }
         case 1:
         if(srgb){
-            //CHECK_N_RETURN(GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR);
-            //CHECK_N_RETURN(GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB);
+            CHECK_N_RETURN(GL_COMPRESSED_SRGB8_ALPHA8_ASTC_4x4_KHR);
+            CHECK_N_RETURN(GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_ARB);
             return GL_R8;
         }
         else{
-            //CHECK_N_RETURN(GL_COMPRESSED_RGBA_ASTC_4x4_KHR);
-            //CHECK_N_RETURN(GL_COMPRESSED_RGBA_BPTC_UNORM_ARB);
+            CHECK_N_RETURN(GL_COMPRESSED_RGBA_ASTC_4x4_KHR);
+            CHECK_N_RETURN(GL_COMPRESSED_RGBA_BPTC_UNORM_ARB);
             if(hq) return GL_R8;
             CHECK_N_RETURN(GL_COMPRESSED_R11_EAC);
-            //CHECK_N_RETURN(GL_COMPRESSED_RED_RGTC1);
+            CHECK_N_RETURN(GL_COMPRESSED_RED_RGTC1);
             return GL_R8;
         }
         default:

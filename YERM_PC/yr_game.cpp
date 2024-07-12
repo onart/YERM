@@ -33,6 +33,7 @@
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 #elif defined(EMSCRIPTEN)
 #include <emscripten.h>
+#define YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD 1
 #endif
 
 namespace onart{
@@ -131,7 +132,7 @@ namespace onart{
 
         Game::hd = hd;
 
-        delete window;        
+        delete window;
         window = new Window(hd, opt);
         if(!window->isNormal()) {
             delete window;
@@ -149,7 +150,7 @@ namespace onart{
             if (!init()) {
                 delete window;
                 Window::terminate();
-                return;
+                return 1;
             }
             for (;; _frame++) {
                 pollEvents();
@@ -202,6 +203,7 @@ namespace onart{
                 rp2s->invoke(vb);
                     rp2s->execute(1, &off);
             }
+            return 0;
 #if !YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
         });
         while(!window->windowShouldClose()) { window->waitEvents(); }

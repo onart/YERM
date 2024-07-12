@@ -399,8 +399,10 @@ namespace onart{
 #endif
         window = glfwCreateWindow(options->width, options->height, options->title, options->fullScreen ? glfwGetPrimaryMonitor() : nullptr, nullptr);
         if(!window) {
+#ifndef EMSCRIPTEN
             const char* err; glfwGetError(&err); // 오류 발생 시점에 GLFW가 할당해 갖고 있으며 해제는 또 오류가 나거나 terminate 시점에 되는 데이터이기 때문에 밖에서 free하면 안 됨
             LOGWITH("Error creating window:", err);
+#endif
             return;
         }
         GLFWwindow *gw = (GLFWwindow *)window;
@@ -544,7 +546,7 @@ namespace onart{
     }
     
     void Window::setMainThread() {
-#if defined(YR_USE_OPENGL) || defined(YR_USE_GLES)
+#if defined(YR_USE_OPENGL) || defined(YR_USE_GLES) || defined(YR_USE_WEBGL)
         glfwMakeContextCurrent((GLFWwindow*)window);
 #endif
     }

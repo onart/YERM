@@ -43,6 +43,7 @@ elseif (EMSCRIPTEN)
 
     set(YERM_BUILD_WEBGPU OFF)
     set(YERM_LINK_WEBGPU OFF)
+    set(YERM_LINK_WEBGL ON)
 
     set(YERM_WEBGPU_SOURCE externals/wasm_webgpu/lib_webgpu.cpp externals/wasm_webgpu/lib_webgpu_cpp11.cpp YERM_PC/yr_singleheader.cpp)
     set(YERM_WEBGL_SOURCE yerm_web/yr_webgl.h yerm_web/yr_webgl.cpp YERM_PC/yr_singleheader.cpp)
@@ -115,8 +116,16 @@ elseif (EMSCRIPTEN)
 
     add_executable(yerm
         YERM_web/wmain.cpp
+        YERM_PC/yr_graphics.h
         YERM_PC/yr_sys.h
         YERM_PC/yr_sys.cpp
+        YERM_PC/yr_game.h
+        YERM_PC/yr_game.cpp
+        YERM_PC/yr_audio.h
+        YERM_PC/yr_audio.cpp
+        YERM_PC/yr_constants.cpp
+        YERM_PC/yr_input.h
+        YERM_PC/yr_input.cpp
     )
     
     # Additional library
@@ -124,7 +133,7 @@ elseif (EMSCRIPTEN)
     add_subdirectory(externals/ktx)
     target_link_directories(yerm PUBLIC externals/ktx)
     target_include_directories(yerm PUBLIC externals)
-    target_link_libraries(yerm PUBLIC ${YERM_GRAPHICS} glfw ${OPENGL_LIBRARIES})
+    target_link_libraries(yerm PUBLIC ${YERM_GRAPHICS} ktx glfw ${OPENGL_LIBRARIES})
 else()
 
 function(get_all_targets var dir)
