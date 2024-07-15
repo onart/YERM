@@ -434,7 +434,7 @@ layout(location = 1) in vec2 inTc;
 
 out vec2 tc;
 
-uniform ui{
+uniform push{
     mat4 aspect;
     float t;
 };
@@ -453,7 +453,7 @@ in vec2 tc;
 out vec4 outColor;
 uniform sampler2D tex;
 
-uniform ui{
+uniform push{
     mat4 aspect;
     float t;
 };

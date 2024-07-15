@@ -1029,17 +1029,12 @@ namespace onart
                     unsigned tex = 0, targ, err=0;
                     glBindTexture(GL_TEXTURE_2D, tex);
                     err = glGetError();
-                    LOGWITH(err);
-                        glTexImage2D(GL_TEXTURE_2D, 0, 0x8e8c, texture->baseWidth, texture->baseHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, texture->pData);
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
-                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
-                        glBindTexture(GL_TEXTURE_2D, 0);
-                    //k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
-                    //if (k2result != KTX_SUCCESS) {
-                        //LOGWITH(texture->vkFormat);
-                        //LOGWITH("Failed to upload ktx texture:", k2result, err);
-                        //ktxTexture_Destroy(ktxTexture(texture));
-                    //}
+                    k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
+                    if (k2result != KTX_SUCCESS) {
+                        LOGWITH(texture->vkFormat);
+                        LOGWITH("Failed to upload ktx texture:", k2result, err);
+                        ktxTexture_Destroy(ktxTexture(texture));
+                    }
                     glBindTexture(GL_TEXTURE_2D, tex);
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
@@ -1342,7 +1337,8 @@ namespace onart
             if(ui != GL_INVALID_INDEX) { glUniformBlockBinding(prog, ui, i); }
             ret->textureIndices[i] = glGetUniformLocation(prog, texnames[i]);
         }
-        
+        unsigned pui = glGetUniformBlockIndex(prog, "push");
+        if(pui != GL_INVALID_INDEX) { glUniformBlockBinding(prog, pui, 11); }
         return ret;
     }
 
