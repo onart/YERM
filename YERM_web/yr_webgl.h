@@ -787,6 +787,7 @@ namespace onart {
             DepthStencilTesting depthStencilOperation;
             AlphaBlend blendOperation[3];
             float blendConstant[4];
+            unsigned textureIndices[4]{};
     };
 
     class WGLMachine::Mesh{

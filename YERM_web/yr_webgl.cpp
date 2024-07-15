@@ -123,19 +123,6 @@ namespace onart
                 LOGWITH(fmt);
             }
         }
-         info.glInternalformat = GL_RGBA8;
-        if(ktxTexture1_Create(&info, KTX_TEXTURE_CREATE_ALLOC_STORAGE, &texture) != KTX_SUCCESS){
-                //continue;
-            }
-            ktxTexture_GLUpload(ktxTexture(texture), &tex, &target, &err);
-            ktxTexture_Destroy(ktxTexture(texture));
-            if (err == GL_NO_ERROR) { 
-                LOGWITH("RGBA8 possible");
-                //availableTextureFormats.insert(fmt);                
-            }
-            else{
-                LOGWITH("RGBA8");
-            }
         glDeleteTextures(1, &tex);
         glBindTexture(GL_TEXTURE_2D, 0);
         //glDisable(GL_DEBUG_OUTPUT);
@@ -147,11 +134,9 @@ namespace onart
 
     const WGLMachine::Mesh* bound = nullptr;
 
-    WGLMachine::WGLMachine(){
+    WGLMachine::WGLMachine(): loadThread(0){
         glEnable(GL_BLEND);
-        LOGWITH(glGetError());
         glBlendFunc(GL_ONE, GL_ZERO);
-        LOGWITH(glGetError());
         singleton = this;
 
         checkTextureAvailable();
@@ -843,13 +828,12 @@ namespace onart
                     else {
                         unsigned tex = 0, targ, err;
                         glGenTextures(1, &tex);
-                        //k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
-                        //if (k2result != KTX_SUCCESS) {
-                            //LOGWITH("Failed to transcode ktx texture:", k2result, err);
-                            //ktxTexture_Destroy(ktxTexture(texture));
-                        //}
                         glBindTexture(GL_TEXTURE_2D, tex);
-                        glTexImage2D(GL_TEXTURE_2D, 0, 0x8e8c, texture->baseWidth, texture->baseHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, texture->pData);
+                        k2result = ktxTexture_GLUpload(ktxTexture(texture), &tex, &targ, &err);
+                        if (k2result != KTX_SUCCESS) {
+                            LOGWITH("Failed to transcode ktx texture:", k2result, err);
+                            ktxTexture_Destroy(ktxTexture(texture));
+                        }
                         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
                         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, options.linearSampled ? GL_LINEAR : GL_NEAREST);
                         glBindTexture(GL_TEXTURE_2D, 0);
@@ -1351,6 +1335,14 @@ namespace onart
         std::memcpy(ret->vspec.data(), opts.vertexSpec, sizeof(opts.vertexSpec[0]) * opts.vertexAttributeCount);
         std::memcpy(ret->ispec.data(), opts.instanceSpec, sizeof(opts.instanceSpec[0]) * opts.instanceAttributeCount);
         ret->depthStencilOperation = opts.depthStencil;
+        constexpr const char* ubnames[4] = { "ub0", "ub1", "ub2", "ub3" };
+        constexpr const char* texnames[4] = { "t0", "t1", "t2", "t3" };
+        for(int i=0;i<4;i++){
+            unsigned ui = glGetUniformBlockIndex(prog, ubnames[i]);
+            if(ui != GL_INVALID_INDEX) { glUniformBlockBinding(prog, ui, i); }
+            ret->textureIndices[i] = glGetUniformLocation(prog, texnames[i]);
+        }
+        
         return ret;
     }
 
@@ -1480,8 +1472,13 @@ namespace onart
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
+        if(pos >= sizeof(pipelines[currentPass]->textureIndices) / sizeof(pipelines[currentPass]->textureIndices[0])){
+            LOGWITH("Texture slot insufficient. Expand if wanted");
+            return;
+        }
         glActiveTexture(GL_TEXTURE0 + pos);
         glBindTexture(GL_TEXTURE_2D, tx->txo);
+        glUniform1i(pipelines[currentPass]->textureIndices[pos], pos);
     }
 
     void WGLMachine::RenderPass::bind(uint32_t pos, const pTextureSet& tx) {
@@ -1490,8 +1487,7 @@ namespace onart
             return;
         }
         for (int i = 0; i < tx->textureCount; i++) {
-            glActiveTexture(GL_TEXTURE0 + pos + i);
-            glBindTexture(GL_TEXTURE_2D, tx->textures[i]->txo);
+            bind(pos + i, tx->textures[i]);
         }
     }
 
@@ -1500,8 +1496,13 @@ namespace onart
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
+        if(pos >= sizeof(pipelines[currentPass]->textureIndices) / sizeof(pipelines[currentPass]->textureIndices[0])){
+            LOGWITH("Texture slot insufficient. Expand if wanted");
+            return;
+        }
         glActiveTexture(GL_TEXTURE0 + pos);
         glBindTexture(GL_TEXTURE_2D, tx->txo);
+        glUniform1i(pipelines[currentPass]->textureIndices[pos], pos);
     }
 
     void WGLMachine::RenderPass::bind(uint32_t pos, RenderPass2Cube* prev) {
@@ -1512,9 +1513,11 @@ namespace onart
         glActiveTexture(GL_TEXTURE0 + pos);
         if (prev->targetCubeC) {
             glBindTexture(GL_TEXTURE_CUBE_MAP, prev->targetCubeC);
+            glUniform1i(pipelines[currentPass]->textureIndices[pos], pos);
         }
         else if (prev->targetCubeD) {
             glBindTexture(GL_TEXTURE_CUBE_MAP, prev->targetCubeD);
+            glUniform1i(pipelines[currentPass]->textureIndices[pos], pos);
         }
         else {
             LOGWITH("given renderpass2cube does not seem to be normal");
@@ -1539,14 +1542,17 @@ namespace onart
         if (lastOne->color1) {
             glActiveTexture(GL_TEXTURE0 + pos);
             glBindTexture(GL_TEXTURE_2D, lastOne->color1);
+            glUniform1i(pipelines[currentPass]->textureIndices[pos], pos);
             pos++;
             if (lastOne->color2) {
                 glActiveTexture(GL_TEXTURE0 + pos);
                 glBindTexture(GL_TEXTURE_2D, lastOne->color2);
+                glUniform1i(pipelines[currentPass]->textureIndices[pos], pos);
                 pos++;
                 if (lastOne->color3) {
                     glActiveTexture(GL_TEXTURE0 + pos);
                     glBindTexture(GL_TEXTURE_2D, lastOne->color2);
+                    glUniform1i(pipelines[currentPass]->textureIndices[pos], pos);
                     pos++;
                 }
             }
@@ -1554,6 +1560,7 @@ namespace onart
         if (lastOne->depthStencil && lastOne->dsTexture) {
             glActiveTexture(GL_TEXTURE0 + pos);
             glBindTexture(GL_TEXTURE_2D, lastOne->depthStencil);
+            glUniform1i(pipelines[currentPass]->textureIndices[pos], pos);
         }
     }
 

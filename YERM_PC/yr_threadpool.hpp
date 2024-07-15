@@ -163,6 +163,11 @@ namespace onart{
             /// @param strand 동시 실행이 불가능한 그룹입니다. 즉 같은 strand값이 주어진 것끼리 같은 스레드에 배치됩니다. 0을 주면 그룹에 속하지 않아 어떤 스레드에도 배치될 수 있습니다.
             inline void post(const std::function<variant8()>& work, const std::function<void(variant8)>& completionHandler = {}, uint8_t strand = 0) {
                 if(!work) return;
+                if(workers.size() == 0){
+                    auto res = work();
+                    if(completionHandler) afterService.push_back({completionHandler, res});
+                    return;
+                }
                 workCount++;
                 std::unique_lock<std::mutex> _(queueGuard);
                 const bool toSignal = works.empty();

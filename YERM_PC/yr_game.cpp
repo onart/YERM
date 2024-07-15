@@ -48,6 +48,7 @@ namespace onart{
     YRGraphics* Game::vk = nullptr;
     Window* Game::window = nullptr;
     void* Game::hd = nullptr;
+    int32_t Game::loopFlag = 0;
 
 #ifndef YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
 #define YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD (BOOST_PLAT_ANDROID)
@@ -152,57 +153,16 @@ namespace onart{
                 Window::terminate();
                 return 1;
             }
-            for (;; _frame++) {
-                pollEvents();
-                if (window->windowShouldClose()) break;
-                std::chrono::duration<uint64_t, std::nano> longDt = std::chrono::steady_clock::now() - longTp;
-                // [0, 2^52 - 1] 범위 정수를 균등 간격의 [1.0, 2.0) 범위 double로 대응시키는 함수에 십억을 적용한 후 1을 뺀 결과에 곱하여 1로 만들 수 있는 수
-                constexpr double ONE_SECOND = 1.0 / 0.0000002220446049250313080847263336181640625;
-                
-                uint64_t ndt = longDt.count() - _tp;
-                double ddt = (fixedPointConversion64i(ndt) - 1.0) * ONE_SECOND; // 함수를 사용할 수 없는 ndt의 상한선: 4,503,599,627,370,496 > 52일
-                double iddt = 1.0 / ddt;
-                _tp = longDt.count();
-                _dt = static_cast<float>(ddt);
-                _idt = static_cast<float>(iddt);
-                YRGraphics::handle();
-                auto off = YRGraphics::getRenderPass(0);
-                auto rp2s = YRGraphics::getRenderPass2Screen(1);
-                auto vb = YRGraphics::getMesh(0);
-                auto tx = YRGraphics::getTexture(0);
-                int x, y;
-                if (Input::isKeyDown(Input::KeyCode::down)) {
-                    thr -= 0.01f;
-                    if (thr < 0) thr = 0.0f;
+            loopFlag = 1;
 
-                }
-                if (Input::isKeyDown(Input::KeyCode::up)) {
-                    thr += 0.01f;
-                    if (thr > 4)  thr = 4.0f;
-                }
-                printf("%f\r", thr);
-                window->getFramebufferSize(&x, &y);
-                ivec2 scr(x, y);
-                float aspect = 1.0f;// (float)x / y;
-                float pushed = PI<float> / 2;// std::abs(std::sin((double)_tp * 0.000000001));
-                mat4 rot = mat4(1, 0, 0, 0, 0, aspect, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) * mat4::rotate(0, 0, (double)_tp * 0.000000001);
-                off->start();
-                if (loaded) {
-                    off->push(&rot, 0, 64);
-                    off->push(&thr, 64, 68);
-                    off->bind(0, tx);
-                    off->invoke(vb);
-                }
-                off->start();
-                off->invoke(vb);
-                off->execute(1);
-                rp2s->start();
-                rp2s->push(&rot, 0, 64);
-                rp2s->push(&thr, 64, 68);
-                rp2s->bind(0, off);
-                rp2s->invoke(vb);
-                    rp2s->execute(1, &off);
+#ifdef EMSCRIPTEN
+            emscripten_set_main_loop(mainLoop, 0, 0);
+#else            
+            for (;loopFlag; _frame++) {
+                mainLoop();
             }
+#endif
+            
             return 0;
 #if !YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
         });
@@ -212,6 +172,63 @@ namespace onart{
 
         finalize();
         return 0;
+    }
+
+    void Game::mainLoop(){
+        pollEvents();
+        if (window->windowShouldClose()) {
+#ifdef EMSCRIPTEN
+            emscripten_cancel_main_loop();
+#else
+            loopFlag = 0;
+#endif
+        }
+        std::chrono::duration<uint64_t, std::nano> longDt = std::chrono::steady_clock::now() - longTp;
+        // [0, 2^52 - 1] 범위 정수를 균등 간격의 [1.0, 2.0) 범위 double로 대응시키는 함수에 십억을 적용한 후 1을 뺀 결과에 곱하여 1로 만들 수 있는 수
+        constexpr double ONE_SECOND = 1.0 / 0.0000002220446049250313080847263336181640625;
+                
+        uint64_t ndt = longDt.count() - _tp;
+        double ddt = (fixedPointConversion64i(ndt) - 1.0) * ONE_SECOND; // 함수를 사용할 수 없는 ndt의 상한선: 4,503,599,627,370,496 > 52일
+        double iddt = 1.0 / ddt;
+        _tp = longDt.count();
+        _dt = static_cast<float>(ddt);
+        _idt = static_cast<float>(iddt);
+        YRGraphics::handle();
+        auto off = YRGraphics::getRenderPass(0);
+        auto rp2s = YRGraphics::getRenderPass2Screen(1);
+        auto vb = YRGraphics::getMesh(0);
+        auto tx = YRGraphics::getTexture(0);
+        int x, y;
+        if (Input::isKeyDown(Input::KeyCode::down)) {
+            thr -= 0.01f;
+            if (thr < 0) thr = 0.0f;
+        }
+        if (Input::isKeyDown(Input::KeyCode::up)) {
+            thr += 0.01f;
+            if (thr > 4)  thr = 4.0f;
+        }
+        //printf("%f\r", thr);
+        window->getFramebufferSize(&x, &y);
+        ivec2 scr(x, y);
+        float aspect = 1.0f;// (float)x / y;
+        float pushed = PI<float> / 2;// std::abs(std::sin((double)_tp * 0.000000001));
+        mat4 rot = mat4(1, 0, 0, 0, 0, aspect, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) * mat4::rotate(0, 0, (double)_tp * 0.000000001);
+        off->start();
+        if (loaded) {
+            off->push(&rot, 0, 64);
+            off->push(&thr, 64, 68);
+            off->bind(0, tx);
+            off->invoke(vb);
+        }
+        off->start();
+        off->invoke(vb);
+        off->execute(1);
+        rp2s->start();
+        rp2s->push(&rot, 0, 64);
+        rp2s->push(&thr, 64, 68);
+        rp2s->bind(0, off);
+        rp2s->invoke(vb);
+        rp2s->execute(1, &off);
     }
 
     void Game::pollEvents(){
@@ -255,7 +272,9 @@ namespace onart{
     }
 
     void Game::finalize(){
+#ifndef EMSCRIPTEN
         Audio::finalize();
+#endif
         delete vk;
         delete window; // Window보다 스왑체인을 먼저 없애야 함 (안 그러면 X11에서 막혀서 프로그램이 안 끝남)
         window = nullptr;
@@ -264,7 +283,9 @@ namespace onart{
     }
 
     bool Game::init() {
-        Audio::init();
+#ifndef EMSCRIPTEN
+        Audio::init(); // 임시조치
+#endif
 #if YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
         window->clickCallback = Input::click;
         window->keyCallback = Input::keyboard;
@@ -342,7 +363,7 @@ namespace onart{
             //YRGraphics::createTextureFromImage("g256.png", 0,YRGraphics::isSurfaceSRGB(),YRGraphics::IT_USE_ORIGINAL,false); loaded = true;
             //loaded = true; YRGraphics::createTexture(TEX0, sizeof(TEX0), 4, 0, YRGraphics::isSurfaceSRGB());
         }
-#elif defined(YR_USE_OPENGL)
+#elif defined(YR_USE_OPENGL) 
         const char TEST_GL_VERT1[] = R"(
 #version 450
 
@@ -380,6 +401,69 @@ void main() {
 }
 )";
         if constexpr (YRGraphics::OPENGL_GRAPHICS) {
+            YRGraphics::ShaderModuleCreationOptions shaderOpts;
+            shaderOpts.size = sizeof(TEST_GL_VERT1);
+            shaderOpts.source = TEST_GL_VERT1;
+            shaderOpts.stage = YRGraphics::ShaderStage::VERTEX;
+            auto vs = YRGraphics::createShader(0, shaderOpts);
+            shaderOpts.size = sizeof(TEST_GL_FRAG1);
+            shaderOpts.source = TEST_GL_FRAG1;
+            shaderOpts.stage = YRGraphics::ShaderStage::FRAGMENT;
+            auto fs = YRGraphics::createShader(1, shaderOpts);
+            YRGraphics::PipelineInputVertexSpec sp[2];
+            testv_t::info(sp);
+            YRGraphics::PipelineCreationOptions opts;
+            opts.vertexShader = vs;
+            opts.fragmentShader = fs;
+            opts.vertexAttributeCount = 2;
+            opts.vertexSize = sizeof(testv_t);
+            opts.vertexSpec = sp;
+            opts.pass = offrp;
+            opts.subpassIndex = 0;
+            auto pp = YRGraphics::createPipeline(0, opts);
+            offrp->usePipeline(pp, 0);
+            offrp->usePipeline(pp, 1);
+            rp2s->usePipeline(pp, 0);
+        }
+#elif defined(YR_USE_WEBGL)
+const char TEST_GL_VERT1[] = R"(#version 300 es
+precision mediump float;
+
+layout(location = 0) in vec3 inPosition;
+layout(location = 1) in vec2 inTc;
+
+out vec2 tc;
+
+uniform ui{
+    mat4 aspect;
+    float t;
+};
+
+void main() {
+    gl_Position = aspect * vec4(inPosition, 1.0);
+    tc = inTc;
+}
+)";
+
+        const char TEST_GL_FRAG1[] = R"(#version 300 es
+precision mediump float;
+
+in vec2 tc;
+
+out vec4 outColor;
+uniform sampler2D tex;
+
+uniform ui{
+    mat4 aspect;
+    float t;
+};
+
+void main() {
+    outColor = texture(tex, tc);
+}
+)";
+        if constexpr (YRGraphics::WEBGL_GRAPHICS) {
+            LOGHERE;
             YRGraphics::ShaderModuleCreationOptions shaderOpts;
             shaderOpts.size = sizeof(TEST_GL_VERT1);
             shaderOpts.source = TEST_GL_VERT1;

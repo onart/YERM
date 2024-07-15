@@ -96,7 +96,7 @@ elseif (EMSCRIPTEN)
     endif()
     
 	append_linker_flags("-sINITIAL_MEMORY=16MB -sMALLOC=emmalloc ")
-    append_linker_flags("-sTEXTDECODER=2 -sABORTING_MALLOC=0 -sSUPPORT_ERRNO=0")
+    append_linker_flags("-sTEXTDECODER=2 -sABORTING_MALLOC=0")
 	append_linker_flags("-sENVIRONMENT=web -sMIN_FIREFOX_VERSION=87 -sMIN_SAFARI_VERSION=140000 -sMIN_CHROME_VERSION=90")
 	append_linker_flags("-sTOTAL_STACK=16KB")
 	append_linker_flags("-sALLOW_MEMORY_GROWTH=1")

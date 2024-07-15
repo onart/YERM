@@ -64,6 +64,7 @@ namespace onart{
             static float _dt, _idt; // float인 이유: 이 엔진 내에서는 SIMD에서 double보다 효율적인 float 자료형이 주로 사용되는데 이게 타임과 연산될 일이 잦은 편이기 때문
             static uint64_t _tp;
             static void* hd;
+            static int32_t loopFlag;
         private:
             static void windowResized(int x, int y);
             static void pollEvents();
@@ -71,6 +72,7 @@ namespace onart{
             static bool init();
             static void update();
             static void render();
+            static void mainLoop();
     };
 }
 #undef YRGraphics
