@@ -35,7 +35,7 @@ namespace onart{
 #endif
     class YRGraphics;
 
-    /// @brief 프레임워크의 진입점입니다. main 함수가 리턴해야 재생성되는 안드로이드 NDK 화면회전 특성상 모든 멤버는 static입니다.
+    /// @brief 프레임워크의 진입점입니다. 모든 멤버는 static입니다.
     class Game{
         public:
             /// @brief 창을 닫고 자원을 정상 해제한 후 게임을 종료합니다. PC 게임에서는 창을 닫는 행위와 동일하지만, 모바일에서는 게임을 정상적으로 종료하는 유일한 방법입니다.

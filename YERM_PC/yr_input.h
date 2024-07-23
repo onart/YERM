@@ -312,12 +312,25 @@ namespace onart{
                 bool isUpNow() const;
             };
 
+			struct KeyInput{
+				KeyCode keyCode;
+				bool down;
+			};
+
         private:
-            static int32_t pressedKey[];
-            static int32_t pressedMouseKey[];
+			struct press_t{
+				int frame;
+				int count;
+			};
+            static press_t pressedKey[];
+            static press_t pressedMouseKey[];
             static dvec2 mousePos;
             static TouchInfo _touches[4]; // 일단 터치는 최대 4개까지만 지원하는 걸로
-            
+			static KeyInput rfk[];
+			static int rfkCount;
+
+			/// @brief 프레임 내 입력 키 정보를 리셋합니다.
+			static void startFrame();
             /// @brief 현재 프레임에 들어온 키를 등록합니다.
             static void keyboard(int keycode, int scancode, int action, int mod);
             /// @brief 현재 프레임에 들어온 키를 등록합니다. (마우스)
@@ -331,6 +344,12 @@ namespace onart{
             static const decltype(_touches)& touches;
 			/// @brief 현재 프레임의 마우스 위치입니다.
 			static const dvec2& mousePosition;
+			/// @brief 현재 프레임에 들어온 키 입력들을 읽을 수 있습니다.
+			static const KeyInput* recentFrameKeyInputBegin();
+			/// @brief 현재 프레임에 들어온 키 입력들을 읽을 수 있습니다.
+			static const KeyInput* recentFrameKeyInputEnd();
+			inline const KeyInput* begin() const { return recentFrameKeyInputBegin(); }
+			inline const KeyInput* end() const { return recentFrameKeyInputEnd(); }
     };
 }
 

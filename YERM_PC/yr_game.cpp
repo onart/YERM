@@ -175,6 +175,7 @@ namespace onart{
     }
 
     void Game::mainLoop(){
+        Input::startFrame();
         pollEvents();
         if (window->windowShouldClose()) {
 #ifdef EMSCRIPTEN
@@ -206,6 +207,9 @@ namespace onart{
         if (Input::isKeyDown(Input::KeyCode::up)) {
             thr += 0.01f;
             if (thr > 4)  thr = 4.0f;
+        }
+        for (const auto& ki : Input()) {
+            LOGWITH(frame, (int)ki.keyCode, ki.down);
         }
         //printf("%f\r", thr);
         window->getFramebufferSize(&x, &y);

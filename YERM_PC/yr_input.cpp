@@ -15,47 +15,83 @@
 #include "yr_game.h"
 
 namespace onart{
-    int Input::pressedKey[512];
-    int Input::pressedMouseKey[8];
+    Input::press_t Input::pressedKey[512];
+    Input::press_t Input::pressedMouseKey[8];
     dvec2 Input::mousePos;
     Input::TouchInfo Input::_touches[4]{};
     const decltype(Input::_touches)& Input::touches(_touches);
     const dvec2& Input::mousePosition(mousePos);
+    Input::KeyInput Input::rfk[32];
+    int Input::rfkCount = 0;
 
     bool Input::isKeyDown(KeyCode key){
-        return pressedKey[(int)key] > 0;
+        return pressedKey[(int)key].frame > 0;
     }
 
     bool Input::isKeyDownNow(KeyCode key){
-        return pressedKey[(int)key] == Game::frame;
+        const press_t& keystate = pressedKey[(int)key];
+        return keystate.frame == Game::frame || (keystate.frame == -Game::frame && keystate.count);
     }
 
     bool Input::isKeyUpNow(KeyCode key){
-        return pressedKey[(int)key] == -Game::frame;
+        const press_t& keystate = pressedKey[(int)key];
+        return keystate.frame == -Game::frame || (keystate.frame == Game::frame && keystate.count);
     }
 
     bool Input::isKeyDown(MouseKeyCode key){
-        return pressedMouseKey[(int)key] > 0;
+        return pressedMouseKey[(int)key].frame > 0;
     }
 
     bool Input::isKeyDownNow(MouseKeyCode key){
-        return pressedMouseKey[(int)key] == Game::frame;
+        const press_t& keystate = pressedMouseKey[(int)key];
+        return keystate.frame == Game::frame || (keystate.frame == -Game::frame && keystate.count);
     }
 
     bool Input::isKeyUpNow(MouseKeyCode key){
-        return pressedMouseKey[(int)key] == -Game::frame;
+        const press_t& keystate = pressedMouseKey[(int)key];
+        return keystate.frame == -Game::frame || (keystate.frame == Game::frame && keystate.count);
     }
 
     void Input::keyboard(int keycode, int scancode, int action, int mod){
-        if(action == KEY_DOWN) pressedKey[keycode] = Game::frame;
-        else if(action == KEY_UP) pressedKey[keycode] = -Game::frame;
+        press_t& keystate = pressedKey[keycode];
+        if (action == KEY_DOWN) { 
+            if (keystate.frame == -Game::frame) { keystate.count++; }
+            else { keystate.count = 0; }
+            keystate.frame = Game::frame;
+        }
+        else if (action == KEY_UP) { 
+            if (keystate.frame == Game::frame) { keystate.count++; }
+            else { keystate.count = 0; }
+            keystate.frame = -Game::frame;
+        }
+        else {
+            return;
+        }
+        if (rfkCount < sizeof(rfk) / sizeof(rfk[0])) {
+            rfk[rfkCount].keyCode = (KeyCode)keycode;
+            rfk[rfkCount].down = action == KEY_DOWN;
+            rfkCount++;
+        }
         //LOGWITH(keycode, action);
     }
 
     void Input::click(int key, int action, int mods){
         //LOGWITH(key, action);
-        if(action == KEY_DOWN) pressedMouseKey[key] = Game::frame;
-        else if(action == KEY_UP) pressedMouseKey[key] = -Game::frame;
+        press_t& keystate = pressedMouseKey[key];
+        if (action == KEY_DOWN) { 
+            if (keystate.frame == -Game::frame) { keystate.count++; }
+            else { keystate.count = 0; }
+            keystate.frame = Game::frame;
+        }
+        else if (action == KEY_UP) { 
+            if (keystate.frame == Game::frame) { keystate.count++; }
+            else { keystate.count = 0; }
+            keystate.frame = -Game::frame;
+        }
+    }
+
+    void Input::startFrame() {
+        rfkCount = 0;
     }
 
     void Input::moveCursor(double x, double y){
@@ -86,6 +122,10 @@ namespace onart{
             _touches[id].pos.y = y;
         }
     }
+
+    const Input::KeyInput* Input::recentFrameKeyInputBegin() { return rfk; }
+    
+    const Input::KeyInput* Input::recentFrameKeyInputEnd() { return rfk + rfkCount; }
 
     bool Input::TouchInfo::isPressedNow() const{
         return frame == Game::frame;
