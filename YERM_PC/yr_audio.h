@@ -38,12 +38,14 @@ namespace onart{
             constexpr static unsigned SAMPLE_RATE = 44100;
 
             /// @brief 모듈 사용을 시작합니다.
-            static void init();
+            static void init(bool extraThread = true);
             /// @brief 모듈 사용을 종료합니다.
             static void finalize();
             /// @brief 마스터 볼륨을 설정합니다.
             /// @param f 0~1 사이만 가능합니다.
             static void setMasterVolume(float f);
+            /// @brief 별도의 스레드를 사용하지 않도록 초기화한 경우 이 함수를 주기적으로 호출하여 링버퍼를 채웁니다.
+            static void produce();
         private:
             static float master;
             static void* engine;

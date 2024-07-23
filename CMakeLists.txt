@@ -101,6 +101,7 @@ elseif (EMSCRIPTEN)
 	append_linker_flags("-sTOTAL_STACK=16KB")
 	append_linker_flags("-sALLOW_MEMORY_GROWTH=1")
 	append_linker_flags("-sUSE_SDL=0 -sFILESYSTEM=0 -sAUTO_JS_LIBRARIES=0 -sDISABLE_EXCEPTION_THROWING=1")
+    append_linker_flags("-sEXPORTED_FUNCTIONS=['_malloc','_main']")
     append_linker_flags("-lmath.js -lhtml5.js -lint53.js")
 
 	append_linker_flags("-sMAXIMUM_MEMORY=4GB")

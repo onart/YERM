@@ -30,7 +30,7 @@
 namespace onart{
 
     void* Audio::engine = nullptr;
-    std::thread* Audio::producer;
+    std::thread* Audio::producer = nullptr;
     volatile bool Audio::inLoop = false;
     float Audio::master = 1.0f;
 
@@ -138,13 +138,13 @@ namespace onart{
     }
 
 #define _HDEVICE reinterpret_cast<ma_device*>(engine)
-    void Audio::init(){
+    void Audio::init(bool extraThread){
+        if(inLoop) return;
         ma_device_config config = ma_device_config_init(ma_device_type::ma_device_type_playback);        
         config.playback.format = ma_format_s16;
         config.playback.channels = 2;
         config.sampleRate = SAMPLE_RATE;
         config.dataCallback = deliverPCM;
-
         engine = std::malloc(sizeof(ma_device));
         ma_result result;
         if((result = ma_device_init(nullptr, &config, _HDEVICE)) != MA_SUCCESS){
@@ -158,7 +158,7 @@ namespace onart{
             return;
         }
         inLoop = true; // 생산자 하나, 소비자 하나이므로 동기화 조치 안함
-        producer = new std::thread(audioThread);
+        if(extraThread){ producer = new std::thread(audioThread); }
     }
 
     void Audio::audioThread(){
@@ -182,13 +182,33 @@ namespace onart{
         }
     }
 
+    void Audio::produce(){
+        if(producer) return;
+        if(!inLoop) return;
+        unsigned writable = ringBuffer.writable();
+        if(writable == 0) return;
+        size_t sz = Source::sources.size();
+        for(size_t i = 0; i < sz; i++) {
+            pAudioSource& sourceI = Source::sources[i];
+            if(sourceI->close) { continue; }
+            size_t ps = sourceI->streams.size();
+            for(size_t j = 0; j < ps; j++){
+                sourceI->present(*(sourceI->streams[j]), writable / 2);
+            }
+        }
+        ringBuffer.addComplete();
+        Source::reapAll();
+    }
+
     void Audio::finalize(){
         inLoop = false;
         ringBuffer.finalize();
         
-        producer->join();
-        delete producer;
-        producer = nullptr;
+        if (producer) { 
+            producer->join();
+            delete producer;
+            producer = nullptr;
+        }
         ma_device_uninit(_HDEVICE);
         std::free(engine);
         engine = nullptr;
