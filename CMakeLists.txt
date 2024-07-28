@@ -2,6 +2,36 @@ cmake_minimum_required(VERSION 3.13)
 
 project("yerm")
 
+set(EXEC_COMMON_SOURCE 
+        YERM_PC/logger.hpp
+        YERM_PC/yr_simd.hpp
+        YERM_PC/yr_math.hpp
+        YERM_PC/yr_string.hpp
+        YERM_PC/yr_pool.hpp
+        YERM_PC/yr_tuple.hpp
+        YERM_PC/yr_constants.hpp
+        YERM_PC/yr_compiler_specific.hpp
+        YERM_PC/yr_align.hpp
+        YERM_PC/yr_bits.hpp
+        YERM_PC/yr_threadpool.hpp
+        YERM_PC/yr_graphics.h
+
+        YERM_PC/yr_sys.h
+        YERM_PC/yr_sys.cpp
+        YERM_PC/yr_game.h
+        YERM_PC/yr_game.cpp
+        YERM_PC/yr_input.h
+        YERM_PC/yr_input.cpp
+        YERM_PC/yr_singleheader.cpp
+        YERM_PC/yr_audio.h
+        YERM_PC/yr_audio.cpp
+        YERM_PC/yr_constants.cpp
+        YERM_PC/yr_model.h
+        YERM_PC/yr_model.cpp
+        YERM_PC/yr_2d.h
+        YERM_PC/yr_2d.cpp
+)
+
 if (ANDROID)
     message(STATUS "Build for Android platform is currently up to Android Studio. Please open YERM_android project with it.")
 elseif (EMSCRIPTEN)
@@ -117,16 +147,7 @@ elseif (EMSCRIPTEN)
 
     add_executable(yerm
         YERM_web/wmain.cpp
-        YERM_PC/yr_graphics.h
-        YERM_PC/yr_sys.h
-        YERM_PC/yr_sys.cpp
-        YERM_PC/yr_game.h
-        YERM_PC/yr_game.cpp
-        YERM_PC/yr_audio.h
-        YERM_PC/yr_audio.cpp
-        YERM_PC/yr_constants.cpp
-        YERM_PC/yr_input.h
-        YERM_PC/yr_input.cpp
+        ${EXEC_COMMON_SOURCE}
     )
     
     # Additional library
@@ -242,31 +263,7 @@ endmacro()
     endif()
     add_executable(yerm
         YERM_PC/main.cpp
-        YERM_PC/logger.hpp
-        YERM_PC/yr_simd.hpp
-        YERM_PC/yr_math.hpp
-        YERM_PC/yr_string.hpp
-        YERM_PC/yr_pool.hpp
-        YERM_PC/yr_tuple.hpp
-        YERM_PC/yr_constants.hpp
-        YERM_PC/yr_compiler_specific.hpp
-        YERM_PC/yr_align.hpp
-        YERM_PC/yr_bits.hpp
-        YERM_PC/yr_threadpool.hpp
-        YERM_PC/yr_graphics.h
-
-        YERM_PC/yr_sys.h
-        YERM_PC/yr_sys.cpp
-        YERM_PC/yr_game.h
-        YERM_PC/yr_game.cpp
-        YERM_PC/yr_input.h
-        YERM_PC/yr_input.cpp
-        YERM_PC/yr_singleheader.cpp
-        YERM_PC/yr_audio.h
-        YERM_PC/yr_audio.cpp
-        YERM_PC/yr_constants.cpp
-        YERM_PC/yr_model.h
-        YERM_PC/yr_model.cpp
+        ${EXEC_COMMON_SOURCE}
     )
     add_dependencies(yerm glfw)
     set_target_properties(yerm PROPERTIES BUILD_RPATH ".")

@@ -154,8 +154,9 @@ namespace onart{
                 return 1;
             }
             loopFlag = 1;
-
 #ifdef EMSCRIPTEN
+            window->waitEvents();
+            Audio::init(false);
             emscripten_set_main_loop(mainLoop, 0, 0);
 #else            
             for (;loopFlag; _frame++) {
@@ -467,7 +468,6 @@ void main() {
 }
 )";
         if constexpr (YRGraphics::WEBGL_GRAPHICS) {
-            LOGHERE;
             YRGraphics::ShaderModuleCreationOptions shaderOpts;
             shaderOpts.size = sizeof(TEST_GL_VERT1);
             shaderOpts.source = TEST_GL_VERT1;
