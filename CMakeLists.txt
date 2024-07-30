@@ -28,6 +28,8 @@ set(EXEC_COMMON_SOURCE
         YERM_PC/yr_constants.cpp
         YERM_PC/yr_model.h
         YERM_PC/yr_model.cpp
+        YERM_PC/yr_scene.h
+        YERM_PC/yr_scene.cpp
         YERM_PC/yr_2d.h
         YERM_PC/yr_2d.cpp
 )

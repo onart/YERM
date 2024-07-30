@@ -4,7 +4,7 @@
 #include "yr_compiler_specific.hpp"
 namespace onart
 {
-    class alignas(16) align16 {
+    class align16 {
         private:
             inline static bool isNotAligned(void* p){return ((size_t)p) & 0xf;}
         public:
