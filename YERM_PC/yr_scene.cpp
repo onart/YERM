@@ -1,4 +1,5 @@
 #include "yr_scene.h"
+#include <cfloat>
 
 namespace onart {
 

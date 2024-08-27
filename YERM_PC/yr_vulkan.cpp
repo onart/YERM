@@ -48,7 +48,7 @@ namespace onart {
     /// @brief 주어진 만큼의 기술자 집합을 할당할 수 있는 기술자 풀을 생성합니다.
     static VkDescriptorPool createDescriptorPool(VkDevice device, uint32_t samplerLimit = 256, uint32_t dynUniLimit = 8, uint32_t uniLimit = 16, uint32_t intputAttachmentLimit = 16);
     /// @brief 주어진 기반 형식과 아귀가 맞는, 현재 장치에서 사용 가능한 압축 형식을 리턴합니다.
-    static VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, uint32_t nChannels, bool srgb, VkMachine::TextureFormatOptions hq, VkImageCreateFlagBits flags);
+    static VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, uint32_t nChannels, bool srgb, TextureFormatOptions hq, VkImageCreateFlagBits flags);
     /// @brief VkResult를 스트링으로 표현합니다. 리턴되는 문자열은 텍스트(코드) 영역에 존재합니다.
     inline static const char* resultAsString(VkResult);
 
@@ -1457,7 +1457,7 @@ namespace onart {
         singleton->reaper.push(dset, singleton->descriptorPool);
     }
 
-    static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, VkMachine::TextureFormatOptions option){
+    static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, TextureFormatOptions option){
         ktxTexture2* texture;
         ktx_error_code_e k2result;
         ktxTextureCreateInfo texInfo{};
@@ -1495,7 +1495,7 @@ namespace onart {
             ktxTexture_Destroy(ktxTexture(texture));
             return nullptr;
         }
-        if(option == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS){
+        if(option == TextureFormatOptions::IT_PREFER_COMPRESS){
             ktxBasisParams params{};
             params.compressionLevel = 5;// BASISU_DEFAULT_COMPRESSION_LEVEL == 2;
             params.uastc = KTX_TRUE;
@@ -2654,39 +2654,69 @@ namespace onart {
         rtrInfo.lineWidth = 1.0f;
         rtrInfo.polygonMode = VK_POLYGON_MODE_FILL;
 
+        const VkCompareOp VK_COMPARE_OP_FROM_ENUM[] = {
+            VK_COMPARE_OP_NEVER, VK_COMPARE_OP_LESS, VK_COMPARE_OP_EQUAL,
+            VK_COMPARE_OP_LESS_OR_EQUAL, VK_COMPARE_OP_GREATER,
+            VK_COMPARE_OP_NOT_EQUAL, VK_COMPARE_OP_GREATER_OR_EQUAL,
+            VK_COMPARE_OP_ALWAYS,
+        };
+
+        const VkStencilOp VK_STENCIL_OP_FROM_ENUM[] = {
+            VK_STENCIL_OP_KEEP, VK_STENCIL_OP_ZERO, VK_STENCIL_OP_REPLACE,
+            VK_STENCIL_OP_INCREMENT_AND_CLAMP, VK_STENCIL_OP_DECREMENT_AND_CLAMP,
+            VK_STENCIL_OP_INVERT, VK_STENCIL_OP_INCREMENT_AND_WRAP,
+            VK_STENCIL_OP_DECREMENT_AND_WRAP
+        };
+
         VkPipelineDepthStencilStateCreateInfo dsInfo{};
         dsInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-        dsInfo.depthCompareOp = (VkCompareOp)opts.depthStencil.comparison;
+        dsInfo.depthCompareOp = VK_COMPARE_OP_FROM_ENUM[(int)opts.depthStencil.comparison];
         dsInfo.depthTestEnable = opts.depthStencil.depthTest;
         dsInfo.depthWriteEnable = opts.depthStencil.depthWrite;
         dsInfo.stencilTestEnable = opts.depthStencil.stencilTest;
         dsInfo.front.compareMask = opts.depthStencil.stencilFront.compareMask;
         dsInfo.front.writeMask = opts.depthStencil.stencilFront.writeMask;
         dsInfo.front.reference = opts.depthStencil.stencilFront.reference;
-        dsInfo.front.compareOp = (VkCompareOp)opts.depthStencil.stencilFront.compare;
-        dsInfo.front.failOp = (VkStencilOp)opts.depthStencil.stencilFront.onFail;
-        dsInfo.front.depthFailOp = (VkStencilOp)opts.depthStencil.stencilFront.onDepthFail;
-        dsInfo.front.passOp = (VkStencilOp)opts.depthStencil.stencilFront.onPass;
+        dsInfo.front.compareOp = VK_COMPARE_OP_FROM_ENUM[(int)opts.depthStencil.stencilFront.compare];
+        dsInfo.front.failOp = VK_STENCIL_OP_FROM_ENUM[(int)opts.depthStencil.stencilFront.onFail];
+        dsInfo.front.depthFailOp = VK_STENCIL_OP_FROM_ENUM[(int)opts.depthStencil.stencilFront.onDepthFail];
+        dsInfo.front.passOp = VK_STENCIL_OP_FROM_ENUM[(int)opts.depthStencil.stencilFront.onPass];
 
         dsInfo.back.compareMask = opts.depthStencil.stencilBack.compareMask;
         dsInfo.back.writeMask = opts.depthStencil.stencilBack.writeMask;
         dsInfo.back.reference = opts.depthStencil.stencilBack.reference;
-        dsInfo.back.compareOp = (VkCompareOp)opts.depthStencil.stencilBack.compare;
-        dsInfo.back.failOp = (VkStencilOp)opts.depthStencil.stencilBack.onFail;
-        dsInfo.back.depthFailOp = (VkStencilOp)opts.depthStencil.stencilBack.onDepthFail;
-        dsInfo.back.passOp = (VkStencilOp)opts.depthStencil.stencilBack.onPass;
+        dsInfo.back.compareOp = VK_COMPARE_OP_FROM_ENUM[(int)opts.depthStencil.stencilBack.compare];
+        dsInfo.back.failOp = VK_STENCIL_OP_FROM_ENUM[(int)opts.depthStencil.stencilBack.onFail];
+        dsInfo.back.depthFailOp = VK_STENCIL_OP_FROM_ENUM[(int)opts.depthStencil.stencilBack.onDepthFail];
+        dsInfo.back.passOp = VK_STENCIL_OP_FROM_ENUM[(int)opts.depthStencil.stencilBack.onPass];
+
+        const VkBlendOp VK_BLEND_OP_FROM_ENUM[] = { 
+            VK_BLEND_OP_ADD, VK_BLEND_OP_SUBTRACT, VK_BLEND_OP_MIN, VK_BLEND_OP_MAX,
+        };
+
+        const VkBlendFactor VK_BLEND_FACTOR_FROM_ENUM[] = {
+            VK_BLEND_FACTOR_ZERO, VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_SRC_COLOR,
+            VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR, VK_BLEND_FACTOR_DST_COLOR,
+            VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR, VK_BLEND_FACTOR_SRC_ALPHA,
+            VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VK_BLEND_FACTOR_DST_ALPHA,
+            VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA, VK_BLEND_FACTOR_CONSTANT_COLOR,
+            VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR, VK_BLEND_FACTOR_CONSTANT_ALPHA,
+            VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA, VK_BLEND_FACTOR_SRC_ALPHA_SATURATE,
+            VK_BLEND_FACTOR_SRC1_COLOR, VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR,
+            VK_BLEND_FACTOR_SRC1_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA
+        };
 
         VkPipelineColorBlendAttachmentState blendStates[3]{};
         for (int i = 0; i < OPT_COLOR_COUNT; i++) {
             auto& blendInfo = blendStates[i];
             blendInfo.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-            blendInfo.colorBlendOp = (VkBlendOp)opts.alphaBlend[i].colorOp;
-            blendInfo.alphaBlendOp = (VkBlendOp)opts.alphaBlend[i].alphaOp;
+            blendInfo.colorBlendOp = VK_BLEND_OP_FROM_ENUM[(int)opts.alphaBlend[i].colorOp];
+            blendInfo.alphaBlendOp = VK_BLEND_OP_FROM_ENUM[(int)opts.alphaBlend[i].alphaOp];
             blendInfo.blendEnable = opts.alphaBlend[i] != AlphaBlend::overwrite();
-            blendInfo.srcColorBlendFactor = (VkBlendFactor)opts.alphaBlend[i].srcColorFactor;
-            blendInfo.dstColorBlendFactor = (VkBlendFactor)opts.alphaBlend[i].dstColorFactor;
-            blendInfo.srcAlphaBlendFactor = (VkBlendFactor)opts.alphaBlend[i].srcAlphaFactor;
-            blendInfo.dstAlphaBlendFactor = (VkBlendFactor)opts.alphaBlend[i].dstAlphaFactor;
+            blendInfo.srcColorBlendFactor = VK_BLEND_FACTOR_FROM_ENUM[(int)opts.alphaBlend[i].srcColorFactor];
+            blendInfo.dstColorBlendFactor = VK_BLEND_FACTOR_FROM_ENUM[(int)opts.alphaBlend[i].dstColorFactor];
+            blendInfo.srcAlphaBlendFactor = VK_BLEND_FACTOR_FROM_ENUM[(int)opts.alphaBlend[i].srcAlphaFactor];
+            blendInfo.dstAlphaBlendFactor = VK_BLEND_FACTOR_FROM_ENUM[(int)opts.alphaBlend[i].dstAlphaFactor];
         }
 
         VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
@@ -2763,10 +2793,10 @@ namespace onart {
         info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         info.pBindings = bindings;
         switch (type) {
-        case onart::VkMachine::ShaderResourceType::NONE: {
+        case onart::ShaderResourceType::NONE: {
             return {};
         }
-        case onart::VkMachine::ShaderResourceType::UNIFORM_BUFFER_1:
+        case onart::ShaderResourceType::UNIFORM_BUFFER_1:
         {
             info.bindingCount = 1;
             bindings[0].binding = 0;
@@ -2775,7 +2805,7 @@ namespace onart {
             bindings[0].stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
             break;
         }
-        case onart::VkMachine::ShaderResourceType::DYNAMIC_UNIFORM_BUFFER_1:
+        case onart::ShaderResourceType::DYNAMIC_UNIFORM_BUFFER_1:
         {
             info.bindingCount = 1;
             bindings[0].binding = 0;
@@ -2784,7 +2814,7 @@ namespace onart {
             bindings[0].stageFlags = VK_SHADER_STAGE_ALL_GRAPHICS;
             break;
         }
-        case onart::VkMachine::ShaderResourceType::TEXTURE_1:
+        case onart::ShaderResourceType::TEXTURE_1:
         {
             info.bindingCount = 1;
             for (int i = 0; i < 1; i++) {
@@ -2795,7 +2825,7 @@ namespace onart {
             }
             break;
         }
-        case onart::VkMachine::ShaderResourceType::TEXTURE_2:
+        case onart::ShaderResourceType::TEXTURE_2:
         {
             info.bindingCount = 2;
             for (int i = 0; i < 2; i++) {
@@ -2806,7 +2836,7 @@ namespace onart {
             }
             break;
         }
-        case onart::VkMachine::ShaderResourceType::TEXTURE_3:
+        case onart::ShaderResourceType::TEXTURE_3:
         {
             info.bindingCount = 3;
             for (int i = 0; i < 3; i++) {
@@ -2817,7 +2847,7 @@ namespace onart {
             }
             break;
         }
-        case onart::VkMachine::ShaderResourceType::TEXTURE_4:
+        case onart::ShaderResourceType::TEXTURE_4:
         {
             info.bindingCount = 4;
             for (int i = 0; i < 4; i++) {
@@ -2828,7 +2858,7 @@ namespace onart {
             }
             break;
         }
-        case onart::VkMachine::ShaderResourceType::INPUT_ATTACHMENT_1:
+        case onart::ShaderResourceType::INPUT_ATTACHMENT_1:
         {
             info.bindingCount = 1;
             for (int i = 0; i < 1; i++) {
@@ -2839,7 +2869,7 @@ namespace onart {
             }
             break;
         }
-        case onart::VkMachine::ShaderResourceType::INPUT_ATTACHMENT_2:
+        case onart::ShaderResourceType::INPUT_ATTACHMENT_2:
         {
             info.bindingCount = 2;
             for (int i = 0; i < 1; i++) {
@@ -2850,7 +2880,7 @@ namespace onart {
             }
             break;
         }
-        case onart::VkMachine::ShaderResourceType::INPUT_ATTACHMENT_3:
+        case onart::ShaderResourceType::INPUT_ATTACHMENT_3:
         {
             info.bindingCount = 3;
             for (int i = 0; i < 3; i++) {
@@ -2861,7 +2891,7 @@ namespace onart {
             }
             break;
         }
-        case onart::VkMachine::ShaderResourceType::INPUT_ATTACHMENT_4:
+        case onart::ShaderResourceType::INPUT_ATTACHMENT_4:
         {
             info.bindingCount = 4;
             for (int i = 0; i < 4; i++) {
@@ -4953,17 +4983,17 @@ namespace onart {
             (props.maxExtent.height >= y);
     }
 
-    VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, uint32_t nChannels, bool srgb, VkMachine::TextureFormatOptions hq, VkImageCreateFlagBits flags) {
+    VkFormat textureFormatFallback(VkPhysicalDevice physicalDevice, int x, int y, uint32_t nChannels, bool srgb, TextureFormatOptions hq, VkImageCreateFlagBits flags) {
     #define CHECK_N_RETURN(f) if(isThisFormatAvailable(physicalDevice,f,x,y,flags)) return f
         switch (nChannels)
         {
         case 4:
         if(srgb){
-            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+            if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                 CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
             }
-            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+            else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                 CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK);
@@ -4972,11 +5002,11 @@ namespace onart {
             return VK_FORMAT_R8G8B8A8_SRGB;
         }
         else{
-            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+            if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                 CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
             }
-            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+            else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                 CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK);
@@ -4986,11 +5016,11 @@ namespace onart {
         }
         case 3:
         if(srgb){
-            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+            if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                 CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
             }
-            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+            else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                 CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK);
@@ -4999,11 +5029,11 @@ namespace onart {
             return VK_FORMAT_R8G8B8_SRGB;
         }
         else{
-            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+            if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                 CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
             }
-            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+            else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                 CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK);
@@ -5013,22 +5043,22 @@ namespace onart {
         }
         case 2:
         if(srgb){
-            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+            if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                 CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
             }
-            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+            else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                 CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_SRGB_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_BC7_SRGB_BLOCK);
             }
             return VK_FORMAT_R8G8_SRGB;
         }
         else{
-            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+            if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                 CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
             }
-            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+            else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                 CHECK_N_RETURN(VK_FORMAT_ASTC_4x4_UNORM_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_BC7_UNORM_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_EAC_R11G11_UNORM_BLOCK);
@@ -5038,19 +5068,19 @@ namespace onart {
         }
         case 1:
         if(srgb){
-            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+            if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                 // 용량이 줄어드는 포맷이 없음
             }
-            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+            else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                 // 용량이 줄어드는 포맷이 없음
             }
             return VK_FORMAT_R8_SRGB;
         }
         else{
-            if (hq == VkMachine::TextureFormatOptions::IT_PREFER_QUALITY) {
+            if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                 // 용량이 줄어드는 포맷이 없음
             }
-            else if (hq == VkMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+            else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                 CHECK_N_RETURN(VK_FORMAT_EAC_R11_UNORM_BLOCK);
                 CHECK_N_RETURN(VK_FORMAT_BC4_UNORM_BLOCK);
             }

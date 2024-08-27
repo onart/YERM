@@ -24,9 +24,9 @@ namespace onart {
     constexpr uint64_t BC7_SCORE = 1LL << 53;
 
     static uint64_t assessAdapter(IDXGIAdapter*);
-    static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, D3D11Machine::TextureFormatOptions option);
-    static ktx_error_code_e tryTranscode(ktxTexture2* texture, ID3D11Device* device, uint32_t nChannels, bool srgb, D3D11Machine::TextureFormatOptions hq);
-    static DXGI_FORMAT textureFormatFallback(ID3D11Device* device, uint32_t nChannels, bool srgb, D3D11Machine::TextureFormatOptions hq, UINT flags);
+    static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, TextureFormatOptions option);
+    static ktx_error_code_e tryTranscode(ktxTexture2* texture, ID3D11Device* device, uint32_t nChannels, bool srgb, TextureFormatOptions hq);
+    static DXGI_FORMAT textureFormatFallback(ID3D11Device* device, uint32_t nChannels, bool srgb, TextureFormatOptions hq, UINT flags);
 
     D3D11Machine::D3D11Machine() {
         if (singleton) {
@@ -583,19 +583,19 @@ namespace onart {
         ID3D11DeviceChild* ret{};
         switch (opts.stage)
         {
-        case onart::D3D11Machine::ShaderStage::VERTEX:
+        case onart::ShaderStage::VERTEX:
             result = singleton->device->CreateVertexShader(opts.source, opts.size, nullptr, (ID3D11VertexShader**)&ret);
             break;
-        case onart::D3D11Machine::ShaderStage::FRAGMENT:
+        case onart::ShaderStage::FRAGMENT:
             result = singleton->device->CreatePixelShader(opts.source, opts.size, nullptr, (ID3D11PixelShader**)&ret);
             break;
-        case onart::D3D11Machine::ShaderStage::GEOMETRY:
+        case onart::ShaderStage::GEOMETRY:
             result = singleton->device->CreateGeometryShader(opts.source, opts.size, nullptr, (ID3D11GeometryShader**)&ret);
             break;
-        case onart::D3D11Machine::ShaderStage::TESS_CTRL:
+        case onart::ShaderStage::TESS_CTRL:
             result = singleton->device->CreateHullShader(opts.source, opts.size, nullptr, (ID3D11HullShader**)&ret);
             break;
-        case onart::D3D11Machine::ShaderStage::TESS_EVAL:
+        case onart::ShaderStage::TESS_EVAL:
             result = singleton->device->CreateDomainShader(opts.source, opts.size, nullptr, (ID3D11DomainShader**)&ret);
             break;
         default:
@@ -609,7 +609,7 @@ namespace onart {
         return singleton->shaders[key] = ret;
     }
 
-    ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, D3D11Machine::TextureFormatOptions option) {
+    ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, TextureFormatOptions option) {
         ktxTexture2* texture;
         ktx_error_code_e k2result;
         ktxTextureCreateInfo texInfo{};
@@ -647,7 +647,7 @@ namespace onart {
             ktxTexture_Destroy(ktxTexture(texture));
             return nullptr;
         }
-        if (option == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+        if (option == TextureFormatOptions::IT_PREFER_COMPRESS) {
             ktxBasisParams params{};
             params.compressionLevel = 5;// KTX_ETC1S_DEFAULT_COMPRESSION_LEVEL;
             params.uastc = KTX_TRUE;
@@ -663,7 +663,7 @@ namespace onart {
         return texture;
     }
 
-    ktx_error_code_e tryTranscode(ktxTexture2* texture, ID3D11Device* device, uint32_t nChannels, bool srgb, D3D11Machine::TextureFormatOptions hq) {
+    ktx_error_code_e tryTranscode(ktxTexture2* texture, ID3D11Device* device, uint32_t nChannels, bool srgb, TextureFormatOptions hq) {
         if (ktxTexture2_NeedsTranscoding(texture)) {
             ktx_transcode_fmt_e tf;
             switch (textureFormatFallback(device, nChannels, srgb, hq, texture->isCubemap ? D3D11_FORMAT_SUPPORT_TEXTURECUBE : D3D11_FORMAT_SUPPORT_TEXTURE2D))
@@ -1655,26 +1655,39 @@ namespace onart {
             LOGWITH("Given geometry shader is invalid");
             return {};
         }
+
+        const D3D11_COMPARISON_FUNC D3D11_COMPARE_OP_FROM_ENUM[] = {
+            D3D11_COMPARISON_NEVER, D3D11_COMPARISON_LESS, D3D11_COMPARISON_EQUAL,
+            D3D11_COMPARISON_LESS_EQUAL, D3D11_COMPARISON_GREATER, D3D11_COMPARISON_NOT_EQUAL,
+            D3D11_COMPARISON_GREATER_EQUAL, D3D11_COMPARISON_ALWAYS
+        };
+
+        const D3D11_STENCIL_OP D3D11_STENCIL_OP_FROM_ENUM[] = {
+            D3D11_STENCIL_OP_KEEP, D3D11_STENCIL_OP_ZERO, D3D11_STENCIL_OP_REPLACE,
+            D3D11_STENCIL_OP_INCR_SAT, D3D11_STENCIL_OP_DECR_SAT, D3D11_STENCIL_OP_INVERT,
+            D3D11_STENCIL_OP_INCR, D3D11_STENCIL_OP_DECR,
+        };
+
         ID3D11DepthStencilState* dsState = nullptr;
         D3D11_DEPTH_STENCIL_DESC dsStateInfo{};
         if (opts.depthStencil.depthTest) {
             dsStateInfo.DepthEnable = true;
-            dsStateInfo.DepthFunc = (D3D11_COMPARISON_FUNC)opts.depthStencil.comparison;
+            dsStateInfo.DepthFunc = D3D11_COMPARE_OP_FROM_ENUM[(int)opts.depthStencil.comparison];
         }
         dsStateInfo.StencilEnable = opts.depthStencil.stencilTest;
         dsStateInfo.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
         dsStateInfo.StencilReadMask = opts.depthStencil.stencilFront.compareMask;
         dsStateInfo.StencilWriteMask = opts.depthStencil.stencilFront.writeMask;
 
-        dsStateInfo.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)opts.depthStencil.stencilBack.compare;
-        dsStateInfo.BackFace.StencilFailOp = (D3D11_STENCIL_OP)opts.depthStencil.stencilBack.onFail;
-        dsStateInfo.BackFace.StencilDepthFailOp = (D3D11_STENCIL_OP)opts.depthStencil.stencilBack.onDepthFail;
-        dsStateInfo.BackFace.StencilPassOp = (D3D11_STENCIL_OP)opts.depthStencil.stencilBack.onPass;
+        dsStateInfo.BackFace.StencilFunc = D3D11_COMPARE_OP_FROM_ENUM[(int)opts.depthStencil.stencilBack.compare];
+        dsStateInfo.BackFace.StencilFailOp = D3D11_STENCIL_OP_FROM_ENUM[(int)opts.depthStencil.stencilBack.onFail];
+        dsStateInfo.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_FROM_ENUM[(int)opts.depthStencil.stencilBack.onDepthFail];
+        dsStateInfo.BackFace.StencilPassOp = D3D11_STENCIL_OP_FROM_ENUM[(int)opts.depthStencil.stencilBack.onPass];
 
-        dsStateInfo.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)opts.depthStencil.stencilFront.compare;
-        dsStateInfo.FrontFace.StencilFailOp = (D3D11_STENCIL_OP)opts.depthStencil.stencilFront.onFail;
-        dsStateInfo.FrontFace.StencilDepthFailOp = (D3D11_STENCIL_OP)opts.depthStencil.stencilFront.onDepthFail;
-        dsStateInfo.FrontFace.StencilPassOp = (D3D11_STENCIL_OP)opts.depthStencil.stencilFront.onPass;
+        dsStateInfo.FrontFace.StencilFunc = D3D11_COMPARE_OP_FROM_ENUM[(int)opts.depthStencil.stencilFront.compare];
+        dsStateInfo.FrontFace.StencilFailOp = D3D11_STENCIL_OP_FROM_ENUM[(int)opts.depthStencil.stencilFront.onFail];
+        dsStateInfo.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_FROM_ENUM[(int)opts.depthStencil.stencilFront.onDepthFail];
+        dsStateInfo.FrontFace.StencilPassOp = D3D11_STENCIL_OP_FROM_ENUM[(int)opts.depthStencil.stencilFront.onPass];
 
         result = singleton->device->CreateDepthStencilState(&dsStateInfo, &dsState);
         if (result != S_OK) {
@@ -1682,19 +1695,35 @@ namespace onart {
             return {};
         }
 
+        const D3D11_BLEND_OP D3D11_BLEND_OP_FROM_ENUM[] = {
+            D3D11_BLEND_OP_ADD, D3D11_BLEND_OP_SUBTRACT, D3D11_BLEND_OP_REV_SUBTRACT,
+            D3D11_BLEND_OP_MIN, D3D11_BLEND_OP_MAX
+        };
+
+        const D3D11_BLEND D3D11_BLEND_FACTOR_FROM_ENUM[] = {
+            D3D11_BLEND_ZERO, D3D11_BLEND_ONE, D3D11_BLEND_SRC_COLOR, D3D11_BLEND_INV_SRC_COLOR,
+            D3D11_BLEND_DEST_COLOR, D3D11_BLEND_INV_DEST_COLOR, D3D11_BLEND_SRC_ALPHA,
+            D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_DEST_ALPHA, D3D11_BLEND_INV_DEST_ALPHA,
+            D3D11_BLEND_ZERO, D3D11_BLEND_ZERO, // CONSTANT_COLOR, ONE_MINUS_CONSTANT_COLOR
+            D3D11_BLEND_ZERO, D3D11_BLEND_ZERO, // CONSTANT_ALPHA, ONE_MINUS_CONSTANT_ALPHA
+            D3D11_BLEND_SRC_ALPHA_SAT, D3D11_BLEND_SRC1_COLOR, D3D11_BLEND_INV_SRC1_COLOR,
+            D3D11_BLEND_SRC1_ALPHA, D3D11_BLEND_INV_SRC1_ALPHA,
+        };
+
+
         D3D11_BLEND_DESC alphaBlendInfo{};
         alphaBlendInfo.AlphaToCoverageEnable = false;
         alphaBlendInfo.IndependentBlendEnable = false;
         for (int i = 0; i < 3; i++) {
             auto& blendop = opts.alphaBlend[i];
             alphaBlendInfo.RenderTarget[i].BlendEnable = blendop != AlphaBlend::overwrite();
-            alphaBlendInfo.RenderTarget[i].BlendOp = (D3D11_BLEND_OP)blendop.colorOp;
-            alphaBlendInfo.RenderTarget[i].BlendOpAlpha = (D3D11_BLEND_OP)blendop.alphaOp;
+            alphaBlendInfo.RenderTarget[i].BlendOp = D3D11_BLEND_OP_FROM_ENUM[(int)blendop.colorOp];
+            alphaBlendInfo.RenderTarget[i].BlendOpAlpha = D3D11_BLEND_OP_FROM_ENUM[(int)blendop.alphaOp];
             alphaBlendInfo.RenderTarget[i].RenderTargetWriteMask = 0xf;
-            alphaBlendInfo.RenderTarget[i].SrcBlend = (D3D11_BLEND)blendop.srcColorFactor;
-            alphaBlendInfo.RenderTarget[i].DestBlend = (D3D11_BLEND)blendop.dstColorFactor;
-            alphaBlendInfo.RenderTarget[i].SrcBlendAlpha = (D3D11_BLEND)blendop.srcAlphaFactor;
-            alphaBlendInfo.RenderTarget[i].DestBlendAlpha = (D3D11_BLEND)blendop.dstAlphaFactor;
+            alphaBlendInfo.RenderTarget[i].SrcBlend = D3D11_BLEND_FACTOR_FROM_ENUM[(int)blendop.srcColorFactor];
+            alphaBlendInfo.RenderTarget[i].DestBlend = D3D11_BLEND_FACTOR_FROM_ENUM[(int)blendop.dstColorFactor];
+            alphaBlendInfo.RenderTarget[i].SrcBlendAlpha = D3D11_BLEND_FACTOR_FROM_ENUM[(int)blendop.srcAlphaFactor];
+            alphaBlendInfo.RenderTarget[i].DestBlendAlpha = D3D11_BLEND_FACTOR_FROM_ENUM[(int)blendop.dstAlphaFactor];
         }
         ID3D11BlendState* blendState{};
         result = singleton->device->CreateBlendState(&alphaBlendInfo, &blendState);
@@ -2624,26 +2653,26 @@ namespace onart {
         return false;
     }
 
-    DXGI_FORMAT textureFormatFallback(ID3D11Device* device, uint32_t nChannels, bool srgb, D3D11Machine::TextureFormatOptions hq, UINT flags) {
+    DXGI_FORMAT textureFormatFallback(ID3D11Device* device, uint32_t nChannels, bool srgb, TextureFormatOptions hq, UINT flags) {
 #define CHECK_N_RETURN(f) if(isThisFormatAvailable(device,f,flags)) return f
         switch (nChannels)
         {
         case 4:
             if (srgb) {
-                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                     CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
                 }
-                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                     CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
                     CHECK_N_RETURN(DXGI_FORMAT_BC3_UNORM_SRGB);
                 }
                 return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
             }
             else {
-                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                     CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM);
                 }
-                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                     CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM);
                     CHECK_N_RETURN(DXGI_FORMAT_BC3_UNORM);
                 }
@@ -2652,20 +2681,20 @@ namespace onart {
             break;
         case 3:
             if (srgb) {
-                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                     CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
                 }
-                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                     CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
                     CHECK_N_RETURN(DXGI_FORMAT_BC1_UNORM_SRGB);
                 }
                 return DXGI_FORMAT_R8G8B8A8_UNORM;
             }
             else {
-                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                     CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM);
                 }
-                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                     CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM);
                     CHECK_N_RETURN(DXGI_FORMAT_BC1_UNORM);
                 }
@@ -2673,19 +2702,19 @@ namespace onart {
             }
         case 2:
             if (srgb) {
-                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                     CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
                 }
-                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                     CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
                 }
                 return DXGI_FORMAT_R8G8_UNORM; // SRGB �Ⱥ���..
             }
             else {
-                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                     CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
                 }
-                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                     CHECK_N_RETURN(DXGI_FORMAT_BC7_UNORM_SRGB);
                     CHECK_N_RETURN(DXGI_FORMAT_BC5_UNORM);
                 }
@@ -2693,19 +2722,19 @@ namespace onart {
             }
         case 1:
             if (srgb) {
-                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                     // �뷮�� �پ��� ������ ����
                 }
-                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                     // �뷮�� �پ��� ������ ����
                 }
                 return DXGI_FORMAT_R8_UNORM;
             }
             else {
-                if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_QUALITY) {
+                if (hq == TextureFormatOptions::IT_PREFER_QUALITY) {
                     // �뷮�� �پ��� ������ ����
                 }
-                else if (hq == D3D11Machine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+                else if (hq == TextureFormatOptions::IT_PREFER_COMPRESS) {
                     CHECK_N_RETURN(DXGI_FORMAT_BC4_UNORM);
                 }
                 return DXGI_FORMAT_R8_UNORM;
@@ -2716,25 +2745,25 @@ namespace onart {
 #undef CHECK_N_RETURN
     }
 
-    ID3DBlob* compileShader(const char* code, size_t size, D3D11Machine::ShaderStage type) {
+    ID3DBlob* compileShader(const char* code, size_t size, ShaderStage type) {
         ID3DBlob* ret{};
         ID3DBlob* result{};
         char targ[] = { 'v','s','_','5','_','0',0 };
         switch (type)
         {
-        case onart::D3D11Machine::ShaderStage::VERTEX:
+        case onart::ShaderStage::VERTEX:
             targ[0] = 'v';
             break;
-        case onart::D3D11Machine::ShaderStage::FRAGMENT:
+        case onart::ShaderStage::FRAGMENT:
             targ[0] = 'p';
             break;
-        case onart::D3D11Machine::ShaderStage::GEOMETRY:
+        case onart::ShaderStage::GEOMETRY:
             targ[0] = 'g';
             break;
-        case onart::D3D11Machine::ShaderStage::TESS_CTRL:
+        case onart::ShaderStage::TESS_CTRL:
             targ[0] = 'h';
             break;
-        case onart::D3D11Machine::ShaderStage::TESS_EVAL:
+        case onart::ShaderStage::TESS_EVAL:
             targ[0] = 'd';
             break;
         default:

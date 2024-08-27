@@ -306,7 +306,7 @@ namespace onart{
 #endif
 
         YRGraphics::createRenderPass2Cube(123, 512, 512, false, true);
-        YRGraphics::RenderPassCreationOptions rpopts{};
+        RenderPassCreationOptions rpopts{};
         rpopts.width = 128;
         rpopts.height = 128;
         rpopts.linearSampled = false;
@@ -320,7 +320,7 @@ namespace onart{
         YRGraphics::asyncCreateTexture(0, TEX0, sizeof(TEX0), [](variant8) { loaded = true; });
         testv_t verts[]{ {{-1,-1,0},{0,0}},{{-1,1,0},{0,1}},{{1,-1,0},{1,0}},{{1,1,0},{1,1}} };
         uint16_t inds[]{ 0,1,2,2,1,3 };
-        YRGraphics::MeshCreationOptions mopts;
+        MeshCreationOptions mopts;
         mopts.fixed = true;
         mopts.vertexCount = sizeof(verts) / sizeof(verts[0]);
         mopts.vertices = verts;
@@ -344,7 +344,7 @@ namespace onart{
             pipeInfo.subpassIndex = 0;
             pipeInfo.vertexShader = vs;
             pipeInfo.fragmentShader = fs;
-            pipeInfo.shaderResources.pos0 = YRGraphics::ShaderResourceType::TEXTURE_1;
+            pipeInfo.shaderResources.pos0 = ShaderResourceType::TEXTURE_1;
             pipeInfo.shaderResources.usePush = true;
             YRGraphics::createPipeline(0, pipeInfo);
             vs = YRGraphics::createShader(2, { TEST_IA_VERT, sizeof(TEST_IA_VERT) });
@@ -352,7 +352,7 @@ namespace onart{
             pipeInfo.vertexShader = vs;
             pipeInfo.fragmentShader = fs;
             pipeInfo.subpassIndex = 1;
-            pipeInfo.shaderResources.pos0 = YRGraphics::ShaderResourceType::INPUT_ATTACHMENT_1;
+            pipeInfo.shaderResources.pos0 = ShaderResourceType::INPUT_ATTACHMENT_1;
             pipeInfo.vertexSpec = nullptr;
             pipeInfo.vertexAttributeCount = 0;
             YRGraphics::createPipeline(1, pipeInfo);
@@ -360,7 +360,7 @@ namespace onart{
             fs = YRGraphics::createShader(5, { SCALEPX, sizeof(SCALEPX) });
             pipeInfo.vertexShader = vs;
             pipeInfo.fragmentShader = fs;
-            pipeInfo.shaderResources.pos0 = YRGraphics::ShaderResourceType::TEXTURE_1;
+            pipeInfo.shaderResources.pos0 = ShaderResourceType::TEXTURE_1;
             pipeInfo.pass = nullptr;
             pipeInfo.pass2screen = rp2s;
             pipeInfo.subpassIndex = 0;
@@ -406,14 +406,14 @@ void main() {
 }
 )";
         if constexpr (YRGraphics::OPENGL_GRAPHICS) {
-            YRGraphics::ShaderModuleCreationOptions shaderOpts;
+            ShaderModuleCreationOptions shaderOpts;
             shaderOpts.size = sizeof(TEST_GL_VERT1);
             shaderOpts.source = TEST_GL_VERT1;
-            shaderOpts.stage = YRGraphics::ShaderStage::VERTEX;
+            shaderOpts.stage = ShaderStage::VERTEX;
             auto vs = YRGraphics::createShader(0, shaderOpts);
             shaderOpts.size = sizeof(TEST_GL_FRAG1);
             shaderOpts.source = TEST_GL_FRAG1;
-            shaderOpts.stage = YRGraphics::ShaderStage::FRAGMENT;
+            shaderOpts.stage = ShaderStage::FRAGMENT;
             auto fs = YRGraphics::createShader(1, shaderOpts);
             YRGraphics::PipelineInputVertexSpec sp[2];
             testv_t::info(sp);
@@ -468,14 +468,14 @@ void main() {
 }
 )";
         if constexpr (YRGraphics::WEBGL_GRAPHICS) {
-            YRGraphics::ShaderModuleCreationOptions shaderOpts;
+            ShaderModuleCreationOptions shaderOpts;
             shaderOpts.size = sizeof(TEST_GL_VERT1);
             shaderOpts.source = TEST_GL_VERT1;
-            shaderOpts.stage = YRGraphics::ShaderStage::VERTEX;
+            shaderOpts.stage = ShaderStage::VERTEX;
             auto vs = YRGraphics::createShader(0, shaderOpts);
             shaderOpts.size = sizeof(TEST_GL_FRAG1);
             shaderOpts.source = TEST_GL_FRAG1;
-            shaderOpts.stage = YRGraphics::ShaderStage::FRAGMENT;
+            shaderOpts.stage = ShaderStage::FRAGMENT;
             auto fs = YRGraphics::createShader(1, shaderOpts);
             YRGraphics::PipelineInputVertexSpec sp[2];
             testv_t::info(sp);
@@ -536,16 +536,16 @@ float4 main(PS_INPUT input): SV_TARGET {
     return tex.Sample(spr, input.tc);
 }
 )";
-        ID3DBlob* vsb = compileShader(TEST_D11_VERT1, sizeof(TEST_D11_VERT1), YRGraphics::ShaderStage::VERTEX);
-        ID3DBlob* psb = compileShader(TEST_D11_FRAG1, sizeof(TEST_D11_FRAG1), YRGraphics::ShaderStage::FRAGMENT);
-        YRGraphics::ShaderModuleCreationOptions shopts;
+        ID3DBlob* vsb = compileShader(TEST_D11_VERT1, sizeof(TEST_D11_VERT1), ShaderStage::VERTEX);
+        ID3DBlob* psb = compileShader(TEST_D11_FRAG1, sizeof(TEST_D11_FRAG1), ShaderStage::FRAGMENT);
+        ShaderModuleCreationOptions shopts;
         shopts.source = vsb->GetBufferPointer();
         shopts.size = vsb->GetBufferSize();
-        shopts.stage = YRGraphics::ShaderStage::VERTEX;
+        shopts.stage = ShaderStage::VERTEX;
         auto vs = YRGraphics::createShader(0, shopts);
         shopts.source = psb->GetBufferPointer();
         shopts.size = psb->GetBufferSize();
-        shopts.stage = YRGraphics::ShaderStage::FRAGMENT;
+        shopts.stage = ShaderStage::FRAGMENT;
         auto ps = YRGraphics::createShader(1, shopts);
         YRGraphics::PipelineInputVertexSpec desc[2];
         testv_t::info(desc, 0);
@@ -559,7 +559,7 @@ float4 main(PS_INPUT input): SV_TARGET {
         pipeInfo.fragmentShader = ps;
         pipeInfo.vsByteCode = vsb->GetBufferPointer();
         pipeInfo.vsByteCodeSize = vsb->GetBufferSize();
-        pipeInfo.shaderResources.pos0 = YRGraphics::ShaderResourceType::TEXTURE_1;
+        pipeInfo.shaderResources.pos0 = ShaderResourceType::TEXTURE_1;
         pipeInfo.shaderResources.usePush = true;
         auto pp = YRGraphics::createPipeline(0, pipeInfo);
         offrp->usePipeline(pp, 0);

@@ -48,12 +48,12 @@ namespace onart {
     /// @brief OpenGL 에러 코드를 스트링으로 표현합니다. 리턴되는 문자열은 텍스트(코드) 영역에 존재합니다.
     inline static const char* resultAsString(unsigned);
 
-    static int getGLBlendFactorConstant(GLMachine::BlendFactor factor) {
+    static int getGLBlendFactorConstant(BlendFactor factor) {
         constexpr static int consts[] = { GL_ZERO, GL_ONE, GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR, GL_DST_COLOR, GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA, GL_ONE_MINUS_DST_ALPHA, GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA, GL_SRC_ALPHA_SATURATE, GL_SRC1_COLOR, GL_ONE_MINUS_SRC1_COLOR, GL_SRC1_ALPHA, GL_ONE_MINUS_SRC1_ALPHA };
         return consts[(int)factor];
     }
 
-    static int getGLBlendOpConstant(GLMachine::BlendOperator op) {
+    static int getGLBlendOpConstant(BlendOperator op) {
         constexpr static int consts[] = { GL_FUNC_ADD, GL_FUNC_SUBTRACT, GL_FUNC_REVERSE_SUBTRACT, GL_MIN, GL_MAX };
         return consts[(int)op];
     }
@@ -615,7 +615,7 @@ namespace onart {
     }
 
 
-    static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, GLMachine::TextureFormatOptions option){
+    static ktxTexture2* createKTX2FromImage(const uint8_t* pix, int x, int y, int nChannels, bool srgb, TextureFormatOptions option){
         ktxTexture2* texture;
         ktx_error_code_e k2result;
         ktxTextureCreateInfo texInfo{};
@@ -654,7 +654,7 @@ namespace onart {
             ktxTexture_Destroy(ktxTexture(texture));
             return nullptr;
         }
-        if (option == GLMachine::TextureFormatOptions::IT_PREFER_COMPRESS) {
+        if (option == TextureFormatOptions::IT_PREFER_COMPRESS) {
             ktxBasisParams params{};
             params.compressionLevel = 5;// KTX_ETC1S_DEFAULT_COMPRESSION_LEVEL == 2;
             params.uastc = KTX_TRUE;
@@ -1379,7 +1379,7 @@ namespace onart {
         }
     }
 
-    static void setBlendParam(int idx, const GLMachine::AlphaBlend& blendop) {
+    static void setBlendParam(int idx, const AlphaBlend& blendop) {
         glBlendEquationSeparatei(idx, getGLBlendOpConstant(blendop.colorOp), getGLBlendOpConstant(blendop.alphaOp));
         glBlendFuncSeparatei(idx,
             getGLBlendFactorConstant(blendop.srcColorFactor),
