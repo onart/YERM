@@ -84,6 +84,8 @@ namespace onart {
         /// @brief 직접 불러오는 텍스처입니다.
         class Texture;
         using pTexture = std::shared_ptr<Texture>;
+        class TextureSet;
+        using pTextureSet = std::shared_ptr<TextureSet>;
         /// @brief 메모리 맵으로 고정된 텍스처입니다. 실시간으로 CPU단에서 데이터를 수정할 수 있습니다. 동영상이나 다른 창의 화면 등을 텍스처로 사용할 때 적합합니다.
         class StreamTexture;
         using pStreamTexture = std::shared_ptr<StreamTexture>;
@@ -182,6 +184,8 @@ namespace onart {
         static pTexture createTexture(int32_t key, const uint8_t* mem, size_t size, const TextureCreationOptions& opts = {});
         /// @brief createTexture를 비동기적으로 실행합니다. 핸들러에 주어지는 매개변수는 하위 32비트 key, 상위 32비트 VkResult입니다(key를 가리키는 포인터가 아니라 그냥 key). 매개변수 설명은 createTexture를 참고하세요.
         static void asyncCreateTexture(int32_t key, const uint8_t* mem, size_t size, std::function<void(variant8)> handler, const TextureCreationOptions& opts = {});
+        /// @brief 여러 개의 텍스처를 연속된 넘버으로 바인드하는 집합을 생성합니다.
+        static pTextureSet createTextureSet(int32_t key, const pTexture& binding0, const pTexture& binding1, const pTexture& binding2 = {}, const pTexture& binding3 = {});
         /// @brief 빈 텍스처를 만듭니다. 메모리 맵으로 데이터를 올릴 수 있습니다. 올리는 데이터의 기본 형태는 BGRA 순서이며, 필요한 경우 셰이더에서 직접 스위즐링하여 사용합니다.
         static pStreamTexture createStreamTexture(int32_t key, uint32_t width, uint32_t height, bool linearSampler = true);
         /// @brief SPIR-V 컴파일된 셰이더를 VkShaderModule 형태로 저장하고 가져옵니다.
@@ -237,10 +241,31 @@ namespace onart {
         static void setVsync(bool vsyncOn);
         /// @brief 창 표면이 SRGB 공간을 사용하는지 리턴합니다. 
         inline static bool isSurfaceSRGB() { return false; }
-        /// @brief d3d11 device를 리턴합니다.
-        static ID3D11Device* getDevice() { return singleton->device; }
-        /// @brief d3d11 기본 컨텍스트를 리턴합니다.
-        static ID3D11DeviceContext* getImmediateContext() { return singleton->context; }
+    private:
+        template<class T>
+        inline static int32_t issueKey(const std::map<int32_t, T>& map) {
+            if (map.empty()) return 0;
+            int32_t fk = map.crbegin()->first;
+            if (fk < INT32_MAX) { return fk + 1; }
+            int32_t prev = INT32_MIN;
+            for (auto it = map.cbegin(); it != map.cend(); ++it) {
+                if (it->first != prev + 1) return prev + 1;
+                prev = it->first;
+            }
+            return prev + 1;
+        }
+        public:
+            static int32_t issueRenderPassKey() { return issueKey(singleton->renderPasses); }
+            static int32_t issueRenderPass2ScreenKey() { return issueKey(singleton->finalPasses); }
+            static int32_t issueRenderPass2CubeKey() { return issueKey(singleton->cubePasses); }
+            static int32_t issueShaderKey() { return issueKey(singleton->shaders); }
+            static int32_t issueUniformBufferKey() { return issueKey(singleton->uniformBuffers); }
+            static int32_t issuePipelineKey() { return issueKey(singleton->pipelines); }
+            static int32_t issueMeshKey() { return issueKey(singleton->meshes); }
+            static int32_t issueTextureKey() { return issueKey(singleton->textures); }
+            static int32_t issueStreamTextureKey() { return issueKey(singleton->streamTextures); }
+            static int32_t issueTextureSetKey() { return issueKey(singleton->textureSets); }
+            static int32_t issueWindowSystemsKey() { return issueKey(singleton->windowSystems); }
     private:
         /// @brief 기본 OpenGL 컨텍스트를 생성합니다.
         D3D11Machine();
@@ -281,6 +306,7 @@ namespace onart {
         std::map<int32_t, Pipeline*> pipelines;
         std::map<int32_t, pMesh> meshes;
         std::map<int32_t, pTexture> textures;
+        std::map<int32_t, pTextureSet> textureSets;
         std::map<int32_t, pStreamTexture> streamTextures;
 
         ID3D11SamplerState* linearBorderSampler;
@@ -359,6 +385,15 @@ namespace onart {
         ~RenderTarget();
     };
 
+    class D3D11Machine::TextureSet {
+        friend class D3D11Machine;
+        friend class RenderPass;
+        friend class RenderPass2Cube;
+    private:
+        pTexture textures[4]{};
+        int textureCount;
+    };
+
     class D3D11Machine::StreamTexture {
         friend class D3D11Machine;
         friend class RenderPass;
@@ -416,6 +451,10 @@ namespace onart {
         /// @param pos 바인드할 set 번호
         /// @param tx 바인드할 텍스처
         void bind(uint32_t pos, const pTexture& tx);
+        /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+        /// @param pos 바인드할 set 번호
+        /// @param tx 바인드할 텍스처
+        void bind(uint32_t pos, const pTextureSet& tx);
         /// @brief 주어진 렌더패스의 최종 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다.
         void bind(uint32_t pos, RenderPass* prev);
         /// @brief 주어진 렌더패스의 최종 타겟을 텍스처의 형태로 바인드합니다. 서브패스 진행 중이 아니면 실패합니다.

@@ -984,6 +984,26 @@ namespace onart {
         return textures[key] = std::make_shared<txtr>(newTex, srv, width, height, texture->isCubemap, opts.linearSampled);
     }
 
+    D3D11Machine::pTextureSet D3D11Machine::createTextureSet(int32_t key, const pTexture& binding0, const pTexture& binding1, const pTexture& binding2, const pTexture& binding3) {
+        if (!binding0 || !binding1) {
+            LOGWITH("At least 2 textures must be given");
+            return {};
+        }
+        int length = binding2 ? (binding3 ? 4 : 3) : 2;
+
+        pTexture textures[4] = { binding0, binding1, binding2, binding3 };
+
+        struct __tset :public TextureSet {};
+        pTextureSet ret = std::make_shared<__tset>();
+        ret->textureCount = length;
+        ret->textures[0] = textures[0];
+        ret->textures[1] = textures[1];
+        ret->textures[2] = textures[2];
+        ret->textures[3] = textures[3];
+        if (key == INT32_MIN) return ret;
+        return singleton->textureSets[key] = std::move(ret);
+    }
+
     D3D11Machine::pStreamTexture D3D11Machine::createStreamTexture(int32_t key, uint32_t width, uint32_t height, bool linearSampler) {
         D3D11_TEXTURE2D_DESC info{};
         info.Width = width;
@@ -2022,6 +2042,18 @@ namespace onart {
         }
         else {
             LOGWITH("No subpass is running");
+        }
+    }
+
+    void D3D11Machine::RenderPass::bind(uint32_t pos, const pTextureSet& tx) {
+        if (currentPass == -1) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        ID3D11ShaderResourceView* textures[4]{};
+        for (int i = 0; i < tx->textureCount; i++) {
+            textures[i] = tx->textures[i]->dset;
+            singleton->context->PSSetShaderResources(pos, tx->textureCount, textures);
         }
     }
 

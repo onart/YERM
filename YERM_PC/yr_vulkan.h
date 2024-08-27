@@ -232,6 +232,31 @@ namespace onart {
             /// @brief 모든 창의 수직 동기화 여부를 설정합니다.
             static void setVsync(bool vsyncOn);
         private:
+                template<class T>
+                inline static int32_t issueKey(const std::map<int32_t, T>& map) {
+                    if (map.empty()) return 0;
+                    int32_t fk = map.crbegin()->first;
+                    if (fk < INT32_MAX) { return fk + 1; }
+                    int32_t prev = INT32_MIN;
+                    for (auto it = map.cbegin(); it != map.cend(); ++it) {
+                        if (it->first != prev + 1) return prev + 1;
+                        prev = it->first;
+                    }
+                    return prev + 1;
+                }
+        public:
+            static int32_t issueRenderPassKey() { return issueKey(singleton->renderPasses); }
+            static int32_t issueRenderPass2ScreenKey() { return issueKey(singleton->finalPasses); }
+            static int32_t issueRenderPass2CubeKey() { return issueKey(singleton->cubePasses); }
+            static int32_t issueShaderKey() { return issueKey(singleton->shaders); }
+            static int32_t issueUniformBufferKey() { return issueKey(singleton->uniformBuffers); }
+            static int32_t issuePipelineKey() { return issueKey(singleton->pipelines); }
+            static int32_t issueMeshKey() { return issueKey(singleton->meshes); }
+            static int32_t issueTextureKey() { return issueKey(singleton->textures); }
+            static int32_t issueStreamTextureKey() { return issueKey(singleton->streamTextures); }
+            static int32_t issueTextureSetKey() { return issueKey(singleton->textureSets); }
+            static int32_t issueWindowSystemsKey() { return issueKey(singleton->windowSystems); }
+        private:
             /// @brief 기본 Vulkan 컨텍스트를 생성합니다. 이 객체를 생성하면 기본적으로 인스턴스, 물리 장치, 가상 장치가 생성됩니다.
             VkMachine();
             /// @brief 그래픽스/전송 명령 버퍼를 풀로부터 할당합니다.
