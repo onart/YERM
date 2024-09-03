@@ -486,9 +486,9 @@ void main() {
             opts.vertexAttributeCount = 2;
             opts.vertexSize = sizeof(testv_t);
             opts.vertexSpec = sp;
-            opts.pass = offrp;
+            opts.pass = offrp.get();
             opts.subpassIndex = 0;
-            auto pp = YRGraphics::createPipeline(0, opts);
+            auto pp = YRGraphics::createPipeline(0, opts).get();
             offrp->usePipeline(pp, 0);
             offrp->usePipeline(pp, 1);
             rp2s->usePipeline(pp, 0);

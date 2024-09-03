@@ -71,6 +71,11 @@
 
 namespace onart
 {   
+    template<class T>
+    struct shp_t : public T {
+        template<typename... Args>
+        shp_t(Args&&... args) : T(std::forward<Args>(args)...) {}
+    };
 
     static void enableAttribute(int stride, const WGLMachine::PipelineInputVertexSpec& type);
     /// @brief 주어진 기반 형식과 아귀가 맞는, 현재 장치에서 사용 가능한 압축 형식을 리턴합니다.
@@ -144,7 +149,7 @@ namespace onart
         UniformBufferCreationOptions uopts;
         uopts.size = 128;
 
-        UniformBuffer* push = createUniformBuffer(INT32_MIN + 1, uopts);
+        pUniformBuffer push = createUniformBuffer(INT32_MIN + 1, uopts);
         if (!push) {
             singleton = nullptr;
             return;
@@ -152,7 +157,7 @@ namespace onart
         glBindBufferRange(GL_UNIFORM_BUFFER, 11, push->ubo, 0, 128);
     }
 
-    WGLMachine::Pipeline* WGLMachine::getPipeline(int32_t name){
+    WGLMachine::pPipeline WGLMachine::getPipeline(int32_t name){
         auto it = singleton->pipelines.find(name);
         if(it != singleton->pipelines.end()) return it->second;
         else return {};
@@ -164,29 +169,44 @@ namespace onart
         else return pMesh();
     }
 
-    void WGLMachine::reap() {
-
+    void WGLMachine::dropRenderPass2Screen(int32_t key){
+        singleton->finalPasses.erase(key);
     }
 
-    WGLMachine::UniformBuffer* WGLMachine::getUniformBuffer(int32_t name){
+    void WGLMachine::dropRenderPass(int32_t key){
+        singleton->renderPasses.erase(key);
+    }
+
+    void WGLMachine::dropShaderModule(int32_t key){
+        auto it = singleton->shaders.find(key);
+        if(it == singleton->shaders.end()) return;
+        glDeleteShader(it->second);
+        singleton->shaders.erase(it);
+    }
+
+    void WGLMachine::reap() {
+        
+    }
+
+    WGLMachine::pUniformBuffer WGLMachine::getUniformBuffer(int32_t name){
         auto it = singleton->uniformBuffers.find(name);
         if(it != singleton->uniformBuffers.end()) return it->second;
         else return nullptr;
     }
 
-    WGLMachine::RenderPass2Screen* WGLMachine::getRenderPass2Screen(int32_t name){
+    WGLMachine::pRenderPass2Screen WGLMachine::getRenderPass2Screen(int32_t name){
         auto it = singleton->finalPasses.find(name);
         if(it != singleton->finalPasses.end()) return it->second;
         else return nullptr;
     }
 
-    WGLMachine::RenderPass* WGLMachine::getRenderPass(int32_t name){
+    WGLMachine::pRenderPass WGLMachine::getRenderPass(int32_t name){
         auto it = singleton->renderPasses.find(name);
         if(it != singleton->renderPasses.end()) return it->second;
         else return nullptr;
     }
 
-    WGLMachine::RenderPass2Cube* WGLMachine::getRenderPass2Cube(int32_t name){
+    WGLMachine::pRenderPass2Cube WGLMachine::getRenderPass2Cube(int32_t name){
         auto it = singleton->cubePasses.find(name);
         if(it != singleton->cubePasses.end()) return it->second;
         else return nullptr;
@@ -222,7 +242,6 @@ namespace onart
     void WGLMachine::removeWindow(int32_t key) {
         for (auto it = finalPasses.begin(); it != finalPasses.end();) {
             if (it->second->windowIdx == key) {
-                delete it->second;
                 finalPasses.erase(it++);
             }
             else {
@@ -252,11 +271,7 @@ namespace onart
     }
 
     void WGLMachine::free() {
-        for(auto& cp: cubePasses) { delete cp.second; }
-        for(auto& fp: finalPasses) { delete fp.second; }
-        for(auto& rp: renderPasses) { delete rp.second; }
         for(auto& sh: shaders) { glDeleteShader(sh.second); }
-        for(auto& pp: pipelines) { delete pp.second; }
         for (auto& ws : windowSystems) { delete ws.second; }
 
         streamTextures.clear();
@@ -1074,6 +1089,10 @@ namespace onart
         singleton->textures.erase(name);
     }
 
+    void WGLMachine::TextureSet::drop(int32_t key){
+        singleton->textureSets.erase(key);
+    }
+
     void WGLMachine::StreamTexture::collect(bool removeUsing) {
         if (removeUsing) {
             singleton->streamTextures.clear();
@@ -1098,8 +1117,8 @@ namespace onart
         :color1(c1), color2(c2), color3(c3), depthStencil(ds), framebuffer(framebuffer), width(width), height(height), dsTexture(depthAsTexture), type(type) {
     }
 
-    WGLMachine::UniformBuffer* WGLMachine::createUniformBuffer(int32_t key, const UniformBufferCreationOptions& opts) {
-        if (UniformBuffer* ret = getUniformBuffer(key)) { return ret; }
+    WGLMachine::pUniformBuffer WGLMachine::createUniformBuffer(int32_t key, const UniformBufferCreationOptions& opts) {
+        if (pUniformBuffer ret = getUniformBuffer(key)) { return ret; }
 
         unsigned ubo;
         glGenBuffers(1, &ubo);
@@ -1107,7 +1126,9 @@ namespace onart
         glBufferData(GL_UNIFORM_BUFFER, opts.size, nullptr, GL_DYNAMIC_DRAW);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-        return singleton->uniformBuffers[key] = new UniformBuffer(opts.size, ubo);
+        pUniformBuffer ret = std::make_shared<shp_t<UniformBuffer>>(opts.size, ubo);
+        if(key == INT32_MIN) return ret;
+        return singleton->uniformBuffers[key] = std::move(ret);
     }
 
     WGLMachine::RenderTarget::~RenderTarget(){
@@ -1125,8 +1146,8 @@ namespace onart
         if(framebuffer) glDeleteFramebuffers(1, &framebuffer);
     }
 
-    WGLMachine::RenderPass2Cube* WGLMachine::createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth) {
-        RenderPass2Cube* r = getRenderPass2Cube(key);
+    WGLMachine::pRenderPass2Cube WGLMachine::createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth) {
+        pRenderPass2Cube r = getRenderPass2Cube(key);
         if(r) return r;
         if(!(useColor || useDepth)){
             LOGWITH("At least one of useColor and useDepth should be true");
@@ -1204,7 +1225,7 @@ namespace onart
         }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        r = new RenderPass2Cube;
+        r = std::make_shared<shp_t<RenderPass2Cube>>();
         r->targetCubeC = color;
         r->targetCubeD = depth;
         r->fbo = fbo;
@@ -1218,18 +1239,19 @@ namespace onart
         r->scissor.y = 0;
         r->scissor.width = width;
         r->scissor.height = height;
-        
-        return singleton->cubePasses[key] = r;
+
+        if(key == INT32_MIN) return r;
+        return singleton->cubePasses[key] = std::move(r);
     }
 
-    WGLMachine::RenderPass2Screen* WGLMachine::createRenderPass2Screen(int32_t key, int32_t windowIdx, const RenderPassCreationOptions& opts) {
+    WGLMachine::pRenderPass2Screen WGLMachine::createRenderPass2Screen(int32_t key, int32_t windowIdx, const RenderPassCreationOptions& opts) {
         auto it = singleton->windowSystems.find(windowIdx);
         if (it == singleton->windowSystems.end()) {
             LOGWITH("Invalid window number");
             return nullptr;
         }
         WindowSystem* window = it->second;
-        if (RenderPass2Screen* ret = getRenderPass2Screen(key)) { return ret; }
+        if (pRenderPass2Screen ret = getRenderPass2Screen(key)) { return ret; }
         if (opts.subpassCount == 0) { return nullptr; }
 
         std::vector<RenderTarget*> targets(opts.subpassCount);
@@ -1242,17 +1264,18 @@ namespace onart
             }
         }
 
-        RenderPass* ret = new RenderPass(opts.subpassCount, false, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
+        pRenderPass2Screen ret = std::make_shared<shp_t<RenderPass2Screen>>(opts.subpassCount, false, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
         ret->targets = std::move(targets);
         ret->setViewport((float)window->width, (float)window->height, 0.0f, 0.0f);
         ret->setScissor(window->width, window->height, 0, 0);
         ret->windowIdx = windowIdx;
         ret->is4Screen = true;
-        return singleton->finalPasses[key] = ret;
+        if(key == INT32_MIN) return ret;
+        return singleton->finalPasses[key] = std::move(ret);
     }
 
-    WGLMachine::RenderPass* WGLMachine::createRenderPass(int32_t key, const RenderPassCreationOptions& opts) {
-        if (RenderPass* r = getRenderPass(key)) { return r; }
+    WGLMachine::pRenderPass WGLMachine::createRenderPass(int32_t key, const RenderPassCreationOptions& opts) {
+        if (pRenderPass r = getRenderPass(key)) { return r; }
         if (opts.subpassCount == 0) { 
             return nullptr;
         }
@@ -1269,15 +1292,16 @@ namespace onart
             }
         }
 
-        RenderPass* ret = new RenderPass(opts.subpassCount, opts.canCopy, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
+        pRenderPass ret = std::make_shared<shp_t<RenderPass>>(opts.subpassCount, opts.canCopy, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
         ret->targets = std::move(targets);
         ret->setViewport(opts.width, opts.height, 0.0f, 0.0f);
         ret->setScissor(opts.width, opts.height, 0, 0);
-        return singleton->renderPasses[key] = ret;
+        if(key == INT32_MIN) return ret;
+        return singleton->renderPasses[key] = std::move(ret);
     }
 
-    WGLMachine::Pipeline* WGLMachine::createPipeline(int32_t key, const PipelineCreationOptions& opts) {
-        if (Pipeline* ret = getPipeline(key)) { return ret; }
+    WGLMachine::pPipeline WGLMachine::createPipeline(int32_t key, const PipelineCreationOptions& opts) {
+        if (pPipeline ret = getPipeline(key)) { return ret; }
         if (!(opts.vertexShader | opts.fragmentShader)) {
             LOGWITH("Vertex and fragment shader should be provided.");
             return 0;
@@ -1321,7 +1345,7 @@ namespace onart
             glDeleteProgram(prog);
             return 0;
         }
-        Pipeline* ret = singleton->pipelines[key] = new Pipeline(prog, {}, opts.vertexSize, opts.instanceDataStride);
+        pPipeline ret = std::make_shared<shp_t<Pipeline>>(prog, vec4(), opts.vertexSize, opts.instanceDataStride);
         std::memcpy(ret->blendOperation, opts.alphaBlend, sizeof(opts.alphaBlend));
         std::memcpy(ret->blendConstant, opts.blendConstant, sizeof(opts.blendConstant));
 
@@ -1339,12 +1363,17 @@ namespace onart
         }
         unsigned pui = glGetUniformBlockIndex(prog, "push");
         if(pui != GL_INVALID_INDEX) { glUniformBlockBinding(prog, pui, 11); }
-        return ret;
+        if(key == INT32_MIN) return ret;
+        return singleton->pipelines[key] = std::move(ret);
     }
 
     WGLMachine::Pipeline::Pipeline(unsigned program, vec4 clearColor, unsigned vstr, unsigned istr) :program(program), vertexSize(vstr), instanceAttrStride(istr), clearColor(clearColor) {}
     WGLMachine::Pipeline::~Pipeline() {
         glDeleteProgram(program);
+    }
+
+    void WGLMachine::Pipeline::drop(int32_t key){
+        singleton->pipelines.erase(key);
     }
 
     WGLMachine::Mesh::Mesh(unsigned vb, unsigned ib, size_t vcount, size_t icount, bool use32) :vb(vb), ib(ib), vcount(vcount), icount(icount), idxType(use32 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT) {}
@@ -1994,6 +2023,10 @@ namespace onart
         if (targetCubeD) glDeleteTextures(1, &targetCubeD);
     }
 
+    void WGLMachine::RenderPass2Cube::drop(int32_t key){
+        singleton->cubePasses.erase(key);
+    }
+
     void WGLMachine::RenderPass2Cube::bind(uint32_t pos, UniformBuffer* ub, uint32_t pass, uint32_t ubPos){
         if(!recording){
             LOGWITH("Invalid call: render pass not begun");
@@ -2219,6 +2252,10 @@ namespace onart
 
     WGLMachine::UniformBuffer::~UniformBuffer(){
         glDeleteBuffers(1, &ubo);
+    }
+
+    void WGLMachine::UniformBuffer::drop(int32_t key){
+        singleton->uniformBuffers.erase(key);
     }
 
 
