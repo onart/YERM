@@ -31,6 +31,12 @@
 
 namespace onart {
 
+    template<class T>
+    struct shp_t : public T { 
+        template<typename... Args>
+        shp_t(Args&&... args) : T(std::forward<Args>(args)...) {}
+    };
+
     /// @brief Vulkan 인스턴스를 생성합니다. 자동으로 호출됩니다.
     static VkInstance createInstance();
     /// @brief 사용할 Vulkan 물리 장치를 선택합니다. CPU 기반인 경우 경고를 표시하지만 선택에 실패하지는 않습니다.
@@ -165,7 +171,6 @@ namespace onart {
                     vkDeviceWaitIdle(singleton->device);
                     waited = true;
                 }
-                delete it->second;
                 finalPasses.erase(it++);
             }
             else {
@@ -203,7 +208,7 @@ namespace onart {
         return ret;
     }
 
-    VkMachine::Pipeline* VkMachine::getPipeline(int32_t name){
+    VkMachine::pPipeline VkMachine::getPipeline(int32_t name){
         auto it = singleton->pipelines.find(name);
         if(it != singleton->pipelines.end()) return it->second;
         else return VK_NULL_HANDLE;
@@ -215,25 +220,25 @@ namespace onart {
         else return pMesh();
     }
 
-    VkMachine::UniformBuffer* VkMachine::getUniformBuffer(int32_t name){
+    VkMachine::pUniformBuffer VkMachine::getUniformBuffer(int32_t name){
         auto it = singleton->uniformBuffers.find(name);
         if(it != singleton->uniformBuffers.end()) return it->second;
         else return nullptr;
     }
 
-    VkMachine::RenderPass2Screen* VkMachine::getRenderPass2Screen(int32_t name){
+    VkMachine::pRenderPass2Screen VkMachine::getRenderPass2Screen(int32_t name){
         auto it = singleton->finalPasses.find(name);
         if(it != singleton->finalPasses.end()) return it->second;
         else return nullptr;
     }
 
-    VkMachine::RenderPass* VkMachine::getRenderPass(int32_t name){
+    VkMachine::pRenderPass VkMachine::getRenderPass(int32_t name){
         auto it = singleton->renderPasses.find(name);
         if(it != singleton->renderPasses.end()) return it->second;
         else return nullptr;
     }
 
-    VkMachine::RenderPass2Cube* VkMachine::getRenderPass2Cube(int32_t name){
+    VkMachine::pRenderPass2Cube VkMachine::getRenderPass2Cube(int32_t name){
         auto it = singleton->cubePasses.find(name);
         if(it != singleton->cubePasses.end()) return it->second;
         else return nullptr;
@@ -480,14 +485,26 @@ namespace onart {
         for(VkSampler& sampler: textureSampler) { vkDestroySampler(device, sampler, nullptr); sampler = VK_NULL_HANDLE; }
         vkDestroySampler(device, nearestSampler, nullptr); nearestSampler = VK_NULL_HANDLE;
         for(auto& ly: descriptorSetLayouts) { vkDestroyDescriptorSetLayout(device, ly.second, nullptr); }
-        for(auto& cp: cubePasses) { delete cp.second; }
-        for(auto& fp: finalPasses) { delete fp.second; }
-        for(auto& rp: renderPasses) { delete rp.second; }
-        for(auto& rt: renderTargets){ delete rt.second; }
-        for(auto& sh: shaders) { vkDestroyShaderModule(device, sh.second, nullptr); }
-        for(auto& pp: pipelines) { vkDestroyPipeline(device, pp.second->pipeline, nullptr); }
-        for(auto& pp: pipelineLayouts) { vkDestroyPipelineLayout(device, pp.second, nullptr); }
+        for (auto& cp : cubePasses) { 
+            if (cp.second.use_count() != 1) { LOGWITH("RenderPass2Cube", cp.second, "not released"); }
+        }
+        for (auto& fp : finalPasses) { 
+            if (fp.second.use_count() != 1) { LOGWITH("RenderPass2Screen", fp.second, "not released"); }
+        }
+        for (auto& rp : renderPasses) { 
+            if (rp.second.use_count() != 1) { LOGWITH("RenderPass", rp.second, "not released"); }
+        }
+        for (auto& pp : pipelines) {
+            if (pp.second.use_count() != 1) { LOGWITH("Pipeline", pp.second, "not released"); }
+        }
 
+        cubePasses.clear();
+        finalPasses.clear();
+        renderPasses.clear();
+
+        for(auto& sh: shaders) { vkDestroyShaderModule(device, sh.second, nullptr); }
+        for(auto& pp: pipelineLayouts) { vkDestroyPipelineLayout(device, pp.second, nullptr); }
+        
         for (VkSemaphore smp : semaphorePool) { vkDestroySemaphore(device, smp, nullptr); }
         semaphorePool.clear();
         for (auto& cb : gCommandBuffers) { delete cb; }
@@ -504,10 +521,6 @@ namespace onart {
         pipelines.clear();
         pipelineLayouts.clear();
         textureSets.clear();
-        cubePasses.clear();
-        finalPasses.clear();
-        renderPasses.clear();
-        renderTargets.clear();
         shaders.clear();
 
         reap();
@@ -628,9 +641,8 @@ namespace onart {
     VkMachine::pMesh VkMachine::createNullMesh(int32_t name, size_t vcount) {
         pMesh m = getMesh(name);
         if(m) { return m; }
-        struct publicmesh:public Mesh{publicmesh(VkBuffer _1, VmaAllocation _2, size_t _3, size_t _4,size_t _5,void* _6,bool _7):Mesh(_1,_2,_3,_4,_5,_6,_7){}};
-        if(name == INT32_MIN) return std::make_shared<publicmesh>(VK_NULL_HANDLE,VK_NULL_HANDLE,vcount,0,0,nullptr,false);
-        return singleton->meshes[name] = std::make_shared<publicmesh>(VK_NULL_HANDLE,VK_NULL_HANDLE,vcount,0,0,nullptr,false);
+        if (name == INT32_MIN) return std::make_shared<shp_t<Mesh>>(VK_NULL_HANDLE, VK_NULL_HANDLE, vcount, 0, 0, nullptr, false);
+        return singleton->meshes[name] = std::make_shared<shp_t<Mesh>>(VK_NULL_HANDLE, VK_NULL_HANDLE, vcount, 0, 0, nullptr, false);
     }
 
     VkMachine::pMesh VkMachine::createMesh(int32_t key, const MeshCreationOptions& opts) {
@@ -668,8 +680,6 @@ namespace onart {
         VmaAllocationCreateInfo vbaInfo{};
         vbaInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
-        struct publicmesh :public Mesh { publicmesh(VkBuffer _1, VmaAllocation _2, size_t _3, size_t _4, size_t _5, void* _6, bool _7) :Mesh(_1, _2, _3, _4, _5, _6, _7) {} };
-
         if (opts.fixed) {
             vbInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT; // vma 목적지 버퍼 생성 시 HOST_VISIBLE이 있으면 스테이징을 할 필요가 없음, 그러면 재생성 필요 없이 그대로 리턴하도록
             vbaInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
@@ -689,8 +699,8 @@ namespace onart {
         vmaFlushAllocation(singleton->allocator, sba, 0, VK_WHOLE_SIZE);
 
         if (!opts.fixed) {
-            if (key == INT32_MIN) return std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
-            return singleton->meshes[key] = std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
         }
 
         vbInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -706,8 +716,8 @@ namespace onart {
         vmaGetAllocationMemoryProperties(singleton->allocator, viba, &props);
         if (props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
             vmaDestroyBuffer(singleton->allocator, vib, viba);
-            if (key == INT32_MIN) return std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
-            return singleton->meshes[key] = std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
+            if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
         }
 
         VkCommandBuffer copycb;
@@ -715,8 +725,8 @@ namespace onart {
         if (!copycb) {
             LOGHERE;
             vmaDestroyBuffer(singleton->allocator, vib, viba);
-            if (key == INT32_MIN) return std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
-            return singleton->meshes[key] = std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
+            if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
         }
         VkCommandBufferBeginInfo cbInfo{};
         cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -729,16 +739,16 @@ namespace onart {
             LOGWITH("Failed to begin command buffer:", reason, resultAsString(reason));
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-            if (key == INT32_MIN) return std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
-            return singleton->meshes[key] = std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
+            if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
         }
         vkCmdCopyBuffer(copycb, sb, vib, 1, &copyRegion);
         if ((reason = vkEndCommandBuffer(copycb)) != VK_SUCCESS) {
             LOGWITH("Failed to end command buffer:", reason, resultAsString(reason));
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-            if (key == INT32_MIN) return std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
-            return singleton->meshes[key] = std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
+            if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
         }
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -749,22 +759,22 @@ namespace onart {
             LOGHERE;
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-            if (key == INT32_MIN) return std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
-            return singleton->meshes[key] = std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
+            if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
         }
         if ((reason = singleton->qSubmit(false, 1, &submitInfo, fence)) != VK_SUCCESS) {
             LOGWITH("Failed to submit copy command");
             vmaDestroyBuffer(singleton->allocator, vib, viba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-            if (key == INT32_MIN) return std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
-            return singleton->meshes[key] = std::make_shared<publicmesh>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
+            if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
         }
         vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, UINT64_MAX);
         vkDestroyFence(singleton->device, fence, nullptr);
         vmaDestroyBuffer(singleton->allocator, sb, sba);
         vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-        if (key == INT32_MIN) return std::make_shared<publicmesh>(vib, viba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
-        return singleton->meshes[key] = std::make_shared<publicmesh>(vib, viba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
+        if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(vib, viba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
+        return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(vib, viba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
     }
 
     VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, RenderTargetType type, bool useDepthInput, bool sampled, bool linear, bool canRead){
@@ -1234,9 +1244,8 @@ namespace onart {
         descriptorWrite.descriptorCount = 1;
         descriptorWrite.pImageInfo = &dsImageInfo;
         vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
-        
-        struct txtr:public Texture{ inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint16_t _5, uint16_t _6):Texture(_1,_2,_3,_4,_5,_6){} };
-        pTexture ret = std::make_shared<txtr>(newImg, newView, newAlloc2, newSet, imgInfo.extent.width, imgInfo.extent.height);
+
+        pTexture ret = std::make_shared<shp_t<Texture>>(newImg, newView, newAlloc2, newSet, imgInfo.extent.width, imgInfo.extent.height);
         ret->linearSampled = opts.linearSampled;
         if (key == INT32_MIN) return ret;
         std::unique_lock<std::mutex> _(textureGuard);
@@ -1378,10 +1387,9 @@ namespace onart {
         descriptorWrite.pImageInfo = &dsImageInfo;
         vkUpdateDescriptorSets(singleton->device, 1, &descriptorWrite, 0, nullptr);
 
-        struct txtr :public StreamTexture { inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint32_t _5, uint16_t _6, uint16_t _7) :StreamTexture(_1, _2, _3, _4, _5, _6, _7) {} };
-        if (key == INT32_MIN) return std::make_shared<txtr>(img, newView, alloc, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
+        if (key == INT32_MIN) return std::make_shared<shp_t<StreamTexture>>(img, newView, alloc, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
         std::unique_lock<std::mutex> _(singleton->textureGuard);
-        return singleton->streamTextures[key] = std::make_shared<txtr>(img, newView, alloc, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
+        return singleton->streamTextures[key] = std::make_shared<shp_t<StreamTexture>>(img, newView, alloc, newSet, 0, imgInfo.extent.width, imgInfo.extent.height);
     }
 
     VkMachine::StreamTexture::StreamTexture(VkImage img, VkImageView view, VmaAllocation alloc, VkDescriptorSet dset, uint32_t binding, uint16_t width, uint16_t height) :img(img), view(view), alloc(alloc), dset(dset), binding(binding), width(width), height(height) {
@@ -1749,8 +1757,7 @@ namespace onart {
         }
 
         vkUpdateDescriptorSets(singleton->device, length, wr, 0, nullptr);
-        struct __tset:public TextureSet {};
-        pTextureSet ret = std::make_shared<__tset>();
+        pTextureSet ret = std::make_shared<shp_t<TextureSet>>();
         ret->dset = dset;
         ret->textureCount = length;
         ret->textures[0] = textures[0];
@@ -1817,16 +1824,43 @@ namespace onart {
         singleton->textures.erase(name);
     }
 
+    void VkMachine::TextureSet::drop(int32_t key) {
+        singleton->textureSets.erase(key);
+    }
+
     void VkMachine::StreamTexture::drop(int32_t key) {
         VkMachine::singleton->streamTextures.erase(key);
+    }
+
+    void VkMachine::UniformBuffer::drop(int32_t key) {
+        singleton->uniformBuffers.erase(key);
+    }
+
+    void VkMachine::RenderPass2Cube::drop(int32_t key) {
+        singleton->cubePasses.erase(key);
+    }
+
+    void VkMachine::dropRenderPass(int32_t key) {
+        singleton->renderPasses.erase(key);
+    }
+
+    void VkMachine::dropRenderPass2Screen(int32_t key) {
+        singleton->finalPasses.erase(key);
+    }
+
+    void VkMachine::dropShaderModule(int32_t key) {
+        auto it = singleton->shaders.find(key);
+        if (it == singleton->shaders.end()) return;
+        vkDestroyShaderModule(singleton->device, it->second, nullptr);
+        singleton->shaders.erase(it);
     }
 
     VkMachine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, VkMachine::ImageSet* color1, VkMachine::ImageSet* color2, VkMachine::ImageSet* color3, VkMachine::ImageSet* depthstencil, VkDescriptorSet dset, bool sampled, bool depthInput)
         :type(type), width(width), height(height), color1(color1), color2(color2), color3(color3), depthstencil(depthstencil), sampled(sampled), depthInput(depthInput), dset(dset) {
     }
 
-    VkMachine::UniformBuffer* VkMachine::createUniformBuffer(int32_t name, const UniformBufferCreationOptions& opts){
-        UniformBuffer* ret = getUniformBuffer(name);
+    VkMachine::pUniformBuffer VkMachine::createUniformBuffer(int32_t name, const UniformBufferCreationOptions& opts){
+        pUniformBuffer ret = getUniformBuffer(name);
         if(ret) return ret;
 
         uint32_t individual;
@@ -1893,7 +1927,9 @@ namespace onart {
         wr.pBufferInfo = &dsNBuffer;
         wr.dstSet = dset;
         vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
-        return singleton->uniformBuffers[name] = new UniformBuffer(opts.count, individual, buffer, layout, dset, alloc, mmap);
+        ret = std::make_shared<shp_t<UniformBuffer>>(opts.count, individual, buffer, layout, dset, alloc, mmap);
+        if (name == INT32_MIN) { return ret; }
+        return singleton->uniformBuffers[name] = std::move(ret);
     }
 
     uint32_t VkMachine::RenderTarget::attachmentRefs(VkAttachmentDescription* arr, bool forSample, bool autoclear){
@@ -1940,8 +1976,8 @@ namespace onart {
         vkFreeDescriptorSets(singleton->device, singleton->descriptorPool, 1, &dset);
     }
 
-    VkMachine::RenderPass2Cube* VkMachine::createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth) {
-        RenderPass2Cube* r = getRenderPass2Cube(key);
+    VkMachine::pRenderPass2Cube VkMachine::createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth) {
+        pRenderPass2Cube r = getRenderPass2Cube(key);
         if(r) return r;
         if(!(useColor || useDepth)){
             LOGWITH("At least one of useColor and useDepth should be true");
@@ -2180,7 +2216,7 @@ namespace onart {
         writer.dstArrayElement = 0;
         vkUpdateDescriptorSets(singleton->device, 1, &writer, 0, nullptr);
 
-        r = new RenderPass2Cube;
+        r = std::make_shared<shp_t<RenderPass2Cube>>();
         std::copy(targets, targets+12, r->ivs);
         std::copy(fb, fb + 6, r->fbs);
         std::copy(facewise, facewise + 6, r->facewise);
@@ -2201,17 +2237,18 @@ namespace onart {
             r->beginFacewise(face);
             vkEndCommandBuffer(r->facewise[face]);
         }
-        return singleton->cubePasses[key] = r;
+        if (key == INT32_MIN) return r;
+        return singleton->cubePasses[key] = std::move(r);
     }
 
-    VkMachine::RenderPass2Screen* VkMachine::createRenderPass2Screen(int32_t name, int32_t windowIdx, const RenderPassCreationOptions& opts) {
+    VkMachine::pRenderPass2Screen VkMachine::createRenderPass2Screen(int32_t name, int32_t windowIdx, const RenderPassCreationOptions& opts) {
         auto it = singleton->windowSystems.find(windowIdx);
         if (it == singleton->windowSystems.end()) {
             LOGWITH("Invalid window number");
             return nullptr;
         }
         WindowSystem* window = it->second;
-        RenderPass2Screen* r = getRenderPass2Screen(name);
+        pRenderPass2Screen r = getRenderPass2Screen(name);
         if (r) return r;
         if (opts.subpassCount == 0) return nullptr;
         std::vector<RenderTarget*> targets(opts.subpassCount - 1);
@@ -2401,7 +2438,7 @@ namespace onart {
                 return nullptr;
             }
         }
-        RenderPass2Screen* ret = new RenderPass2Screen(newPass, std::move(targets), std::move(fbs), dsImage, dsImageView, dsAlloc, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
+        std::shared_ptr<RenderPass2Screen> ret = std::make_shared<shp_t<RenderPass2Screen>>(newPass, std::move(targets), std::move(fbs), dsImage, dsImageView, dsAlloc, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
         ret->setViewport((float)window->swapchain.extent.width, (float)window->swapchain.extent.height, 0.0f, 0.0f);
         ret->setScissor(window->swapchain.extent.width, window->swapchain.extent.height, 0, 0);
         ret->width = window->swapchain.extent.width;
@@ -2412,8 +2449,8 @@ namespace onart {
         return ret;
     }
 
-    VkMachine::RenderPass* VkMachine::createRenderPass(int32_t key, const RenderPassCreationOptions& opts){
-        if (RenderPass* r = getRenderPass(key)) { return r; }
+    VkMachine::pRenderPass VkMachine::createRenderPass(int32_t key, const RenderPassCreationOptions& opts){
+        if (pRenderPass r = getRenderPass(key)) { return r; }
         if (opts.subpassCount == 0 || opts.subpassCount > 16) { return {}; }
         RenderTarget* targets[16]{};
         for (uint32_t i = 0; i < opts.subpassCount; i++) {
@@ -2520,14 +2557,15 @@ namespace onart {
             return nullptr;
         }
 
-        RenderPass* ret = new RenderPass(newPass, fb, opts.subpassCount, opts.canCopy, opts.autoclear.use ? (float*)opts.autoclear.color : (float*)nullptr);
+        pRenderPass ret = std::make_shared<shp_t<RenderPass>>(newPass, fb, opts.subpassCount, opts.canCopy, opts.autoclear.use ? (float*)opts.autoclear.color : (float*)nullptr);
         for (uint32_t i = 0; i < opts.subpassCount; i++) { ret->targets[i] = targets[i]; }
         ret->setViewport((float)targets[0]->width, (float)targets[0]->height, 0.0f, 0.0f);
         ret->setScissor(targets[0]->width, targets[0]->height, 0, 0);
-        return singleton->renderPasses[key] = ret;
+        if (key == INT32_MIN) return ret;
+        return singleton->renderPasses[key] = std::move(ret);
     }
 
-    VkMachine::Pipeline* VkMachine::createPipeline(int32_t key, const PipelineCreationOptions& opts) {
+    VkMachine::pPipeline VkMachine::createPipeline(int32_t key, const PipelineCreationOptions& opts) {
         if (auto ret = getPipeline(key)) { return ret; }
         if (!(opts.vertexShader && opts.fragmentShader)) {
             LOGWITH("Vertex and fragment shader should be provided.");
@@ -2770,17 +2808,18 @@ namespace onart {
             return {};
             VkMachine::reason = result;
         }
-        Pipeline* ret = new Pipeline;
+        pPipeline ret = std::make_shared<shp_t<Pipeline>>();
         ret->pipeline = pipeline;
         ret->pipelineLayout = layout;
         VkMachine::reason = result;
         if (opts.pass) { 
-            opts.pass->usePipeline(ret, opts.subpassIndex);
+            opts.pass->usePipeline(ret.get(), opts.subpassIndex);
         }
         else if (opts.pass2screen) {
-            opts.pass2screen->usePipeline(ret, opts.subpassIndex);
+            opts.pass2screen->usePipeline(ret.get(), opts.subpassIndex);
         }
-        return singleton->pipelines[key] = ret;
+        if (key == INT32_MIN) return ret;
+        return singleton->pipelines[key] = std::move(ret);
     }
 
     VkDescriptorSetLayout VkMachine::getDescriptorSetLayout(ShaderResourceType type) {
@@ -3237,8 +3276,7 @@ namespace onart {
         result = vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, UINT64_MAX);
         vkDestroyFence(singleton->device, fence, nullptr);
         vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &tcb);
-        struct txtr :public Texture { inline txtr(VkImage _1, VkImageView _2, VmaAllocation _3, VkDescriptorSet _4, uint16_t _5, uint16_t _6) :Texture(_1, _2, _3, _4, _5, _6) {} };
-        pTexture ret = std::make_shared<txtr>(img, newView, alloc, newSet, imgInfo.extent.width, imgInfo.extent.height);
+        pTexture ret = std::make_shared<shp_t<Texture>>(img, newView, alloc, newSet, imgInfo.extent.width, imgInfo.extent.height);
         if (key != INT32_MIN) { 
             std::unique_lock _(singleton->textureGuard);
             singleton->textures[key] = ret;
@@ -4168,7 +4206,7 @@ namespace onart {
         targets.clear();
         opts.depthInput = (bool*)useDepth.data();
 
-        RenderPass2Screen* newDat = singleton->createRenderPass2Screen(INT32_MIN, windowIdx, opts);
+        pRenderPass2Screen newDat = singleton->createRenderPass2Screen(INT32_MIN, windowIdx, opts);
         if (!newDat) {
             this->~RenderPass2Screen();
             return false;
@@ -4184,7 +4222,7 @@ namespace onart {
         SHALLOW_SWAP(viewport);
         SHALLOW_SWAP(scissor);
 #undef SHALLOW_SWAP
-        delete newDat; // 문제점: 의미없이 펜스, 세마포어 등이 생성되었다 없어짐
+        // 문제점: 의미없이 펜스, 세마포어 등이 생성되었다 없어짐
         return true;
     }
 
@@ -4672,6 +4710,10 @@ namespace onart {
             vkDestroySemaphore(singleton->device, semaphore, nullptr);
         }
         vkFreeCommandBuffers(singleton->device, isGQ ? singleton->gCommandPool : singleton->tCommandPool, 1, &commandBuffer);
+    }
+
+    VkMachine::Pipeline::~Pipeline() {
+        vkDestroyPipeline(singleton->device, pipeline, nullptr);
     }
 
 

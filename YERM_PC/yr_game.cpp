@@ -231,9 +231,10 @@ namespace onart{
         rp2s->start();
         rp2s->push(&rot, 0, 64);
         rp2s->push(&thr, 64, 68);
-        rp2s->bind(0, off);
+        rp2s->bind(0, off.get());
         rp2s->invoke(vb);
-        rp2s->execute(1, &off);
+        YRGraphics::RenderPass* offrtt = off.get();
+        rp2s->execute(1, &offrtt);
     }
 
     void Game::pollEvents(){
@@ -340,7 +341,7 @@ namespace onart{
             pipeInfo.vertexSpec = desc;
             pipeInfo.vertexAttributeCount = 2;
             pipeInfo.vertexSize = sizeof(testv_t);
-            pipeInfo.pass = offrp;
+            pipeInfo.pass = offrp.get();
             pipeInfo.subpassIndex = 0;
             pipeInfo.vertexShader = vs;
             pipeInfo.fragmentShader = fs;
@@ -362,7 +363,7 @@ namespace onart{
             pipeInfo.fragmentShader = fs;
             pipeInfo.shaderResources.pos0 = ShaderResourceType::TEXTURE_1;
             pipeInfo.pass = nullptr;
-            pipeInfo.pass2screen = rp2s;
+            pipeInfo.pass2screen = rp2s.get();
             pipeInfo.subpassIndex = 0;
             YRGraphics::createPipeline(2, pipeInfo);
             //YRGraphics::createTextureFromImage("g256.png", 0,YRGraphics::isSurfaceSRGB(),YRGraphics::IT_USE_ORIGINAL,false); loaded = true;
@@ -423,12 +424,12 @@ void main() {
             opts.vertexAttributeCount = 2;
             opts.vertexSize = sizeof(testv_t);
             opts.vertexSpec = sp;
-            opts.pass = offrp;
+            opts.pass = offrp.get();
             opts.subpassIndex = 0;
             auto pp = YRGraphics::createPipeline(0, opts);
-            offrp->usePipeline(pp, 0);
-            offrp->usePipeline(pp, 1);
-            rp2s->usePipeline(pp, 0);
+            offrp->usePipeline(pp.get(), 0);
+            offrp->usePipeline(pp.get(), 1);
+            rp2s->usePipeline(pp.get(), 0);
         }
 #elif defined(YR_USE_WEBGL)
 const char TEST_GL_VERT1[] = R"(#version 300 es
@@ -553,7 +554,7 @@ float4 main(PS_INPUT input): SV_TARGET {
         pipeInfo.vertexSpec = desc;
         pipeInfo.vertexAttributeCount = 2;
         pipeInfo.vertexSize = sizeof(testv_t);
-        pipeInfo.pass = offrp;
+        pipeInfo.pass = offrp.get();
         pipeInfo.subpassIndex = 0;
         pipeInfo.vertexShader = vs;
         pipeInfo.fragmentShader = ps;
@@ -562,9 +563,9 @@ float4 main(PS_INPUT input): SV_TARGET {
         pipeInfo.shaderResources.pos0 = ShaderResourceType::TEXTURE_1;
         pipeInfo.shaderResources.usePush = true;
         auto pp = YRGraphics::createPipeline(0, pipeInfo);
-        offrp->usePipeline(pp, 0);
-        offrp->usePipeline(pp, 1);
-        rp2s->usePipeline(pp, 0);
+        offrp->usePipeline(pp.get(), 0);
+        offrp->usePipeline(pp.get(), 1);
+        rp2s->usePipeline(pp.get(), 0);
         vsb->Release();
         psb->Release();
 #endif

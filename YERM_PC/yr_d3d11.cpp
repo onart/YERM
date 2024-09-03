@@ -15,6 +15,13 @@
 #pragma comment(lib, "dxgi.lib")
 
 namespace onart {
+    
+    template<class T>
+    struct shp_t : public T {
+        template<typename... Args>
+        shp_t(Args&&... args) : T(std::forward<Args>(args)...) {}
+    };
+
     D3D11Machine* D3D11Machine::singleton = nullptr;
     uint64_t D3D11Machine::currentRenderPass = 0;
     const D3D11Machine::Mesh* D3D11Machine::RenderPass::bound = nullptr;
@@ -135,7 +142,6 @@ namespace onart {
     void D3D11Machine::removeWindow(int32_t key) {
         for (auto it = finalPasses.begin(); it != finalPasses.end();) {
             if (it->second->windowIdx == key) {
-                delete it->second;
                 finalPasses.erase(it++);
             }
             else {
@@ -342,15 +348,10 @@ namespace onart {
         streamTextures.clear();
         for (auto& rt : renderTargets) { delete rt.second; }
         renderTargets.clear();
-        for (auto& rp : renderPasses) { delete rp.second; }
         renderPasses.clear();
-        for (auto& rp : finalPasses) { delete rp.second; }
         finalPasses.clear();
-        for (auto& rp : cubePasses) { delete rp.second; }
         cubePasses.clear();
-        for (auto& ub : uniformBuffers) { delete ub.second; }
         uniformBuffers.clear();
-        for (auto& pp : pipelines) { delete pp.second; }
         pipelines.clear();
         for (auto ws : windowSystems) { delete ws.second; }
         windowSystems.clear();
@@ -454,7 +455,22 @@ namespace onart {
         return {};
     }
 
-    D3D11Machine::UniformBuffer* D3D11Machine::getUniformBuffer(int32_t key) {
+    void D3D11Machine::dropRenderPass(int32_t key) {
+        singleton->renderPasses.erase(key);
+    }
+
+    void D3D11Machine::dropRenderPass2Screen(int32_t key) {
+        singleton->finalPasses.erase(key);
+    }
+
+    void D3D11Machine::dropShaderModule(int32_t key) {
+        auto it = singleton->shaders.find(key);
+        if (it == singleton->shaders.end()) return;
+        it->second->Release();
+        singleton->shaders.erase(it);
+    }
+
+    D3D11Machine::pUniformBuffer D3D11Machine::getUniformBuffer(int32_t key) {
         auto it = singleton->uniformBuffers.find(key);
         if (it != singleton->uniformBuffers.end()) {
             return it->second;
@@ -462,7 +478,7 @@ namespace onart {
         return {};
     }
 
-    D3D11Machine::RenderPass* D3D11Machine::getRenderPass(int32_t key) {
+    D3D11Machine::pRenderPass D3D11Machine::getRenderPass(int32_t key) {
         auto it = singleton->renderPasses.find(key);
         if (it != singleton->renderPasses.end()) {
             return it->second;
@@ -470,7 +486,7 @@ namespace onart {
         return {};
     }
 
-    D3D11Machine::RenderPass2Cube* D3D11Machine::getRenderPass2Cube(int32_t key) {
+    D3D11Machine::pRenderPass2Cube D3D11Machine::getRenderPass2Cube(int32_t key) {
         auto it = singleton->cubePasses.find(key);
         if (it != singleton->cubePasses.end()) {
             return it->second;
@@ -563,14 +579,14 @@ namespace onart {
         return {};
     }
 
-    D3D11Machine::Pipeline* D3D11Machine::getPipeline(int32_t key) {
+    D3D11Machine::pPipeline D3D11Machine::getPipeline(int32_t key) {
         if (auto it = singleton->pipelines.find(key); it != singleton->pipelines.end()) {
             return it->second;
         }
         return {};
     }
 
-    D3D11Machine::RenderPass2Screen* D3D11Machine::getRenderPass2Screen(int32_t key) {
+    D3D11Machine::pRenderPass2Screen D3D11Machine::getRenderPass2Screen(int32_t key) {
         if (auto it = singleton->finalPasses.find(key); it != singleton->finalPasses.end()) {
             return it->second;
         }
@@ -1035,14 +1051,14 @@ namespace onart {
         if (tex) { tex->Release(); }
     }
 
-    D3D11Machine::RenderPass2Screen* D3D11Machine::createRenderPass2Screen(int32_t key, int32_t windowIdx, const RenderPassCreationOptions& opts) {
+    D3D11Machine::pRenderPass2Screen D3D11Machine::createRenderPass2Screen(int32_t key, int32_t windowIdx, const RenderPassCreationOptions& opts) {
         auto it = singleton->windowSystems.find(windowIdx);
         if (it == singleton->windowSystems.end()) {
             LOGWITH("Invalid window number");
             return nullptr;
         }
         WindowSystem* window = it->second;
-        RenderPass2Screen* r = getRenderPass2Screen(key);
+        pRenderPass2Screen r = getRenderPass2Screen(key);
         if (r) return r;
         if (opts.subpassCount == 0) return nullptr;
         std::vector<RenderTarget*> targs(opts.subpassCount);
@@ -1055,18 +1071,18 @@ namespace onart {
             }
         }
 
-        RenderPass* ret = new RenderPass(opts.subpassCount, false, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
+        pRenderPass ret = std::make_shared<shp_t<RenderPass>>(opts.subpassCount, false, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
         ret->targets = std::move(targs);
         ret->setViewport((float)window->swapchain.width, (float)window->swapchain.height, 0.0f, 0.0f);
         ret->setScissor(window->swapchain.width, window->swapchain.height, 0, 0);
         ret->is4Screen = true;
         ret->windowIdx = windowIdx;
         if (key == INT32_MIN) return ret;
-        return singleton->finalPasses[key] = ret;
+        return singleton->finalPasses[key] = std::move(ret);
     }
 
-    D3D11Machine::RenderPass* D3D11Machine::createRenderPass(int32_t key, const RenderPassCreationOptions& opts) {
-        if (RenderPass* r = getRenderPass(key)) return r;
+    D3D11Machine::pRenderPass D3D11Machine::createRenderPass(int32_t key, const RenderPassCreationOptions& opts) {
+        if (pRenderPass r = getRenderPass(key)) return r;
         if (opts.subpassCount == 0) return nullptr;
 
         std::vector<RenderTarget*> targs(opts.subpassCount);
@@ -1080,16 +1096,16 @@ namespace onart {
             }
         }
 
-        RenderPass* ret = new RenderPass(opts.subpassCount, opts.canCopy, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
+        pRenderPass ret = std::make_shared<shp_t<RenderPass>>(opts.subpassCount, opts.canCopy, opts.autoclear.use ? (float*)opts.autoclear.color : nullptr);
         ret->targets = std::move(targs);
         ret->setViewport((float)opts.width, (float)opts.height, 0.0f, 0.0f);
         ret->setScissor(opts.width, opts.height, 0, 0);
         if (key == INT32_MIN) return ret;
-        return singleton->renderPasses[key] = ret;
+        return singleton->renderPasses[key] = std::move(ret);
     }
 
-    D3D11Machine::RenderPass2Cube* D3D11Machine::createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth) {
-        if (RenderPass2Cube* r = getRenderPass2Cube(key)) return r;
+    D3D11Machine::pRenderPass2Cube D3D11Machine::createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth) {
+        if (pRenderPass2Cube r = getRenderPass2Cube(key)) return r;
         if (!useColor && !useDepth) {
             LOGWITH("Either useColor or useDepth must be true");
             return {};
@@ -1179,7 +1195,7 @@ namespace onart {
             return {};
         }
         
-        RenderPass2Cube* newPass = new RenderPass2Cube;
+        pRenderPass2Cube newPass = std::make_shared<shp_t<RenderPass2Cube>>();
         newPass->width = width;
         newPass->height = height;
 
@@ -1200,7 +1216,8 @@ namespace onart {
         newPass->scissor.top = 0;
         newPass->scissor.right = width;
         newPass->scissor.bottom = height;
-        return singleton->cubePasses[key] = newPass;
+        if (key == INT32_MIN) return newPass;
+        return singleton->cubePasses[key] = std::move(newPass);
     }
 
     D3D11Machine::RenderPass2Cube::~RenderPass2Cube() {
@@ -1213,6 +1230,10 @@ namespace onart {
             dsv->Release();
         }
         srv->Release();
+    }
+
+    void D3D11Machine::RenderPass2Cube::drop(int32_t key) {
+        singleton->cubePasses.erase(key);
     }
 
     void D3D11Machine::RenderPass2Cube::bind(uint32_t pos, UniformBuffer* ub, uint32_t pass, uint32_t ubPos) {
@@ -1630,7 +1651,7 @@ namespace onart {
         return nullptr;
     }
 
-    D3D11Machine::Pipeline* D3D11Machine::createPipeline(int32_t key, const PipelineCreationOptions& opts) {
+    D3D11Machine::pPipeline D3D11Machine::createPipeline(int32_t key, const PipelineCreationOptions& opts) {
         if (auto ret = getPipeline(key)) { return ret; }
         std::vector<PipelineInputVertexSpec> inputLayoutInfo(opts.vertexAttributeCount + opts.instanceAttributeCount);
         std::memcpy(inputLayoutInfo.data(), opts.vertexSpec, opts.vertexAttributeCount * sizeof(PipelineInputVertexSpec));
@@ -1754,7 +1775,9 @@ namespace onart {
             return {};
         }
 
-        return singleton->pipelines[key] = new Pipeline(layout, vert, tctrl, teval, geom, frag, dsState, opts.depthStencil.stencilFront.reference, blendState);
+        pPipeline ret = std::make_shared<shp_t<Pipeline>>(layout, vert, tctrl, teval, geom, frag, dsState, opts.depthStencil.stencilFront.reference, blendState);
+        if (key == INT32_MIN) return ret;
+        return singleton->pipelines[key] = std::move(ret);
     }
 
     D3D11Machine::Pipeline::Pipeline(ID3D11InputLayout* layout, ID3D11VertexShader* v, ID3D11HullShader* h, ID3D11DomainShader* d, ID3D11GeometryShader* g, ID3D11PixelShader* p, ID3D11DepthStencilState* dss, UINT stencilRef, ID3D11BlendState* blend)
@@ -1789,6 +1812,10 @@ namespace onart {
         ubo->Release();
     }
 
+    void D3D11Machine::UniformBuffer::drop(int32_t key) {
+        singleton->uniformBuffers.erase(key);
+    }
+
     void D3D11Machine::UniformBuffer::resize(uint32_t size) {
     }
 
@@ -1809,7 +1836,7 @@ namespace onart {
         }
     }
 
-    D3D11Machine::UniformBuffer* D3D11Machine::createUniformBuffer(int32_t key, const UniformBufferCreationOptions& opts) {
+    D3D11Machine::pUniformBuffer D3D11Machine::createUniformBuffer(int32_t key, const UniformBufferCreationOptions& opts) {
         if (auto ret = getUniformBuffer(key)) { return ret; }
         ID3D11Buffer* buffer{};
         D3D11_BUFFER_DESC bufferInfo{};
@@ -1824,7 +1851,9 @@ namespace onart {
             return {};
         }
 
-        return singleton->uniformBuffers[key] = new UniformBuffer(opts.size, buffer);
+        pUniformBuffer ret = std::make_shared<shp_t<UniformBuffer>>(opts.size, buffer);
+        if (key == INT32_MIN) return ret;
+        return singleton->uniformBuffers[key] = std::move(ret);
     }
 
     D3D11Machine::RenderTarget::RenderTarget(RenderTargetType type, unsigned width, unsigned height, ImageSet** sets, ID3D11RenderTargetView** rtvs, ID3D11DepthStencilView* dsv, bool linearSampled, bool depthInput)
@@ -2649,6 +2678,10 @@ namespace onart {
     D3D11Machine::Mesh::~Mesh() {
         if(vb) vb->Release();
         if (ib) ib->Release();
+    }
+
+    void D3D11Machine::Mesh::drop(int32_t key) {
+        singleton->meshes.erase(key);
     }
 
     void D3D11Machine::Mesh::update(const void* input, uint32_t offset, uint32_t size) {

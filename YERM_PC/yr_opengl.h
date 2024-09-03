@@ -67,11 +67,15 @@ namespace onart {
             class RenderTarget;
             /// @brief 오프스크린용 렌더 패스입니다.
             class RenderPass;
+            using pRenderPass = std::shared_ptr<RenderPass>;
             /// @brief 화면에 그리기 위한 렌더 패스입니다. 여러 개 갖고 있을 수는 있지만 동시에 여러 개를 사용할 수는 없습니다.
             using RenderPass2Screen = RenderPass;
+            using pRenderPass2Screen = std::shared_ptr<RenderPass2Screen>;
             /// @brief 큐브맵에 그리기 위한 렌더 패스입니다.
             class RenderPass2Cube;
+            using pRenderPass2Cube = std::shared_ptr<RenderPass2Cube>;
             class Pipeline;
+            using pPipeline = std::shared_ptr<Pipeline>;
             struct PipelineInputVertexSpec;
             /// @brief 직접 불러오는 텍스처입니다.
             class Texture;
@@ -89,6 +93,7 @@ namespace onart {
             using pMesh = std::shared_ptr<Mesh>;
             /// @brief 셰이더 자원을 나타냅니다. 동시에 사용되지만 않는다면 여러 렌더패스 간에 공유될 수 있습니다.
             class UniformBuffer;
+            using pUniformBuffer = std::shared_ptr<UniformBuffer>;
 
             struct PipelineCreationOptions {
                 PipelineInputVertexSpec* vertexSpec = nullptr;
@@ -181,21 +186,21 @@ namespace onart {
             /// @brief 셰이더에서 사용할 수 있는 uniform 버퍼를 생성하여 리턴합니다. 이것을 해제하는 방법은 없으며, 프로그램 종료 시 자동으로 해제됩니다.
             /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
             /// @param opts @ref UniformBufferCreationOptions
-            static UniformBuffer* createUniformBuffer(int32_t key, const UniformBufferCreationOptions& opts);
+            static pUniformBuffer createUniformBuffer(int32_t key, const UniformBufferCreationOptions& opts);
             /// @brief 렌더 패스를 생성합니다. 렌더 패스는 렌더 타겟과 유의어로 보아도 되나, 여러 개의 서브패스로 구성됩니다.
             /// @param key 프로그램 내에서 사용할 이름입니다. 중복된 이름이 입력된 경우 주어진 나머지 인수를 무시하고 그 이름을 가진 버퍼를 리턴합니다.
-            static RenderPass* createRenderPass(int32_t key, const RenderPassCreationOptions& opts);
+            static pRenderPass createRenderPass(int32_t key, const RenderPassCreationOptions& opts);
             /// @brief 큐브맵 대상의 렌더패스를 생성합니다.
             /// @param width 타겟으로 생성되는 각 이미지의 가로 길이입니다.
             /// @param height 타겟으로 생성되는 각 이미지의 세로 길이입니다.
             /// @param key 이름입니다.
             /// @param useColor true인 경우 색 버퍼 1개를 이미지에 사용합니다.
             /// @param useDepth true인 경우 깊이 버퍼를 이미지에 사용합니다. useDepth와 useColor가 모두 true인 경우 샘플링은 색 버퍼에 대해서만 가능합니다.
-            static RenderPass2Cube* createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth);
+            static pRenderPass2Cube createRenderPass2Cube(int32_t key, uint32_t width, uint32_t height, bool useColor, bool useDepth);
             /// @brief 화면으로 이어지는 렌더패스를 생성합니다. 각 패스의 타겟들은 현재 창의 해상도와 동일하게 맞춰집니다.
-            static RenderPass2Screen* createRenderPass2Screen(int32_t key, int32_t windowIdx, const RenderPassCreationOptions& opts);
+            static pRenderPass2Screen createRenderPass2Screen(int32_t key, int32_t windowIdx, const RenderPassCreationOptions& opts);
             /// @brief 파이프라인을 생성합니다. 생성된 파이프라인은 이후에 이름으로 불러올 수도 있고, 주어진 렌더패스의 해당 서브패스 위치로 들어갑니다.
-            static Pipeline* createPipeline(int32_t key, const PipelineCreationOptions& opts);
+            static pPipeline createPipeline(int32_t key, const PipelineCreationOptions& opts);
             /// @brief 정점 버퍼를 생성합니다.
             /// @param key 사용할 이름입니다. 중복된 이름을 입력하는 경우 기존의 Mesh를 리턴합니다.
             /// @param opts @ref MeshCreationOptions
@@ -205,21 +210,24 @@ namespace onart {
             /// @param name 프로그램 내에서 사용할 이름입니다.
             static pMesh createNullMesh(int32_t key, size_t vcount);
             /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static RenderPass2Screen* getRenderPass2Screen(int32_t key);
+            static pRenderPass2Screen getRenderPass2Screen(int32_t key);
             /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static RenderPass* getRenderPass(int32_t key);
+            static pRenderPass getRenderPass(int32_t key);
             /// @brief 만들어 둔 렌더패스를 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static RenderPass2Cube* getRenderPass2Cube(int32_t key);
+            static pRenderPass2Cube getRenderPass2Cube(int32_t key);
             /// @brief 만들어 둔 파이프라인을 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static Pipeline* getPipeline(int32_t key);
+            static pPipeline getPipeline(int32_t key);
             /// @brief 만들어 둔 공유 버퍼를 리턴합니다. 없으면 nullptr를 리턴합니다.
-            static UniformBuffer* getUniformBuffer(int32_t key);
+            static pUniformBuffer getUniformBuffer(int32_t key);
             /// @brief 만들어 둔 셰이더 모듈을 리턴합니다. 없으면 0을 리턴합니다.
             static unsigned getShader(int32_t key);
             /// @brief 올려 둔 텍스처 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pTexture getTexture(int32_t key);
             /// @brief 만들어 둔 메시 객체를 리턴합니다. 없으면 빈 포인터를 리턴합니다.
             static pMesh getMesh(int32_t key);
+            static void dropRenderPass(int32_t key);
+            static void dropRenderPass2Screen(int32_t key);
+            static void dropShaderModule(int32_t key);
             /// @brief 해제되어야 할 자원을 안전하게 해제합니다. 각 자원의 collect와 이것의 호출 주기는 적절하게 설정할 필요가 있습니다.
             static void reap();
             /// @brief 모든 창의 수직 동기화 여부를 설정합니다.
@@ -270,12 +278,12 @@ namespace onart {
         private:
             static GLMachine* singleton;
             ThreadPool loadThread;
-            std::map<int32_t, RenderPass*> renderPasses;
-            std::map<int32_t, RenderPass2Screen*> finalPasses;
-            std::map<int32_t, RenderPass2Cube*> cubePasses;
+            std::map<int32_t, pRenderPass> renderPasses;
+            std::map<int32_t, pRenderPass2Screen> finalPasses;
+            std::map<int32_t, pRenderPass2Cube> cubePasses;
             std::map<int32_t, unsigned> shaders;
-            std::map<int32_t, UniformBuffer*> uniformBuffers;
-            std::map<int32_t, Pipeline*> pipelines;
+            std::map<int32_t, pUniformBuffer> uniformBuffers;
+            std::map<int32_t, pPipeline> pipelines;
             std::map<int32_t, pMesh> meshes;
             std::map<int32_t, pTexture> textures;
             std::map<int32_t, pStreamTexture> streamTextures;
@@ -408,9 +416,10 @@ namespace onart {
             /// @param key 핸들러에 전달될 키입니다.
             /// @param handler 비동기 핸들러입니다. @ref ReadBackBuffer의 포인터가 전달되며 해당 메모리는 자동으로 해제되므로 핸들러에서는 읽기만 가능합니다.
             void asyncReadBack(int32_t key, uint32_t index, std::function<void(variant8)> handler, const TextureArea2D& area = {});
-        private:
+        protected:
             RenderPass(uint16_t stageCount, bool canBeRead, float* autoclear); // 이후 다수의 서브패스를 쓸 수 있도록 변경
             ~RenderPass();
+        private:
             const uint16_t stageCount;
             std::vector<Pipeline*> pipelines;
             std::vector<RenderTarget*> targets;
@@ -480,9 +489,10 @@ namespace onart {
             /// @brief 기록된 명령을 모두 수행합니다.
             /// @param other 이 패스가 시작하기 전에 기다릴 다른 렌더패스입니다.
             void execute(RenderPass* other = nullptr);
-        private:
+        protected:
             inline RenderPass2Cube(){}
             ~RenderPass2Cube();
+        private:
 
             unsigned fbo;
             unsigned targetCubeC, targetCubeD;
@@ -532,6 +542,8 @@ namespace onart {
         friend class GLMachine;
         friend class RenderPass;
         friend class RenderPass2Cube;
+    public:
+        static void drop(int32_t key);
     private:
         pTexture textures[4]{};
         int textureCount;
@@ -568,9 +580,11 @@ namespace onart {
 
     class GLMachine::Pipeline: public align16 {
         friend class GLMachine;
-        private:
+        protected:
+            static void drop(int32_t key);
             Pipeline(unsigned program, vec4 clearColor, unsigned vstr, unsigned istr);
             ~Pipeline();
+        private:
             unsigned program;
             std::vector<PipelineInputVertexSpec> vspec;
             std::vector<PipelineInputVertexSpec> ispec;
@@ -611,6 +625,7 @@ namespace onart {
         friend class GLMachine;
         friend class RenderPass;
         public:
+            static void drop(int32_t key);
             /// @brief 아무 동작도 하지 않습니다.
             void resize(uint32_t size);
             /// @brief 유니폼 버퍼의 내용을 갱신합니다. 넘치게 데이터를 줘도 추가 할당은 하지 않으므로 주의하세요.
@@ -625,9 +640,10 @@ namespace onart {
             inline int getLayout() { return 0; }
             /// @brief 128바이트 크기의 고정 유니폼버퍼를 업데이트합니다. 이것은 모든 파이프라인이 공유하며, 셰이더의 바인딩 11번으로 접근할 수 있습니다.
             static void updatePush(const void* input, uint32_t offset, uint32_t size);
-        private:
+        protected:
             UniformBuffer(uint32_t length, unsigned ubo);
             ~UniformBuffer();
+        private:
             unsigned ubo;
             bool shouldSync = false;
             uint32_t length;
