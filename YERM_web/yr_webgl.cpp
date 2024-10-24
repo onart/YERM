@@ -70,12 +70,7 @@
 // https://registry.khronos.org/OpenGL-Refpages/es3/
 
 namespace onart
-{   
-    template<class T>
-    struct shp_t : public T {
-        template<typename... Args>
-        shp_t(Args&&... args) : T(std::forward<Args>(args)...) {}
-    };
+{
 
     static void enableAttribute(int stride, const WGLMachine::PipelineInputVertexSpec& type);
     /// @brief 주어진 기반 형식과 아귀가 맞는, 현재 장치에서 사용 가능한 압축 형식을 리턴합니다.

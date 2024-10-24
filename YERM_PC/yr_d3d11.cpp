@@ -15,12 +15,6 @@
 #pragma comment(lib, "dxgi.lib")
 
 namespace onart {
-    
-    template<class T>
-    struct shp_t : public T {
-        template<typename... Args>
-        shp_t(Args&&... args) : T(std::forward<Args>(args)...) {}
-    };
 
     D3D11Machine* D3D11Machine::singleton = nullptr;
     uint64_t D3D11Machine::currentRenderPass = 0;

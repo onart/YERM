@@ -31,12 +31,6 @@
 
 namespace onart {
 
-    template<class T>
-    struct shp_t : public T { 
-        template<typename... Args>
-        shp_t(Args&&... args) : T(std::forward<Args>(args)...) {}
-    };
-
     /// @brief Vulkan 인스턴스를 생성합니다. 자동으로 호출됩니다.
     static VkInstance createInstance();
     /// @brief 사용할 Vulkan 물리 장치를 선택합니다. CPU 기반인 경우 경고를 표시하지만 선택에 실패하지는 않습니다.

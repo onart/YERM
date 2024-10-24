@@ -49,11 +49,15 @@ add_library( # Sets the name of the library.
              ../../../../../YERM_PC/yr_compiler_specific.hpp
              ../../../../../YERM_PC/yr_threadpool.hpp
              ../../../../../YERM_PC/yr_graphics.h
+             ../../../../../YERM_PC/yr_align.hpp
+             ../../../../../YERM_PC/yr_basic.hpp
 
              ../../../../../YERM_PC/yr_sys.h
              ../../../../../YERM_PC/yr_sys.cpp
              ../../../../../YERM_PC/yr_game.h
              ../../../../../YERM_PC/yr_game.cpp
+             ../../../../../YERM_PC/yr_visual.h
+             ../../../../../YERM_PC/yr_visual.cpp
              ${YERM_GRAPHICS}
              ../../../../../YERM_PC/yr_input.h
              ../../../../../YERM_PC/yr_input.cpp

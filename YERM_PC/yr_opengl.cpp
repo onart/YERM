@@ -34,12 +34,6 @@
 
 namespace onart {
 
-    template<class T>
-    struct shp_t : public T {
-        template<typename... Args>
-        shp_t(Args&&... args) : T(std::forward<Args>(args)...) {}
-    };
-
     static void GLAPIENTRY glOnError(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam);
 
     static int format;

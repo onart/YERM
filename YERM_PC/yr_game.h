@@ -53,10 +53,12 @@ namespace onart{
             static const float& dt;
             /// @brief 이전 프레임과 현 프레임 간의 간격(초)의 역수입니다.
             static const float& idt;
-            /// @brief 파일의 내용을 모두 읽어 옵니다. 이 함수는 화면 회전 시 음원 파일 포인터를 유지하기 어려운 경우를 위해 임시로 만들어졌습니다. 읽기에 실패하면 주어진 버퍼는 빈 상태가 됩니다.
+            /// @brief 파일의 내용을 모두 읽어 옵니다.
             /// @param fileName 파일 이름
             /// @param buffer 데이터가 들어갈 위치. 이전에 내용이 있었더라도 무시됩니다.
             static void readFile(const char* fileName, std::basic_string<uint8_t>* buffer);
+            /// @brief 프레임 당 한 번씩 호출되는 함수를 설정합니다. 등록한 함수는 반드시 1개의 스레드에서만 호출됩니다.
+            static void setUpdate(std::function<void()>);
         private:
             static Window* window;
             static YRGraphics* vk;
@@ -65,13 +67,12 @@ namespace onart{
             static uint64_t _tp;
             static void* hd;
             static int32_t loopFlag;
+            static std::function<void()> perFrameProc;
         private:
             static void windowResized(int x, int y);
             static void pollEvents();
             static void finalize();
             static bool init();
-            static void update();
-            static void render();
             static void mainLoop();
     };
 }

@@ -15,11 +15,14 @@ set(EXEC_COMMON_SOURCE
         YERM_PC/yr_bits.hpp
         YERM_PC/yr_threadpool.hpp
         YERM_PC/yr_graphics.h
+        YERM_PC/yr_basic.hpp
 
         YERM_PC/yr_sys.h
         YERM_PC/yr_sys.cpp
         YERM_PC/yr_game.h
         YERM_PC/yr_game.cpp
+        YERM_PC/yr_visual.h
+        YERM_PC/yr_visual.cpp
         YERM_PC/yr_input.h
         YERM_PC/yr_input.cpp
         YERM_PC/yr_singleheader.cpp
