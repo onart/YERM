@@ -8,30 +8,6 @@
 namespace onart
 {
 
-    class Camera{
-        friend class Scene;
-    public:
-        void setViewRange(uint32_t width, uint32_t height);
-        void setOrthogonal(float near, float far);
-        void setPerspective(float fovy, float near, float far);
-        void setLookAt(const vec3& eye, const vec3& at, const vec3& up);
-    private:
-        Camera();
-        struct {
-            vec3 eye;
-            vec3 at;
-            vec3 up;
-            mat4 matrix;
-        } view;
-        struct {
-            vec2 viewRange{128, 128};
-            float fovy;
-            float near;
-            float far;
-            mat4 matrix;
-        } proj;
-    };
-
     class FreeRenderer {
     public:
         virtual void draw(YRGraphics::RenderPass*) {}
@@ -48,15 +24,13 @@ namespace onart
             YRGraphics::pPipeline pipeline;
             YRGraphics::pUniformBuffer ub;
             std::vector<uint8_t> pushed; // per object push data
-            std::vector<uint8_t> poub; // per object ub data -> todo: remove this
+            std::vector<uint8_t> poub; // per object ub data (only for non-vulkan ver)
             std::unique_ptr<FreeRenderer> fr = nullptr;
             unsigned instaceCount = 1;
             unsigned meshRangeStart = 0;
             unsigned meshRangeCount = 0;
-            unsigned ubBind = 1;
-            unsigned textureBind = 2;
-        private:
             int ubIndex; // dynamic ub index
+            void updatePOUB(const void* data, uint32_t offsetByte, uint32_t size);
         protected:
             ~VisualElement() = default;
     };
@@ -65,8 +39,8 @@ namespace onart
     protected:
         std::vector<std::shared_ptr<VisualElement>> ve;
     public:
+        YRGraphics::pUniformBuffer perFrameUB;
         VisualElement* createVisualElement();
-        Camera camera;
         std::function<void(decltype(ve)&)> sorter;
     };
 

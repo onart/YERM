@@ -3,33 +3,9 @@
 #include "yr_sys.h"
 
 namespace onart {
-
-	Camera::Camera() {
-		setLookAt({ 0,0,1 }, { 0,0,0 }, { 0,1,0 });
-		setOrthogonal(0, 1);
-	}
-
-	void Camera::setLookAt(const vec3& eye, const vec3& at, const vec3& up) {
-		view.eye = eye;
-		view.at = at;
-		view.up = up;
-		view.matrix = mat4::lookAt(eye, at, up);
-	}
-
-	void Camera::setPerspective(float fovy, float near, float far) {
-		proj.near = near;
-		proj.far = far;
-		proj.fovy = fovy;
-		proj.matrix = mat4::perspective(fovy, proj.viewRange.y / proj.viewRange.x, near, far);
-	}
-
-	void Camera::setOrthogonal(float near, float far) {
-		proj.fovy = 0;
-		proj.near = near;
-		proj.far = far;
-		vec2 iv = vec2(1) / proj.viewRange;
-		proj.matrix = mat4::TRS(vec3(0, 0, near), Quaternion(), vec3(iv.x, iv.y, 1 / (far - near)));
-	}
+	
+	constexpr static int PER_OBJ_UB_DESCRIPTOR_BIND_INDEX = 1;
+	constexpr static int PER_OBJ_TEXTURE_DESCRIPTOR_BIND_INDEX = 2;
 
 	VisualElement* Scene::createVisualElement() {
 		return ve.emplace_back(std::make_shared<shp_t<VisualElement>>()).get();
@@ -65,6 +41,7 @@ namespace onart {
 			YRGraphics::Pipeline* pipeline = nullptr;
 		} state;
 		target0->start();
+		target0->bind(0, perFrameUB.get());
 		for (auto& elem : ve) {
 			if (elem->fr) { 
 				elem->fr->draw(target0.get());
@@ -73,17 +50,29 @@ namespace onart {
 			}
 			if (state.pipeline != elem->pipeline.get()) { state.pipeline = elem->pipeline.get(); target0->usePipeline(state.pipeline, 0); }
 
+			if (elem->pushed.size()) { target0->push(elem->pushed.data(), 0, elem->pushed.size()); }
+			if (elem->ubIndex >= 0) {
+				if constexpr (YRGraphics::VULKAN_GRAPHICS) { 
+					target0->bind(PER_OBJ_UB_DESCRIPTOR_BIND_INDEX, elem->ub.get(), elem->ubIndex);
+				}
+				else {
+					elem->ub->update(elem->poub.data(), 0, 0, elem->poub.size());
+					target0->bind(1, elem->ub.get(), elem->ubIndex);
+				}
+			}
+
 			// todo: avoid re-setting the same ones
 			// postponed since vk <-> d3d11, opengl shader resource scheme are different
-			if (elem->textureSet) { target0->bind(elem->textureBind, elem->textureSet); }
-			else if (elem->texture) { target0->bind(elem->textureBind, elem->texture); }
-
-			if (elem->pushed.size()) { target0->push(elem->pushed.data(), 0, elem->pushed.size()); }
-			/* // todo: per-object dynamic uniform buffer scheme & per-frame(scene) uniform buffer scheme
-			if (elem->poub.size()) {
-
+			if constexpr (YRGraphics::VULKAN_GRAPHICS) {
+				// If ub bound in this iteration.. reset texture
+				if (elem->textureSet) { target0->bind(PER_OBJ_TEXTURE_DESCRIPTOR_BIND_INDEX, elem->textureSet); }
+				else if (elem->texture) { target0->bind(PER_OBJ_TEXTURE_DESCRIPTOR_BIND_INDEX, elem->texture); }
 			}
-			*/
+			else {
+				if (elem->textureSet) { target0->bind(0, elem->textureSet); }
+				else if (elem->texture) { target0->bind(0, elem->texture); }
+			}
+
 			if (elem->instaceCount > 1) { target0->invoke(elem->mesh0, elem->mesh1, elem->instaceCount, 0, elem->meshRangeCount, elem->meshRangeCount); }
 			else { target0->invoke(elem->mesh0, elem->meshRangeStart, elem->meshRangeCount); }
 		}
@@ -92,6 +81,11 @@ namespace onart {
 		for (auto& pr : pred) { prerequisites[idx++] = pr->target0.get(); }
 
 		target0->execute(succ.size(), pred.size(), prerequisites);
+	}
+
+	void VisualElement::updatePOUB(const void* data, uint32_t offset, uint32_t size) {
+		if constexpr (YRGraphics::VULKAN_GRAPHICS) { ub->update(data, ubIndex, offset, size); }
+		else { std::memcpy(poub.data() + offset, data, size); }
 	}
 
 	FinalScene::FinalScene(const YRGraphics::pRenderPass2Screen& rp) : target0(rp) {}
@@ -112,6 +106,7 @@ namespace onart {
 			YRGraphics::Pipeline* pipeline = nullptr;
 		} state;
 		target0->start();
+		target0->bind(0, perFrameUB.get());
 		for (auto& elem : ve) {
 			if (elem->fr) {
 				elem->fr->draw(target0.get());
@@ -120,17 +115,28 @@ namespace onart {
 			}
 			if (state.pipeline != elem->pipeline.get()) { state.pipeline = elem->pipeline.get(); target0->usePipeline(state.pipeline, 0); }
 
+			if (elem->pushed.size()) { target0->push(elem->pushed.data(), 0, elem->pushed.size()); }
+			if (elem->ubIndex >= 0) {
+				if constexpr (YRGraphics::VULKAN_GRAPHICS) {
+					target0->bind(PER_OBJ_UB_DESCRIPTOR_BIND_INDEX, elem->ub.get(), elem->ubIndex);
+				}
+				else {
+					elem->ub->update(elem->poub.data(), 0, 0, elem->poub.size());
+					target0->bind(1, elem->ub.get(), elem->ubIndex);
+				}
+			}
+
 			// todo: avoid re-setting the same ones
 			// postponed since vk <-> d3d11, opengl shader resource scheme are different
-			if (elem->textureSet) { target0->bind(elem->textureBind, elem->textureSet); }
-			else if (elem->texture) { target0->bind(elem->textureBind, elem->texture); }
-
-			if (elem->pushed.size()) { target0->push(elem->pushed.data(), 0, elem->pushed.size()); }
-			/* // todo: per-object dynamic uniform buffer scheme & per-frame(scene) uniform buffer scheme
-			if (elem->poub.size()) {
-
+			if constexpr (YRGraphics::VULKAN_GRAPHICS) {
+				// If ub bound in this iteration.. reset texture(set)
+				if (elem->textureSet) { target0->bind(PER_OBJ_TEXTURE_DESCRIPTOR_BIND_INDEX, elem->textureSet); }
+				else if (elem->texture) { target0->bind(PER_OBJ_TEXTURE_DESCRIPTOR_BIND_INDEX, elem->texture); }
 			}
-			*/
+			else {
+				if (elem->textureSet) { target0->bind(0, elem->textureSet); }
+				else if (elem->texture) { target0->bind(0, elem->texture); }
+			}
 			if (elem->instaceCount > 1) { target0->invoke(elem->mesh0, elem->mesh1, elem->instaceCount, 0, elem->meshRangeCount, elem->meshRangeCount); }
 			else { target0->invoke(elem->mesh0, elem->meshRangeStart, elem->meshRangeCount); }
 		}
