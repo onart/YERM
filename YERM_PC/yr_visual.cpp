@@ -8,7 +8,29 @@ namespace onart {
 	constexpr static int PER_OBJ_TEXTURE_DESCRIPTOR_BIND_INDEX = 2;
 
 	VisualElement* Scene::createVisualElement() {
+		if (vePool.size()) {
+			ve.emplace_back(std::move(vePool.back()));
+			vePool.pop_back();
+			return ve.back().get();
+		}
 		return ve.emplace_back(std::make_shared<shp_t<VisualElement>>()).get();
+	}
+
+	void Scene::setPoolCapacity(size_t size, bool shrink) { 
+		poolSize = size;
+		if (shrink && poolSize < vePool.size() ) {
+			vePool.resize(poolSize);
+		}
+	}
+
+	void Scene::clear(bool resetElements) {
+		for (auto& elem : ve) {
+			if (vePool.size() < poolSize) { 
+				if (resetElements) { elem->reset(); }
+				vePool.emplace_back(std::move(elem));
+			}
+		}
+		ve.clear();
 	}
 
 	IntermediateScene::IntermediateScene(const RenderPassCreationOptions& opts) {		
@@ -73,7 +95,7 @@ namespace onart {
 				else if (elem->texture) { target0->bind(0, elem->texture); }
 			}
 
-			if (elem->instaceCount > 1) { target0->invoke(elem->mesh0, elem->mesh1, elem->instaceCount, 0, elem->meshRangeCount, elem->meshRangeCount); }
+			if (elem->instanceCount > 1) { target0->invoke(elem->mesh0, elem->mesh1, elem->instanceCount, 0, elem->meshRangeCount, elem->meshRangeCount); }
 			else { target0->invoke(elem->mesh0, elem->meshRangeStart, elem->meshRangeCount); }
 		}
 		YRGraphics::RenderPass* prerequisites[16]{};
@@ -137,7 +159,7 @@ namespace onart {
 				if (elem->textureSet) { target0->bind(0, elem->textureSet); }
 				else if (elem->texture) { target0->bind(0, elem->texture); }
 			}
-			if (elem->instaceCount > 1) { target0->invoke(elem->mesh0, elem->mesh1, elem->instaceCount, 0, elem->meshRangeCount, elem->meshRangeCount); }
+			if (elem->instanceCount > 1) { target0->invoke(elem->mesh0, elem->mesh1, elem->instanceCount, 0, elem->meshRangeCount, elem->meshRangeCount); }
 			else { target0->invoke(elem->mesh0, elem->meshRangeStart, elem->meshRangeCount); }
 		}
 		YRGraphics::RenderPass* prerequisites[16]{};
