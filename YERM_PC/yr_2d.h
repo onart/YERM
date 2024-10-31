@@ -19,14 +19,17 @@
 namespace onart{
     class Transform;
 
+    YRGraphics::pPipeline get2DDefaultPipeline();
+
     class Sprite{
         public:
-            Sprite();
-            void draw(const Transform&);
+            void draw(const class Transform&);
         private:
-            YRGraphics::pTexture texture;
-            ivec2 pivot;
+            Sprite();
+            struct VisualElement* elem;
     };
+
+    void addSprite(class Scene& scene);
 }
 
 #endif
