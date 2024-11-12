@@ -135,7 +135,7 @@ namespace onart {
             AlphaBlend alphaBlend[3];
             float blendConstant[4]{};
             /// @brief 정점 input layout을 생성하기 위한 정점 셰이더 바이트코드입니다. 단, vsByteCodeSize 값이 0으로 주어지는 경우 이 포인터는 "다른 파이프라인"으로 취급되며 해당 파이프라인과 동일한 레이아웃을 사용합니다.
-            void* vsByteCode = nullptr;
+            const void* vsByteCode = nullptr;
             size_t vsByteCodeSize = 0;
         };
 

@@ -733,6 +733,10 @@ namespace onart {
             /// @param pos 바인드할 set 번호
             /// @param tx 바인드할 텍스처
             void bind(uint32_t pos, const pStreamTexture& tx);
+            /// @brief 주어진 텍스처를 바인드합니다. 서브패스 진행중이 아니면 실패합니다.
+            /// @param pos 바인드할 set 번호
+            /// @param tx 바인드할 텍스처
+            void bind(uint32_t pos, const pTextureSet& tx);
             /// @brief 주어진 파이프라인을 주어진 서브패스에 사용하게 합니다. 이 함수는 매번 호출할 필요는 없지만, 해당 서브패스 진행 중에 사용하면 그때부터 바로 새로 주어진 파이프라인을 사용합니다.
             /// @param pipeline 파이프라인
             /// @param subpass 서브패스 번호

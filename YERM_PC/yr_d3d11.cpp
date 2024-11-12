@@ -1658,7 +1658,7 @@ namespace onart {
         ID3D11InputLayout* layout{};
         HRESULT result{};
         if (opts.vsByteCodeSize == 0) {
-            Pipeline* pp = reinterpret_cast<Pipeline*>(opts.vsByteCode);
+            const Pipeline* pp = reinterpret_cast<const Pipeline*>(opts.vsByteCode);
             if (!pp) {
                 LOGWITH("Failed to get vertex input layout");
                 return {};

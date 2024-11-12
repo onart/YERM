@@ -4274,6 +4274,14 @@ namespace onart {
         vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
     }
 
+    void VkMachine::RenderPass2Screen::bind(uint32_t pos, const pTextureSet& tx) {
+        if (currentPass == -1) {
+            LOGWITH("Invalid call: render pass not begun");
+            return;
+        }
+        vkCmdBindDescriptorSets(cbs[currentCB], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines[currentPass]->pipelineLayout, pos, 1, &tx->dset, 0, nullptr);
+    }
+
     void VkMachine::RenderPass2Screen::bind(uint32_t pos, RenderPass* prevPass) {
         if (currentPass == -1) {
             LOGWITH("Invalid call: render pass not begun");

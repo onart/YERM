@@ -1428,7 +1428,11 @@ namespace onart {
         pipelines[subpass] = pipeline;
         if(currentPass == subpass) { 
             glUseProgram(pipeline->program);
-            if (targets[subpass]->color1) {
+            if (is4Screen) {
+                glBlendColor(pipeline->blendConstant[0], pipeline->blendConstant[1], pipeline->blendConstant[2], pipeline->blendConstant[3]);
+                setBlendParam(0, pipeline->blendOperation[0]);
+            }
+            else if (targets[subpass]->color1) {
                 glBlendColor(pipeline->blendConstant[0], pipeline->blendConstant[1], pipeline->blendConstant[2], pipeline->blendConstant[3]);
                 setBlendParam(0, pipeline->blendOperation[0]);
                 if (targets[subpass]->color2) {
@@ -1693,10 +1697,6 @@ namespace onart {
     }
 
     void GLMachine::RenderPass::resize(int width, int height, bool linear) {
-        if (is4Screen) {
-            LOGWITH("RenderPass2Screen cannot be resized with this function. Resize the window for that purpose.");
-            return;
-        }
         if (targets[0] && targets[0]->width == width && targets[0]->height == height) { // equal size
             return;
         }
