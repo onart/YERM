@@ -50,6 +50,7 @@ namespace onart{
     void* Game::hd = nullptr;
     int32_t Game::loopFlag = 0;
     std::function<void()> Game::perFrameProc;
+    std::function<void()> Game::onInit;
 
 #ifndef YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
 #define YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD (BOOST_PLAT_ANDROID)
@@ -160,6 +161,7 @@ namespace onart{
             Audio::init(false);
             emscripten_set_main_loop(mainLoop, 0, 0);
 #else            
+            if (onInit) onInit();
             for (;loopFlag; _frame++) {
                 mainLoop();
             }
@@ -308,5 +310,9 @@ namespace onart{
 
     void Game::setUpdate(std::function<void()> proc) {
         perFrameProc = proc;
+    }
+
+    void Game::setInit(std::function<void()> proc) {
+        onInit = proc;
     }
 }

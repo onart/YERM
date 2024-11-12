@@ -14,7 +14,7 @@
 #include "yr_2d.h"
 
 namespace onart{
-    YRGraphics::pPipeline get2DPipeline() {
+    YRGraphics::pPipeline get2DDefaultPipeline() {
         static int32_t _2dppid = INT32_MIN;
         if (_2dppid == INT32_MIN) {
             _2dppid = YRGraphics::issuePipelineKey();
@@ -43,6 +43,7 @@ namespace onart{
 
             YRGraphics::PipelineInputVertexSpec vspec[2];
             _2dvertex_t::info(vspec, 0, 0);
+            opts.vertexSpec = vspec;
 
             /*
             
@@ -97,8 +98,8 @@ namespace onart{
                 */
                 const uint32_t _2DFS[204] = { 119734787,65536,851979,34,0,131089,1,393227,1,1280527431,1685353262,808793134,0,196622,0,1,458767,4,4,1852399981,0,9,17,196624,4,7,262215,9,30,0,262215,13,34,2,262215,13,33,0,262215,17,30,0,262215,22,6,16,262215,24,6,16,327752,25,0,35,0,327752,25,1,35,80,327752,25,2,35,96,196679,25,2,131091,2,196641,3,2,196630,6,32,262167,7,6,4,262176,8,3,7,262203,8,9,3,589849,10,6,1,0,0,0,1,0,196635,11,10,262176,12,0,11,262203,12,13,0,262167,15,6,2,262176,16,1,15,262203,16,17,1,262165,20,32,0,262187,20,21,5,262172,22,7,21,262187,20,23,2,262172,24,7,23,327710,25,22,7,24,262176,26,9,25,262203,26,27,9,262165,28,32,1,262187,28,29,1,262176,30,9,7,327734,2,4,0,3,131320,5,262205,11,14,13,262205,15,18,17,327767,7,19,14,18,327745,30,31,27,29,262205,7,32,31,327813,7,33,19,32,196670,9,33,65789,65592 };
                 int32_t vshk = YRGraphics::issueShaderKey();
-                int32_t fshk = YRGraphics::issueShaderKey();
                 opts.vertexShader = YRGraphics::createShader(vshk, { _2DVS, sizeof(_2DVS), ShaderStage::VERTEX });
+                int32_t fshk = YRGraphics::issueShaderKey();
                 opts.fragmentShader = YRGraphics::createShader(fshk, { _2DFS, sizeof(_2DFS), ShaderStage::FRAGMENT });
             }
             else if constexpr (YRGraphics::OPENGL_GRAPHICS) {
@@ -113,7 +114,8 @@ layout(std140, binding = 0) uniform PerFrame {
 layout(std140, binding=11) uniform ui{
     mat4 model;
     vec4 texrect;
-    vec4 pad[3];
+    vec4 color;
+    vec4 pad[2];
 };
 void main() {
     gl_Position = vec4(inPosition, 0.0, 1.0) * model * viewProjection;
@@ -126,17 +128,18 @@ layout(location = 0) in vec2 tc;
 out vec4 outColor;
 layout(binding = 0) uniform sampler2D tex;
 layout(std140, binding=11) uniform ui{
-    vec4 pad[5];
+    mat4 model;
+    vec4 texrect;
     vec4 color;
-    vec4 pad2[2];
+    vec4 pad[2];
 };
 void main() {
     outColor = texture(tex, tc) * color;
 }
 )";
                 int32_t vshk = YRGraphics::issueShaderKey();
-                int32_t fshk = YRGraphics::issueShaderKey();
                 opts.vertexShader = YRGraphics::createShader(vshk, { _2DVS, sizeof(_2DVS), ShaderStage::VERTEX });
+                int32_t fshk = YRGraphics::issueShaderKey();
                 opts.fragmentShader = YRGraphics::createShader(fshk, { _2DFS, sizeof(_2DFS), ShaderStage::FRAGMENT });
             }
             else if constexpr (YRGraphics::D3D11_GRAPHICS) {
@@ -184,12 +187,76 @@ void main() {
                 */
                 const uint8_t _2DFS[1020] = { 68,88,66,67,13,109,139,117,65,189,41,209,179,191,96,24,203,213,6,161,1,0,0,0,252,3,0,0,5,0,0,0,52,0,0,0,36,2,0,0,124,2,0,0,176,2,0,0,96,3,0,0,82,68,69,70,232,1,0,0,1,0,0,0,168,0,0,0,3,0,0,0,60,0,0,0,0,5,255,255,0,129,0,0,192,1,0,0,82,68,49,49,60,0,0,0,24,0,0,0,32,0,0,0,40,0,0,0,36,0,0,0,12,0,0,0,0,0,0,0,156,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,160,0,0,0,2,0,0,0,5,0,0,0,4,0,0,0,255,255,255,255,0,0,0,0,1,0,0,0,13,0,0,0,164,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,13,0,0,0,1,0,0,0,1,0,0,0,115,112,114,0,116,101,120,0,95,48,0,171,164,0,0,0,3,0,0,0,192,0,0,0,128,0,0,0,0,0,0,0,0,0,0,0,56,1,0,0,0,0,0,0,80,0,0,0,0,0,0,0,68,1,0,0,0,0,0,0,255,255,255,255,0,0,0,0,255,255,255,255,0,0,0,0,104,1,0,0,80,0,0,0,16,0,0,0,2,0,0,0,112,1,0,0,0,0,0,0,255,255,255,255,0,0,0,0,255,255,255,255,0,0,0,0,148,1,0,0,96,0,0,0,32,0,0,0,0,0,0,0,156,1,0,0,0,0,0,0,255,255,255,255,0,0,0,0,255,255,255,255,0,0,0,0,112,97,100,0,102,108,111,97,116,52,0,171,1,0,3,0,1,0,4,0,5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,60,1,0,0,99,111,108,111,114,0,171,171,1,0,3,0,1,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,60,1,0,0,112,97,100,50,0,171,171,171,1,0,3,0,1,0,4,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,60,1,0,0,77,105,99,114,111,115,111,102,116,32,40,82,41,32,72,76,83,76,32,83,104,97,100,101,114,32,67,111,109,112,105,108,101,114,32,49,48,46,49,0,73,83,71,78,80,0,0,0,2,0,0,0,8,0,0,0,56,0,0,0,0,0,0,0,1,0,0,0,3,0,0,0,0,0,0,0,15,0,0,0,68,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,1,0,0,0,3,3,0,0,83,86,95,80,79,83,73,84,73,79,78,0,84,69,88,67,79,79,82,68,0,171,171,171,79,83,71,78,44,0,0,0,1,0,0,0,8,0,0,0,32,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,15,0,0,0,83,86,95,84,65,82,71,69,84,0,171,171,83,72,69,88,168,0,0,0,80,0,0,0,42,0,0,0,106,8,0,1,89,0,0,4,70,142,32,0,13,0,0,0,6,0,0,0,90,0,0,3,0,96,16,0,0,0,0,0,88,24,0,4,0,112,16,0,0,0,0,0,85,85,0,0,98,16,0,3,50,16,16,0,1,0,0,0,101,0,0,3,242,32,16,0,0,0,0,0,104,0,0,2,1,0,0,0,69,0,0,139,194,0,0,128,67,85,21,0,242,0,16,0,0,0,0,0,70,16,16,0,1,0,0,0,70,126,16,0,0,0,0,0,0,96,16,0,0,0,0,0,56,0,0,8,242,32,16,0,0,0,0,0,70,14,16,0,0,0,0,0,70,142,32,0,13,0,0,0,5,0,0,0,62,0,0,1,83,84,65,84,148,0,0,0,3,0,0,0,1,0,0,0,0,0,0,0,2,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };
                 int32_t vshk = YRGraphics::issueShaderKey();
-                int32_t fshk = YRGraphics::issueShaderKey();
                 opts.vertexShader = YRGraphics::createShader(vshk, { _2DVS, sizeof(_2DVS), ShaderStage::VERTEX });
+                int32_t fshk = YRGraphics::issueShaderKey();
+                opts.fragmentShader = YRGraphics::createShader(fshk, { _2DFS, sizeof(_2DFS), ShaderStage::FRAGMENT });
+                opts.vsByteCode = _2DVS;
+                opts.vsByteCodeSize = sizeof(_2DVS);
+            }
+            else if constexpr (YRGraphics::OPENGLES_GRAPHICS) {
+                const char _2DVS[] = R"(
+#version 300 es
+precision mediump float;
+
+layout(location = 0) in vec2 inPosition;
+layout(location = 1) in vec2 inTc;
+
+out vec2 tc;
+layout(std140) uniform PerFrame {
+    mat4 viewProjection;
+};
+layout(std140) uniform push{
+    mat4 model;
+    vec4 texrect;
+    vec4 color;
+    vec4 pad[2];
+};
+void main() {
+    gl_Position = vec4(inPosition, 0.0, 1.0) * model * viewProjection;
+    tc = inTc * texrect.xy + texrect.zw;
+}
+)";
+                const char _2DFS[] = R"(
+#version 300 es
+precision mediump float;
+
+in vec2 tc;
+out vec4 outColor;
+uniform sampler2D tex;
+layout(std140) uniform push{
+    mat4 model;
+    vec4 texrect;
+    vec4 color;
+    vec4 pad[2];
+};
+void main() {
+    outColor = texture(tex, tc) * color;
+}
+)";
+                R"(#version 300 es
+precision mediump float;
+
+in vec2 tc;
+
+out vec4 outColor;
+uniform sampler2D tex;
+
+uniform push{
+    mat4 aspect;
+    float t;
+};
+
+void main() {
+    outColor = texture(tex, tc);
+}
+)";
+                int32_t vshk = YRGraphics::issueShaderKey();
+                opts.vertexShader = YRGraphics::createShader(vshk, { _2DVS, sizeof(_2DVS), ShaderStage::VERTEX });
+                int32_t fshk = YRGraphics::issueShaderKey();
                 opts.fragmentShader = YRGraphics::createShader(fshk, { _2DFS, sizeof(_2DFS), ShaderStage::FRAGMENT });
             }
             else {
-                static_assert(YRGraphics::VULKAN_GRAPHICS || YRGraphics::D3D11_GRAPHICS || YRGraphics::OPENGL_GRAPHICS, "Not ready");
+                static_assert(YRGraphics::VULKAN_GRAPHICS || YRGraphics::D3D11_GRAPHICS || YRGraphics::OPENGL_GRAPHICS || YRGraphics::OPENGLES_GRAPHICS, "Not ready");
             }
             YRGraphics::createPipeline(_2dppid, opts);
         }

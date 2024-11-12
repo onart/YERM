@@ -62,6 +62,9 @@ namespace onart {
 		struct {
 			YRGraphics::Pipeline* pipeline = nullptr;
 		} state;
+		if (ve.size()) {
+			target0->usePipeline(ve[0]->pipeline.get(), 0);
+		}
 		target0->start();
 		target0->bind(0, perFrameUB.get());
 		for (auto& elem : ve) {
@@ -127,6 +130,9 @@ namespace onart {
 		struct {
 			YRGraphics::Pipeline* pipeline = nullptr;
 		} state;
+		if (ve.size()) {
+			target0->usePipeline(ve[0]->pipeline.get(), 0);
+		}
 		target0->start();
 		target0->bind(0, perFrameUB.get());
 		for (auto& elem : ve) {
@@ -166,6 +172,6 @@ namespace onart {
 		size_t idx = 0;
 		for (auto& pr : pred) { prerequisites[idx++] = pr->target0.get(); }
 
-		target0->execute(0, pred.size(), prerequisites);
+		target0->execute(pred.size(), prerequisites);
 	}
 }

@@ -59,6 +59,8 @@ namespace onart{
             static void readFile(const char* fileName, std::basic_string<uint8_t>* buffer);
             /// @brief 프레임 당 한 번씩 호출되는 함수를 설정합니다. 등록한 함수는 반드시 1개의 스레드에서만 호출됩니다.
             static void setUpdate(std::function<void()>);
+            /// @brief 초기화 함수를 설정합니다.
+            static void setInit(std::function<void()>);
         private:
             static Window* window;
             static YRGraphics* vk;
@@ -67,6 +69,7 @@ namespace onart{
             static uint64_t _tp;
             static void* hd;
             static int32_t loopFlag;
+            static std::function<void()> onInit;
             static std::function<void()> perFrameProc;
         private:
             static void windowResized(int x, int y);

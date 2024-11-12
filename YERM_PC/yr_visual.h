@@ -11,6 +11,9 @@ namespace onart
     class FreeRenderer {
     public:
         virtual void draw(YRGraphics::RenderPass*) {}
+#ifdef YR_USE_VULKAN
+        virtual void draw(YRGraphics::RenderPass2Screen*) {}
+#endif
         variant8 userData;
     };
 
@@ -60,7 +63,7 @@ namespace onart
         VisualElement* createVisualElement();
         void setPoolCapacity(size_t size, bool shrink = false);
         void clear(bool resetElements);
-        std::function<void(decltype(ve)&)> sorter;
+        std::function<void(decltype(ve)&)> sorter{};
     };
 
     class IntermediateScene: public Scene{
