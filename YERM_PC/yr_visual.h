@@ -25,6 +25,7 @@ namespace onart
             YRGraphics::pTexture texture; // todo: plus lighting parameter
             YRGraphics::pTextureSet textureSet;
             YRGraphics::pPipeline pipeline;
+            YRGraphics::pRenderPass rtTexture;
             YRGraphics::pUniformBuffer ub;
             std::vector<uint8_t> pushed; // per object push data
             std::vector<uint8_t> poub; // per object ub data (only for non-vulkan ver)
@@ -80,6 +81,7 @@ namespace onart
         void addPred(IntermediateScene* scene);
         void removePred(IntermediateScene* scene);
         void draw();
+        inline YRGraphics::pRenderPass& getRenderpass() { return target0; }
     private:
         ~IntermediateScene();
         std::set<IntermediateScene*> pred;

@@ -21,17 +21,17 @@ int main(int argc, char* argv[]){
     FinalScene* fscn{};
     game.setInit([&scn, &fscn]() {
         RenderPassCreationOptions opts;
-        opts.width = 800;
-        opts.height = 600;
+        opts.width = 400;
+        opts.height = 300;
         opts.canCopy = false;
         opts.subpassCount = 1;
         scn = new IntermediateScene(opts);
         fscn = new FinalScene(YRGraphics::createRenderPass2Screen(0, 0, {}));
-        //fscn->addPred(scn);
+        fscn->addPred(scn);
         auto ve = fscn->createVisualElement();
         ve->pipeline = get2DDefaultPipeline();
         ve->instanceCount = 1;
-        ve->texture = YRGraphics::createTexture(INT32_MIN, TEX0, sizeof(TEX0), {});
+        ve->rtTexture = scn->getRenderpass();
         using testv_t = YRGraphics::Vertex<float[2], float[2]>;
         float verts[] = { -1,-1,0,0,-1,1,0,1,1,-1,1,0,1,1,1,1 };
         uint16_t inds[]{ 0,1,2,2,1,3 };
@@ -61,9 +61,16 @@ int main(int argc, char* argv[]){
         std::memcpy(ve->pushed.data() + 64, &var, 16);
         var = vec4(1, 1, 1, 1);
         std::memcpy(ve->pushed.data() + 80, &var, 16);
+
+        VisualElement* ve2 = scn->createVisualElement();
+        ve2->pipeline = ve->pipeline;
+        ve2->instanceCount = 1;
+        ve2->mesh0 = ve->mesh0;
+        ve2->pushed = ve->pushed;
+        ve2->texture = YRGraphics::createTexture(INT32_MIN, TEX0, sizeof(TEX0), {});
     });
     game.setUpdate([&scn, &fscn]() {
-        //scn->draw();
+        scn->draw();
         fscn->draw();
     });
     game.start();

@@ -90,11 +90,13 @@ namespace onart {
 			// postponed since vk <-> d3d11, opengl shader resource scheme are different
 			if constexpr (YRGraphics::VULKAN_GRAPHICS) {
 				// If ub bound in this iteration.. reset texture
-				if (elem->textureSet) { target0->bind(PER_OBJ_TEXTURE_DESCRIPTOR_BIND_INDEX, elem->textureSet); }
+				if (elem->rtTexture) { target0->bind(PER_OBJ_TEXTURE_DESCRIPTOR_BIND_INDEX, elem->rtTexture.get()); }
+				else if (elem->textureSet) { target0->bind(PER_OBJ_TEXTURE_DESCRIPTOR_BIND_INDEX, elem->textureSet); }
 				else if (elem->texture) { target0->bind(PER_OBJ_TEXTURE_DESCRIPTOR_BIND_INDEX, elem->texture); }
 			}
 			else {
-				if (elem->textureSet) { target0->bind(0, elem->textureSet); }
+				if (elem->rtTexture) { target0->bind(0, elem->rtTexture.get()); }
+				else if (elem->textureSet) { target0->bind(0, elem->textureSet); }
 				else if (elem->texture) { target0->bind(0, elem->texture); }
 			}
 
@@ -105,7 +107,7 @@ namespace onart {
 		size_t idx = 0;
 		for (auto& pr : pred) { prerequisites[idx++] = pr->target0.get(); }
 
-		target0->execute(succ.size(), pred.size(), prerequisites);
+		target0->execute(succ.size() + succ2.size(), pred.size(), prerequisites);
 	}
 
 	void VisualElement::updatePOUB(const void* data, uint32_t offset, uint32_t size) {
@@ -158,11 +160,13 @@ namespace onart {
 			// postponed since vk <-> d3d11, opengl shader resource scheme are different
 			if constexpr (YRGraphics::VULKAN_GRAPHICS) {
 				// If ub bound in this iteration.. reset texture(set)
-				if (elem->textureSet) { target0->bind(PER_OBJ_TEXTURE_DESCRIPTOR_BIND_INDEX, elem->textureSet); }
+				if (elem->rtTexture) { target0->bind(PER_OBJ_TEXTURE_DESCRIPTOR_BIND_INDEX, elem->rtTexture.get()); }
+				else if (elem->textureSet) { target0->bind(PER_OBJ_TEXTURE_DESCRIPTOR_BIND_INDEX, elem->textureSet); }
 				else if (elem->texture) { target0->bind(PER_OBJ_TEXTURE_DESCRIPTOR_BIND_INDEX, elem->texture); }
 			}
 			else {
-				if (elem->textureSet) { target0->bind(0, elem->textureSet); }
+				if (elem->rtTexture) { target0->bind(0, elem->rtTexture.get()); }
+				else if (elem->textureSet) { target0->bind(0, elem->textureSet); }
 				else if (elem->texture) { target0->bind(0, elem->texture); }
 			}
 			if (elem->instanceCount > 1) { target0->invoke(elem->mesh0, elem->mesh1, elem->instanceCount, 0, elem->meshRangeCount, elem->meshRangeCount); }
