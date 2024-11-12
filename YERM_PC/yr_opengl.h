@@ -59,7 +59,7 @@ namespace onart {
             static int32_t currentWindowContext;
             /// @brief 스레드에서 최근에 호출된 함수의 실패 요인을 일부 확인할 수 있습니다. Vulkan 호출에 의한 실패가 아닌 경우 MAX_ENUM 값이 들어갑니다.
             static thread_local unsigned reason;
-            constexpr static bool VULKAN_GRAPHICS = false, D3D12_GRAPHICS = false, D3D11_GRAPHICS = false, OPENGL_GRAPHICS = true, OPENGLES_GRAPHICS = false, METAL_GRAPHICS = false;
+            constexpr static bool VULKAN_GRAPHICS = false, D3D12_GRAPHICS = false, D3D11_GRAPHICS = false, OPENGL_GRAPHICS = true, OPENGLES_GRAPHICS = false, METAL_GRAPHICS = false, WEBGL_GRAPHICS = false;
             /// @brief OpenGL 오류 콜백을 사용하려면 이것을 활성화해 주세요.
             constexpr static bool USE_OPENGL_DEBUG = true;
             struct WindowSystem;

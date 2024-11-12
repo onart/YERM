@@ -70,7 +70,7 @@ namespace onart {
         class LowLevel;
         /// @brief 스레드에서 최근에 호출된 함수의 실패 요인을 일부 확인할 수 있습니다. D3D11 호출에 의한 실패가 아닌 경우 MAX_ENUM 값이 들어갑니다.
         static thread_local HRESULT reason;
-        constexpr static bool VULKAN_GRAPHICS = false, D3D12_GRAPHICS = false, D3D11_GRAPHICS = true, OPENGL_GRAPHICS = false, OPENGLES_GRAPHICS = false, METAL_GRAPHICS = false;
+        constexpr static bool VULKAN_GRAPHICS = false, D3D12_GRAPHICS = false, D3D11_GRAPHICS = true, OPENGL_GRAPHICS = false, OPENGLES_GRAPHICS = false, METAL_GRAPHICS = false, WEBGL_GRAPHICS = false;
         /// @brief D3D11 디버그 레이어를 사용하려면 이것을 활성화해 주세요.
         constexpr static bool USE_D3D11_DEBUG = true;
         /// @brief 그리기 대상입니다. 텍스처로 사용하거나 메모리 맵으로 데이터에 접근할 수 있습니다. 

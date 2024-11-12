@@ -156,12 +156,12 @@ namespace onart{
                 return 1;
             }
             loopFlag = 1;
+            if (onInit) onInit();
 #ifdef EMSCRIPTEN
             window->waitEvents();
             Audio::init(false);
             emscripten_set_main_loop(mainLoop, 0, 0);
 #else            
-            if (onInit) onInit();
             for (;loopFlag; _frame++) {
                 mainLoop();
             }

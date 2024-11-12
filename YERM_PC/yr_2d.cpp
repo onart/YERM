@@ -193,9 +193,8 @@ void main() {
                 opts.vsByteCode = _2DVS;
                 opts.vsByteCodeSize = sizeof(_2DVS);
             }
-            else if constexpr (YRGraphics::OPENGLES_GRAPHICS) {
-                const char _2DVS[] = R"(
-#version 300 es
+            else if constexpr (YRGraphics::OPENGLES_GRAPHICS || YRGraphics::WEBGL_GRAPHICS) {
+                const char _2DVS[] = R"(#version 300 es
 precision mediump float;
 
 layout(location = 0) in vec2 inPosition;
@@ -216,8 +215,7 @@ void main() {
     tc = inTc * texrect.xy + texrect.zw;
 }
 )";
-                const char _2DFS[] = R"(
-#version 300 es
+                const char _2DFS[] = R"(#version 300 es
 precision mediump float;
 
 in vec2 tc;
@@ -233,30 +231,13 @@ void main() {
     outColor = texture(tex, tc) * color;
 }
 )";
-                R"(#version 300 es
-precision mediump float;
-
-in vec2 tc;
-
-out vec4 outColor;
-uniform sampler2D tex;
-
-uniform push{
-    mat4 aspect;
-    float t;
-};
-
-void main() {
-    outColor = texture(tex, tc);
-}
-)";
                 int32_t vshk = YRGraphics::issueShaderKey();
                 opts.vertexShader = YRGraphics::createShader(vshk, { _2DVS, sizeof(_2DVS), ShaderStage::VERTEX });
                 int32_t fshk = YRGraphics::issueShaderKey();
                 opts.fragmentShader = YRGraphics::createShader(fshk, { _2DFS, sizeof(_2DFS), ShaderStage::FRAGMENT });
             }
             else {
-                static_assert(YRGraphics::VULKAN_GRAPHICS || YRGraphics::D3D11_GRAPHICS || YRGraphics::OPENGL_GRAPHICS || YRGraphics::OPENGLES_GRAPHICS, "Not ready");
+                static_assert(YRGraphics::VULKAN_GRAPHICS || YRGraphics::D3D11_GRAPHICS || YRGraphics::OPENGL_GRAPHICS || YRGraphics::OPENGLES_GRAPHICS || YRGraphics::WEBGL_GRAPHICS, "Not ready");
             }
             YRGraphics::createPipeline(_2dppid, opts);
         }

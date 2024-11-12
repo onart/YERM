@@ -41,8 +41,14 @@ namespace onart
                 textureSet = {};
                 pipeline = {};
                 ub = {};
-                pushed.swap(std::vector<uint8_t>{});
-                poub.swap(std::vector<uint8_t>{});
+                {
+                    std::vector<uint8_t> hollow;
+                    pushed.swap(hollow);
+                }
+                {
+                    std::vector<uint8_t> hollow;
+                    poub.swap(hollow);
+                }
                 fr = {};
                 instanceCount = 1;
                 meshRangeStart = 0;
@@ -78,7 +84,7 @@ namespace onart
         ~IntermediateScene();
         std::set<IntermediateScene*> pred;
         std::set<IntermediateScene*> succ;
-        std::set<FinalScene*> succ2;
+        std::set<class FinalScene*> succ2;
         YRGraphics::pRenderPass target0;
     };
 
