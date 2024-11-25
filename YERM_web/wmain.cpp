@@ -6,6 +6,8 @@
 using namespace onart;
 
 FinalScene* fscn{};
+pVisualElement ve;
+
 int main(){
   Game game;
     IntermediateScene* scn{};
@@ -19,7 +21,8 @@ int main(){
         scn = new IntermediateScene(opts);
         fscn = new FinalScene(YRGraphics::createRenderPass2Screen(0, 0, {}));
         //fscn->addPred(scn);
-        auto ve = fscn->createVisualElement();
+        ve = VisualElement::create();
+        fscn->insert(ve);
         ve->pipeline = get2DDefaultPipeline();
         ve->instanceCount = 1;
         ve->texture = YRGraphics::createTexture(INT32_MIN, TEX0, sizeof(TEX0), {});
