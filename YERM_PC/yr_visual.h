@@ -1,7 +1,6 @@
 #ifndef __YR_VISUAL_H__
 #define __YR_VISUAL_H__
 
-#include "yr_math.hpp"
 #include "yr_graphics.h"
 #include <set>
 
@@ -34,6 +33,7 @@ namespace onart
             unsigned meshRangeStart = 0;
             unsigned meshRangeCount = 0;
             int ubIndex = -1; // dynamic ub index
+            static std::shared_ptr<VisualElement> create();
             void updatePOUB(const void* data, uint32_t offsetByte, uint32_t size);
             inline void reset() {
                 mesh0 = {};
@@ -56,21 +56,27 @@ namespace onart
                 meshRangeCount = 0;
                 ubIndex = -1;
             }
+            inline uint16_t getSceneRefCount() const { return sceneRefs; }
         protected:
             ~VisualElement() = default;
+        private:
+            uint16_t sceneRefs = 0;
     };
+
+    using pVisualElement = std::shared_ptr<VisualElement>;
 
     class Scene{
     protected:
-        std::vector<std::shared_ptr<VisualElement>> vePool;
+        template<class RP>
+        void draw(RP&);
         std::vector<std::shared_ptr<VisualElement>> ve;
         size_t poolSize = 0;
     public:
         YRGraphics::pUniformBuffer perFrameUB;
-        VisualElement* createVisualElement();
-        void setPoolCapacity(size_t size, bool shrink = false);
-        void clear(bool resetElements);
+        void insert(const std::shared_ptr<VisualElement>&);
+        void clear();
         std::function<void(decltype(ve)&)> sorter{};
+        ~Scene();
     };
 
     class IntermediateScene: public Scene{
@@ -97,6 +103,7 @@ namespace onart
         void removePred(IntermediateScene* scene);
         void draw();
     private:
+        ~FinalScene();
         std::set<IntermediateScene*> pred;
         YRGraphics::pRenderPass2Screen target0;
     };

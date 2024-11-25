@@ -1,5 +1,4 @@
 #include "logger.hpp"
-#include "yr_math.hpp"
 #include "yr_game.h"
 #include "yr_graphics.h"
 #include "yr_gameapp.h"
@@ -19,7 +18,8 @@ int main(int argc, char* argv[]){
     Game game;
     IntermediateScene* scn{};
     FinalScene* fscn{};
-    game.setInit([&scn, &fscn]() {
+    pVisualElement ve, ve2;
+    game.setInit([&scn, &fscn, &ve, &ve2]() {
         RenderPassCreationOptions opts;
         opts.width = 400;
         opts.height = 300;
@@ -28,7 +28,8 @@ int main(int argc, char* argv[]){
         scn = new IntermediateScene(opts);
         fscn = new FinalScene(YRGraphics::createRenderPass2Screen(0, 0, {}));
         fscn->addPred(scn);
-        auto ve = fscn->createVisualElement();
+        ve = VisualElement::create();
+        fscn->insert(ve);
         ve->pipeline = get2DDefaultPipeline();
         ve->instanceCount = 1;
         ve->rtTexture = scn->getRenderpass();
@@ -62,7 +63,8 @@ int main(int argc, char* argv[]){
         var = vec4(1, 1, 1, 1);
         std::memcpy(ve->pushed.data() + 80, &var, 16);
 
-        VisualElement* ve2 = scn->createVisualElement();
+        ve2 = VisualElement::create();
+        scn->insert(ve2);
         ve2->pipeline = ve->pipeline;
         ve2->instanceCount = 1;
         ve2->mesh0 = ve->mesh0;
