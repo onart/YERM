@@ -337,7 +337,9 @@ namespace onart {
         glBindBuffer(GL_ARRAY_BUFFER, 0);
 
         struct publicmesh :public Mesh { publicmesh(unsigned _1, unsigned _2, size_t _3, size_t _4, bool _5) :Mesh(_1, _2, _3, _4, _5) {} };
-        return singleton->meshes[key] = std::make_shared<publicmesh>(vb, ib, opts.vertexCount, opts.indexCount, opts.singleIndexSize == 4);
+        pMesh ret = std::make_shared<publicmesh>(vb, ib, opts.vertexCount, opts.indexCount, opts.singleIndexSize == 4);
+        if (key == INT32_MIN) return ret;
+        return singleton->meshes[key] = ret;
     }
 
     GLMachine::RenderTarget* GLMachine::createRenderTarget2D(int width, int height, RenderTargetType type, bool useDepthInput, bool linear) {
@@ -1629,8 +1631,6 @@ namespace onart {
              glBindBuffer(GL_ARRAY_BUFFER, mesh->vb);
              glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->ib);
              Pipeline* p = pipelines[currentPass];
-             pipelines[currentPass]->vspec;
-             pipelines[currentPass]->ispec;
 
              uint32_t location = 0;
              for (; location < p->vspec.size(); location++) {
@@ -1644,12 +1644,11 @@ namespace onart {
                      glVertexAttribDivisor(location, 1);
                  }
              }
+             glBindVertexArray(0);
              glBindBuffer(GL_ARRAY_BUFFER, 0);
              glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
          }
-         else {
-             glBindVertexArray(mesh->vao);
-         }
+         glBindVertexArray(mesh->vao);
          if(mesh->icount) {
              if((uint64_t)start + count > mesh->icount){
                  LOGWITH("Invalid call: this mesh has",mesh->icount,"indices but",start,"~",(uint64_t)start+count,"requested to be drawn");

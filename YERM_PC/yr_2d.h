@@ -20,6 +20,7 @@ namespace onart{
     class Transform;
 
     YRGraphics::pPipeline get2DDefaultPipeline();
+    YRGraphics::pPipeline get2DInstancedPipeline();
 
     class Sprite{
         public:

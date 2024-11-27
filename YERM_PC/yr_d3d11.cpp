@@ -1649,6 +1649,7 @@ namespace onart {
         if (auto ret = getPipeline(key)) { return ret; }
         std::vector<PipelineInputVertexSpec> inputLayoutInfo(opts.vertexAttributeCount + opts.instanceAttributeCount);
         std::memcpy(inputLayoutInfo.data(), opts.vertexSpec, opts.vertexAttributeCount * sizeof(PipelineInputVertexSpec));
+        std::memcpy(inputLayoutInfo.data() + opts.vertexAttributeCount, opts.instanceSpec, opts.instanceAttributeCount * sizeof(PipelineInputVertexSpec));
         ID3D11InputLayout* layout{};
         HRESULT result{};
         if (opts.vsByteCodeSize == 0) {

@@ -734,7 +734,7 @@ namespace onart {
         template<unsigned LOCATION = 0>
         inline static constexpr void info(D3D11_INPUT_ELEMENT_DESC* vattrs, uint32_t binding = 0, uint32_t locationPlus = 0) {
             using A_TYPE = std::remove_reference_t<decltype(Vertex().get<LOCATION>())>;
-            vattrs->SemanticName = VS_SEMANTIC[LOCATION];
+            vattrs->SemanticName = VS_SEMANTIC[LOCATION + locationPlus];
             vattrs->SemanticIndex = 0;
             vattrs->InputSlot = binding;
             vattrs->InputSlotClass = locationPlus ? D3D11_INPUT_PER_INSTANCE_DATA : D3D11_INPUT_PER_VERTEX_DATA;

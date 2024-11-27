@@ -77,7 +77,7 @@ namespace onart {
 				else if (elem->texture) { target0->bind(0, elem->texture); }
 			}
 
-			if (elem->instanceCount > 1) { target0->invoke(elem->mesh0, elem->mesh1, elem->instanceCount, 0, elem->meshRangeCount, elem->meshRangeCount); }
+			if (elem->mesh1) { target0->invoke(elem->mesh0, elem->mesh1, elem->instanceCount, 0, elem->meshRangeCount, elem->meshRangeCount); }
 			else { target0->invoke(elem->mesh0, elem->meshRangeStart, elem->meshRangeCount); }
 		}
 	}

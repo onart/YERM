@@ -65,10 +65,23 @@ int main(int argc, char* argv[]){
 
         ve2 = VisualElement::create();
         scn->insert(ve2);
-        ve2->pipeline = ve->pipeline;
+        ve2->pipeline = get2DInstancedPipeline();
         ve2->instanceCount = 1;
         ve2->mesh0 = ve->mesh0;
-        ve2->pushed = ve->pushed;
+        ve2->pushed.resize(128);
+        std::memcpy(ve2->pushed.data(), &var, 16);
+        meshOpts.vertexCount = 1;
+        meshOpts.fixed = false;
+        meshOpts.indexCount = 0;
+        meshOpts.singleVertexSize = 64;
+        meshOpts.indices = nullptr;
+        mat4 iden2;
+        iden2._41 = 1.0f;
+        iden2._42 = 1.0f;
+        iden2._43 = 0.0f;
+        iden2._44 = 0.0f;
+        meshOpts.vertices = &iden2;
+        ve2->mesh1 = YRGraphics::createMesh(INT32_MIN, meshOpts);
         ve2->texture = YRGraphics::createTexture(INT32_MIN, TEX0, sizeof(TEX0), {});
     });
     game.setUpdate([&scn, &fscn]() {
