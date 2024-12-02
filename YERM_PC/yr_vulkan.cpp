@@ -3203,7 +3203,7 @@ namespace onart {
         VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
         bool needSemaphore = !wait(0);
-        VkSemaphore smp = needSemaphore ? getSemaphore4Wait() : nullptr;
+        VkSemaphore smp = needSemaphore ? getSemaphore4Wait() : VkSemaphore{};
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1;
@@ -3409,7 +3409,7 @@ namespace onart {
         VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
         bool needSemaphore = !wait(0);
-        VkSemaphore smp = needSemaphore ? getSemaphore4Wait() : nullptr;
+        VkSemaphore smp = needSemaphore ? getSemaphore4Wait() : VkSemaphore{};
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1;
@@ -4083,7 +4083,7 @@ namespace onart {
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &cb;
-        VkSemaphore smp = other ? other->getSemaphore4Wait() : nullptr; // todo: 나머지처럼 여러 개 기다릴 수 있게 변경
+        VkSemaphore smp = other ? other->getSemaphore4Wait() : VkSemaphore{}; // todo: 나머지처럼 여러 개 기다릴 수 있게 변경
         if(other){
             submitInfo.waitSemaphoreCount = 1;
             submitInfo.pWaitSemaphores = &smp;

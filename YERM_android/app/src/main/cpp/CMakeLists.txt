@@ -58,6 +58,8 @@ add_library( # Sets the name of the library.
              ../../../../../YERM_PC/yr_game.cpp
              ../../../../../YERM_PC/yr_visual.h
              ../../../../../YERM_PC/yr_visual.cpp
+             ../../../../../YERM_PC/yr_2d.h
+             ../../../../../YERM_PC/yr_2d.cpp
              ${YERM_GRAPHICS}
              ../../../../../YERM_PC/yr_input.h
              ../../../../../YERM_PC/yr_input.cpp

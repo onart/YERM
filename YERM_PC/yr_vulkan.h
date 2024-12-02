@@ -31,6 +31,7 @@
 #include <queue>
 #include <memory>
 #include <map>
+#include <list>
 
 #define VERTEX_FLOAT_TYPES float, vec2, vec3, vec4, float[1], float[2], float[3], float[4]
 #define VERTEX_DOUBLE_TYPES double, double[1], double[2], double[3], double[4]
@@ -109,9 +110,9 @@ namespace onart {
                 uint32_t subpassIndex = 0;
                 VkShaderModule vertexShader;
                 VkShaderModule fragmentShader;
-                VkShaderModule geometryShader = nullptr;
-                VkShaderModule tessellationControlShader = nullptr;
-                VkShaderModule tessellationEvaluationShader = nullptr;
+                VkShaderModule geometryShader = {};
+                VkShaderModule tessellationControlShader = {};
+                VkShaderModule tessellationEvaluationShader = {};
                 PipelineLayoutOptions shaderResources;
                 DepthStencilTesting depthStencil;
                 AlphaBlend alphaBlend[3];
