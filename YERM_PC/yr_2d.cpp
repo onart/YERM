@@ -444,20 +444,27 @@ void main() {
                 const char _2DVS[] = R"(#version 300 es
 precision mediump float;
 
+// per vertex (binding 0)
 layout(location = 0) in vec2 inPosition;
 layout(location = 1) in vec2 inTc;
 
-out vec2 tc;
-layout(std140) uniform PerFrame {
+// per instance (binding 1)
+layout(location = 2) in vec4 col0;
+layout(location = 3) in vec4 col1;
+layout(location = 4) in vec4 col2;
+layout(location = 5) in vec4 texrect;
+
+layout(location = 0) out vec2 tc;
+
+layout(std140, binding = 0) uniform PerFrame {
     mat4 viewProjection;
 };
 layout(std140) uniform push{
-    mat4 model;
-    vec4 texrect;
     vec4 color;
-    vec4 pad[2];
+    vec4 pad[7];
 };
 void main() {
+    mat4 model = mat4(col0, col1, col2, vec4(0.0, 0.0, 0.0, 1.0));
     gl_Position = vec4(inPosition, 0.0, 1.0) * model * viewProjection;
     tc = inTc * texrect.xy + texrect.zw;
 }
@@ -469,10 +476,8 @@ in vec2 tc;
 out vec4 outColor;
 uniform sampler2D tex;
 layout(std140) uniform push{
-    mat4 model;
-    vec4 texrect;
     vec4 color;
-    vec4 pad[2];
+    vec4 pad[7];
 };
 void main() {
     outColor = texture(tex, tc) * color;

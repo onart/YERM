@@ -1677,12 +1677,11 @@ namespace onart
                      glVertexAttribDivisor(location, 1);
                  }
              }
+             glBindVertexArray(0);
              glBindBuffer(GL_ARRAY_BUFFER, 0);
              glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
          }
-         else {
-             glBindVertexArray(mesh->vao);
-         }
+         glBindVertexArray(mesh->vao);
          if(mesh->icount) {
              if((uint64_t)start + count > mesh->icount){
                  LOGWITH("Invalid call: this mesh has",mesh->icount,"indices but",start,"~",(uint64_t)start+count,"requested to be drawn");
