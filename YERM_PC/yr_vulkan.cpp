@@ -355,6 +355,7 @@ namespace onart {
     void VkMachine::__reaper::reap() {
         if (!empty) {
             vkDeviceWaitIdle(singleton->device);
+            singleton->flushStagingBuffers(0);
             for (auto& dset : descriptorsets) { vkFreeDescriptorSets(singleton->device, dset.second, 1, &dset.first); } // 동일 풀에 대한 것은 한 번에 해제하도록 최적화 가능
             for (VkImageView v : views) { vkDestroyImageView(singleton->device, v, nullptr); }
             for (auto& img : images) { vmaDestroyImage(singleton->allocator, img.first, img.second); }
@@ -968,6 +969,90 @@ namespace onart {
             (*it)->free();
             delete *it;
             images.erase(it);
+        }
+    }
+
+    void VkMachine::flushStagingBuffers(uint64_t wait) {
+        while (usingStagingBuffers.size()) {
+            StagingBuffer* sb = usingStagingBuffers.front();
+            auto t1 = (wait == 0 || wait == UINT64_MAX) ? std::chrono::steady_clock::now() : decltype(std::chrono::steady_clock::now())();
+            if (gCommandBuffers[sb->mcb.cbIndex]->wait(sb->mcb.serialNumber, wait)) {
+                usingStagingBuffers.pop_front();
+                delete sb;
+                uint64_t dtns = (std::chrono::steady_clock::now() - t1).count();
+                if (dtns >= wait) wait = 0;
+                else if (wait != UINT64_MAX) wait -= dtns;
+            }
+            else {
+                break;
+            }
+        }
+    }
+    
+    void VkMachine::updateBuffer(VkBuffer dst, const BufferRangeSet& range, bool wait) {
+        // 1. 이전 복사명령 완료시 버퍼 놓아주기
+        // 2. 복사
+        // 3. 명령버퍼 + 배리어 제출
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        bufferInfo.size = range.sourceData.size();
+        VmaAllocationCreateInfo allocInfo{};
+        allocInfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO;
+        allocInfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+
+        StagingBuffer* sb = new StagingBuffer;
+        reason = vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &sb->buffer, &sb->allocation, nullptr);
+        if (reason != VK_SUCCESS) {
+            LOGWITH("Failed to create staging buffer");
+            return;
+        }
+        void* mmap{};
+        reason = vmaMapMemory(allocator, sb->allocation, &mmap);
+        if (reason != VK_SUCCESS) {
+            LOGWITH("Failed to map memory to staging buffer");
+            return;
+        }
+        std::memcpy(mmap, range.sourceData.data(), range.sourceData.size());
+        vmaInvalidateAllocation(singleton->allocator, sb->allocation, 0, VK_WHOLE_SIZE);
+        vmaFlushAllocation(singleton->allocator, sb->allocation, 0, VK_WHOLE_SIZE);
+        vmaUnmapMemory(allocator, sb->allocation);
+
+        cbindex_t cbi = allocateRenderPassCommandBuffer();
+        sb->mcb.cbIndex = cbi;
+        sb->mcb.serialNumber = singleton->gCommandBuffers[cbi]->resetCount;
+        VkCommandBufferBeginInfo cbBegin{};
+        cbBegin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        vkBeginCommandBuffer(singleton->gCommandBuffers[cbi]->commandBuffer, &cbBegin);
+
+        VkBufferMemoryBarrier bufB{};
+        bufB.buffer = dst;
+        bufB.srcAccessMask = VK_ACCESS_UNIFORM_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+        bufB.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        bufB.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        bufB.offset = 0;
+        bufB.size = VK_WHOLE_SIZE; // 과연 앞으로 여러 개의 offset과 size가 필요할지?
+        bufB.srcQueueFamilyIndex = singleton->physicalDevice.gq;
+        bufB.dstQueueFamilyIndex = singleton->physicalDevice.gq;
+        vkCmdPipelineBarrier(gCommandBuffers[cbi]->commandBuffer, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 1, &bufB, 0, nullptr);
+        vkCmdCopyBuffer(gCommandBuffers[cbi]->commandBuffer, sb->buffer, dst, range.ranges.size(), range.ranges.data());
+        std::swap(bufB.srcAccessMask, bufB.dstAccessMask);
+        vkCmdPipelineBarrier(gCommandBuffers[cbi]->commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 1, &bufB, 0, nullptr);
+        vkEndCommandBuffer(gCommandBuffers[cbi]->commandBuffer);
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &gCommandBuffers[cbi]->commandBuffer;
+        submitInfo.waitSemaphoreCount = 0;
+        singleton->qSubmit(true, 1, &submitInfo, gCommandBuffers[cbi]->fence);
+
+        if (wait) {
+            gCommandBuffers[cbi]->wait(sb->mcb.serialNumber);
+            delete sb;
+        }
+        else {
+            usingStagingBuffers.push_back(sb);
         }
     }
 
@@ -1867,7 +1952,6 @@ namespace onart {
         VkDescriptorSet dset;
         VkBuffer buffer;
         VmaAllocation alloc;
-        void* mmap;
 
         if(opts.count > 1){
             individual = (opts.size + (uint32_t)singleton->physicalDevice.minUBOffsetAlignment - 1);
@@ -1885,13 +1969,12 @@ namespace onart {
 
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         bufferInfo.size = individual * opts.count;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
         VmaAllocationCreateInfo bainfo{};
         bainfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO;
-        bainfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 
         if(opts.count > 1){
             reason = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
@@ -1901,11 +1984,6 @@ namespace onart {
         }
         if(reason != VK_SUCCESS){
             LOGWITH("Failed to create buffer:", reason,resultAsString(reason));
-            return nullptr;
-        }
-
-        if((reason = vmaMapMemory(singleton->allocator, alloc, &mmap)) != VK_SUCCESS){
-            LOGWITH("Failed to map memory:", reason,resultAsString(reason));
             return nullptr;
         }
 
@@ -1922,7 +2000,7 @@ namespace onart {
         wr.pBufferInfo = &dsNBuffer;
         wr.dstSet = dset;
         vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
-        ret = std::make_shared<shp_t<UniformBuffer>>(opts.count, individual, buffer, layout, dset, alloc, mmap);
+        ret = std::make_shared<shp_t<UniformBuffer>>(opts.count, individual, buffer, layout, dset, alloc);
         if (name == INT32_MIN) { return ret; }
         return singleton->uniformBuffers[name] = std::move(ret);
     }
@@ -4593,9 +4671,8 @@ namespace onart {
         return vkWaitForFences(singleton->device, 1, &fences[recently], VK_FALSE, timeout) == VK_SUCCESS; // VK_TIMEOUT이나 VK_ERROR_DEVICE_LOST
     }
 
-    VkMachine::UniformBuffer::UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc, void* mmap)
-    :length(length), individual(individual), buffer(buffer), layout(layout), dset(dset), alloc(alloc), isDynamic(length > 1), mmap(mmap) {
-        staged.resize(individual * length);
+    VkMachine::UniformBuffer::UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc)
+    :length(length), individual(individual), buffer(buffer), layout(layout), dset(dset), alloc(alloc), isDynamic(length > 1) {
         std::vector<uint16_t> inds;
         inds.reserve(length);
         indices = std::move(decltype(indices)(std::greater<uint16_t>(), std::move(inds)));
@@ -4618,37 +4695,32 @@ namespace onart {
     }
 
     void VkMachine::UniformBuffer::update(const void* input, uint32_t index, uint32_t offset, uint32_t size){
-        std::memcpy(&staged[index * individual + offset], input, size);
-        shouldSync = true;
+        staged.appendData(input, size, index * individual + offset);
     }
 
-    void VkMachine::UniformBuffer::sync(){
-        if(!shouldSync) return;
-        std::memcpy(mmap, staged.data(), staged.size());
-        vmaInvalidateAllocation(singleton->allocator, alloc, 0, VK_WHOLE_SIZE);
-        vmaFlushAllocation(singleton->allocator, alloc, 0, VK_WHOLE_SIZE);
-        shouldSync = false;
+    void VkMachine::UniformBuffer::sync(bool wait) {
+        if (staged.sourceData.size() == 0) return;
+        singleton->updateBuffer(buffer, staged, wait);
+        staged.clear();
     }
 
     void VkMachine::UniformBuffer::resize(uint32_t size) {
         if(!isDynamic || size == length) return;
-        shouldSync = true;
-        staged.resize(individual * size);
+        sync(true);
         if(size > length) {
             for(uint32_t i = length; i < size; i++){
                 indices.push(i);
             }
         }
-        length = size;
-        vmaUnmapMemory(singleton->allocator, alloc);
-        vmaDestroyBuffer(singleton->allocator, buffer, alloc); // 이것 때문에 렌더링과 동시에 진행 불가능
         buffer = VK_NULL_HANDLE;
-        mmap = nullptr;
         alloc = nullptr;
+
+        VkBuffer newBuffer{};
+        VmaAllocation newAlloc{};
 
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         bufferInfo.size = individual * size;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -4656,11 +4728,42 @@ namespace onart {
         bainfo.usage = VmaMemoryUsage::VMA_MEMORY_USAGE_AUTO;
         bainfo.flags = VmaAllocationCreateFlagBits::VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 
-        reason = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &buffer, &alloc, nullptr);
+        reason = vmaCreateBufferWithAlignment(singleton->allocator, &bufferInfo, &bainfo, singleton->physicalDevice.minUBOffsetAlignment, &newBuffer, &newAlloc, nullptr);
         if(reason != VK_SUCCESS){
             LOGWITH("Failed to create VkBuffer:", reason,resultAsString(reason));
             return;
         }
+
+        cbindex_t cbi = singleton->allocateRenderPassCommandBuffer();
+        CommandBuffer* cb = singleton->gCommandBuffers[cbi];
+        {
+            VkCommandBufferBeginInfo cbBegin{};
+            cbBegin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            vkBeginCommandBuffer(cb->commandBuffer, &cbBegin);
+        }
+
+        {
+            VkBufferCopy region{};
+            region.dstOffset = 0;
+            region.srcOffset = 0;
+            region.size = individual * std::min(length, size);
+            vkCmdCopyBuffer(cb->commandBuffer, buffer, newBuffer, 1, &region);
+        }
+        vkEndCommandBuffer(cb->commandBuffer);
+
+        {
+            VkSubmitInfo info{};
+            info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            info.commandBufferCount = 1;
+            info.pCommandBuffers = &cb->commandBuffer;
+            singleton->qSubmit(true, 1, &info, cb->fence);
+        }
+
+        vkDeviceWaitIdle(singleton->device); // 버퍼객체 제거 동기화
+        cb->reset();
+        length = size;
+        vmaUnmapMemory(singleton->allocator, alloc);
+        vmaDestroyBuffer(singleton->allocator, buffer, alloc); // 이것 때문에 렌더링과 동시에 진행 불가능
 
         VkDescriptorBufferInfo dsNBuffer{};
         dsNBuffer.buffer = buffer;
@@ -4674,11 +4777,6 @@ namespace onart {
         wr.dstBinding = 0;
         wr.pBufferInfo = &dsNBuffer;
         vkUpdateDescriptorSets(singleton->device, 1, &wr, 0, nullptr);
-
-        if((reason = vmaMapMemory(singleton->allocator, alloc, &mmap)) != VK_SUCCESS){
-            LOGWITH("Failed to map memory:", reason,resultAsString(reason));
-            return;
-        }
     }
 
     VkMachine::UniformBuffer::~UniformBuffer(){
@@ -4713,6 +4811,48 @@ namespace onart {
             vkDestroySemaphore(singleton->device, semaphore, nullptr);
         }
         vkFreeCommandBuffers(singleton->device, isGQ ? singleton->gCommandPool : singleton->tCommandPool, 1, &commandBuffer);
+    }
+
+    void VkMachine::BufferRangeSet::appendData(const void* src, size_t size, size_t dstOffset) {
+        if (!ranges.empty()) {
+            VkBufferCopy& range = ranges.back();
+            if (range.dstOffset + range.size == dstOffset) {
+                range.size += size;
+            }
+            else {
+                VkBufferCopy& newRange = ranges.emplace_back();
+                newRange.srcOffset = sourceData.size();
+                newRange.dstOffset = dstOffset;
+                newRange.size = size;
+            }
+        }
+        else {
+            VkBufferCopy& newRange = ranges.emplace_back();
+            newRange.srcOffset = sourceData.size();
+            newRange.dstOffset = dstOffset;
+            newRange.size = size;
+        }
+
+        size_t orgSize = sourceData.size();
+        sourceData.resize(orgSize + size);
+        uint8_t* dst = sourceData.data() + orgSize;
+        std::memcpy(dst, src, size);
+    }
+
+    void VkMachine::BufferRangeSet::clear() {
+        ranges.clear();
+        sourceData.clear();
+    }
+
+    void VkMachine::BufferRangeSet::freeMemory() {
+        decltype(ranges) r;
+        decltype(sourceData) s;
+        ranges.swap(r);
+        sourceData.swap(s);
+    }
+
+    VkMachine::StagingBuffer::~StagingBuffer() {
+        vmaDestroyBuffer(singleton->allocator, buffer, allocation);
     }
 
     VkMachine::Pipeline::~Pipeline() {

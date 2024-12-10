@@ -362,11 +362,17 @@ namespace onart {
                 inline void operator=(_managedCommandBuffer&& rhs) { serialNumber = rhs.serialNumber; cbIndex = rhs.cbIndex; rhs.serialNumber = ~0U; }
                 ~_managedCommandBuffer();
             };
+            class StagingBuffer;
+            struct BufferRangeSet;
             std::vector<CommandBuffer*> gCommandBuffers;
             std::vector<CommandBuffer*> tCommandBuffers;
             std::vector<cbindex_t> idleGCommandBuffers;
             std::vector<cbindex_t> idleTCommandBuffers;
+            std::deque<StagingBuffer*> usingStagingBuffers;
             std::vector<VkSemaphore> semaphorePool;
+
+            void updateBuffer(VkBuffer dst, const BufferRangeSet& range, bool wait = false);
+            void flushStagingBuffers(uint64_t wait);
             
             /// @brief 렌더패스용 커맨드 버퍼 래퍼 객체 인덱스를 할당합니다.
             cbindex_t allocateRenderPassCommandBuffer();
@@ -429,6 +435,25 @@ namespace onart {
         std::vector<VkSemaphore> semaphores;
         unsigned semaphoreHead = 0;
         bool isGQ;
+    };
+
+    // Vulkan Buffer Copy requires array; This class has no validation checks
+    struct VkMachine::BufferRangeSet {
+        std::vector<VkBufferCopy> ranges;
+        std::vector<uint8_t> sourceData;
+        void appendData(const void* src, size_t size, size_t dstOffset);
+        void clear();
+        void freeMemory();
+    };
+
+    class VkMachine::StagingBuffer {
+        friend class VkMachine;
+    public:
+        ~StagingBuffer();
+    private:
+        _managedCommandBuffer mcb;
+        VmaAllocation allocation{};
+        VkBuffer buffer{};
     };
 
     class VkMachine::WindowSystem {
@@ -918,20 +943,18 @@ namespace onart {
         private:
             inline uint32_t offset(uint32_t index) { return individual * index; }
             /// @brief 임시로 저장되어 있던 내용을 모두 GPU로 올립니다.
-            void sync();
+            void sync(bool wait = false);
             VkDescriptorSetLayout layout = VK_NULL_HANDLE;
             VkDescriptorSet dset = VK_NULL_HANDLE;
             VkBuffer buffer = VK_NULL_HANDLE;
             VmaAllocation alloc = nullptr;
             const bool isDynamic;
-            bool shouldSync = false;
             const uint32_t individual; // 동적 공유 버퍼인 경우 (버퍼 업데이트를 위한) 개별 성분의 크기
             uint32_t length;
-            std::vector<uint8_t> staged; // 순차접근을 효율적으로 활용하기 위해
+            BufferRangeSet staged;
             std::priority_queue<uint16_t, std::vector<uint16_t>, std::greater<uint16_t>> indices;
-            void* mmap;
         protected:
-            UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc, void* mmap);
+            UniformBuffer(uint32_t length, uint32_t individual, VkBuffer buffer, VkDescriptorSetLayout layout, VkDescriptorSet dset, VmaAllocation alloc);
             ~UniformBuffer();
     };
 
@@ -1102,8 +1125,6 @@ namespace onart {
         inline static VkDescriptorSetLayout getDescriptorSetLayout(UniformBuffer* ub) { return ub->layout; }
         inline static VkBuffer getBuffer(UniformBuffer* ub) { return ub->buffer; }
         inline static VmaAllocation getMemory(UniformBuffer* ub) { return ub->alloc; }
-        inline static std::vector<uint8_t>& getStagedMemory(UniformBuffer* ub) { return ub->staged; }
-        inline static void* getBufferMap(UniformBuffer* ub) { return ub->mmap; }
     private:
         LowLevel() = delete;
         ~LowLevel() = delete;
