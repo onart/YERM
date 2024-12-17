@@ -418,6 +418,7 @@ namespace onart {
 
     void VkMachine::WindowSystem::recreateSwapchain(bool resetSurface) {
         if (swapchain.handle) {
+            vkDeviceWaitIdle(singleton->device);
             destroySwapchain();
         }
         needReset = false;
@@ -2375,7 +2376,7 @@ namespace onart {
         std::vector<VkAttachmentDescription> attachments(opts.subpassCount * 4);
         std::vector<VkAttachmentReference> colorRefs(opts.subpassCount * 4);
         std::vector<VkAttachmentReference> inputRefs(opts.subpassCount * 4);
-        std::vector<VkSubpassDependency> dependencies(opts.subpassCount);
+        std::vector<VkSubpassDependency> dependencies(opts.subpassCount + 1);
         std::vector<VkImageView> ivs(opts.subpassCount * 4);
 
         uint32_t totalAttachments = 0;
@@ -2472,13 +2473,22 @@ namespace onart {
         dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
+        // For compatibility with single-subpass offscreen render passses
+        dependencies[opts.subpassCount].srcSubpass = opts.subpassCount - 1;
+        dependencies[opts.subpassCount].dstSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[opts.subpassCount].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        dependencies[opts.subpassCount].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        dependencies[opts.subpassCount].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        dependencies[opts.subpassCount].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        dependencies[opts.subpassCount].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
         VkRenderPassCreateInfo rpInfo{};
         rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
         rpInfo.subpassCount = opts.subpassCount;
         rpInfo.pSubpasses = subpasses.data();
         rpInfo.attachmentCount = totalAttachments;
         rpInfo.pAttachments = attachments.data();
-        rpInfo.dependencyCount = opts.subpassCount;
+        rpInfo.dependencyCount = dependencies.size();
         rpInfo.pDependencies = &dependencies[0];
         VkRenderPass newPass;
 
@@ -2543,7 +2553,7 @@ namespace onart {
         std::vector<VkAttachmentDescription> attachments(opts.subpassCount * 4);
         std::vector<VkAttachmentReference> colorRefs(opts.subpassCount * 4);
         std::vector<VkAttachmentReference> inputRefs(opts.subpassCount * 4);
-        std::vector<VkSubpassDependency> dependencies(opts.subpassCount);
+        std::vector<VkSubpassDependency> dependencies(opts.subpassCount + 1);
         std::vector<VkImageView> ivs(opts.subpassCount * 4);
 
         uint32_t totalAttachments = 0;
@@ -2594,12 +2604,21 @@ namespace onart {
             inputAttachmentCount = colorCount; if (targets[i]->depthstencil) inputAttachmentCount++;
         }
 
-        dependencies[0].srcSubpass = opts.subpassCount - 1;
-        dependencies[0].dstSubpass = VK_SUBPASS_EXTERNAL;
-        dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-        dependencies[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        dependencies[0].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        dependencies[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        dependencies[opts.subpassCount].srcSubpass = opts.subpassCount - 1;
+        dependencies[opts.subpassCount].dstSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[opts.subpassCount].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        dependencies[opts.subpassCount].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        dependencies[opts.subpassCount].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        dependencies[opts.subpassCount].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        dependencies[opts.subpassCount].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+        // For compatibility with single-subpass swapchain render passses
+        dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependencies[0].dstSubpass = opts.subpassCount - 1;
+        dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependencies[0].srcAccessMask = 0;
+        dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
         VkRenderPassCreateInfo rpInfo{};
@@ -2608,7 +2627,7 @@ namespace onart {
         rpInfo.pSubpasses = subpasses.data();
         rpInfo.attachmentCount = totalAttachments;
         rpInfo.pAttachments = attachments.data();
-        rpInfo.dependencyCount = opts.subpassCount; // 스왑체인 의존성은 이 함수를 통해 만들지 않기 때문에 이대로 사용
+        rpInfo.dependencyCount = dependencies.size(); // 스왑체인 의존성은 이 함수를 통해 만들지 않기 때문에 이대로 사용
         rpInfo.pDependencies = &dependencies[0];
         VkRenderPass newPass;
         if ((reason = vkCreateRenderPass(singleton->device, &rpInfo, nullptr, &newPass)) != VK_SUCCESS) {
@@ -3762,19 +3781,20 @@ namespace onart {
             LOGWITH("Failed to end command buffer:",reason);
             return;
         }
-        VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &recentCommandBuffer;
         std::vector<VkSemaphore> waitSemaphores(predecessorCount);
+        std::vector<VkPipelineStageFlags> waitStages(predecessorCount);
         if(predecessorCount){
             for (size_t i = 0; i < predecessorCount; i++) {
                 waitSemaphores[i] = others[i]->getSemaphore4Wait();
+                waitStages[i] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             }
             submitInfo.waitSemaphoreCount = predecessorCount;
             submitInfo.pWaitSemaphores = waitSemaphores.data();
-            submitInfo.pWaitDstStageMask = waitStages;
+            submitInfo.pWaitDstStageMask = waitStages.data();
         }
 
         if (successorCount) {
@@ -4587,6 +4607,44 @@ namespace onart {
     void VkMachine::RenderPass2Screen::execute(size_t predecessorCount, RenderPass** other) {
         if(currentPass != pipelines.size() - 1){
             LOGWITH("Renderpass not ready to execute. This message can be ignored safely if the rendering goes fine after now");
+
+            if (predecessorCount && other) {
+                // wait for already signalled semaphores with empty command ( cf. [ VUID-vkQueueSubmit-pCommandBuffers-00065 ] )
+                VkCommandBufferBeginInfo cbInfo{};
+                cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+                cbInfo.flags = VkCommandBufferUsageFlagBits::VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+                reason = vkBeginCommandBuffer(cbs[currentCB], &cbInfo);
+                if (reason != VK_SUCCESS) {
+                    LOGWITH("Failed to begin command buffer:", reason, resultAsString(reason));
+                    currentPass = -1;
+                    return;
+                }
+                vkEndCommandBuffer(cbs[currentCB]);
+                VkSubmitInfo submitInfo{};
+                submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+                submitInfo.commandBufferCount = 1;
+                submitInfo.pCommandBuffers = &cbs[currentCB];
+                std::vector<VkSemaphore> waits(predecessorCount);
+                std::vector<VkPipelineStageFlags> waitStages(predecessorCount);
+                submitInfo.pWaitSemaphores = waits.data();
+                submitInfo.pWaitDstStageMask = waitStages.data();
+                submitInfo.waitSemaphoreCount = 0;
+                submitInfo.signalSemaphoreCount = 0;
+
+                for (size_t i = 0; i < predecessorCount; i++) {
+                    waits[i] = other[i]->getSemaphore4Wait();
+                    submitInfo.waitSemaphoreCount++;
+                    waitStages[i] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                }
+
+                if ((reason = vkResetFences(singleton->device, 1, &fences[currentCB])) != VK_SUCCESS) {
+                    LOGWITH("Failed to reset fence. waiting or other operations will play incorrect:", reason, resultAsString(reason));
+                }
+                singleton->qSubmit(true, 1, &submitInfo, fences[currentCB]);
+
+                recently = currentCB;
+                currentCB = (currentCB + 1) % COMMANDBUFFER_COUNT;
+            }
             return;
         }
         vkCmdEndRenderPass(cbs[currentCB]);
@@ -4601,21 +4659,23 @@ namespace onart {
             return;
         }
 
-        VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &cbs[currentCB];
         std::vector<VkSemaphore> waits(predecessorCount + 1);
+        std::vector<VkPipelineStageFlags> waitStages(predecessorCount + 1);
         waits[0] = acquireSm[currentCB];
         submitInfo.pWaitSemaphores = waits.data();
         submitInfo.waitSemaphoreCount = 1;
-        submitInfo.pWaitDstStageMask = waitStages;
+        submitInfo.pWaitDstStageMask = waitStages.data();
+        waitStages[0] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         if(predecessorCount){
             for (size_t i = 0; i < predecessorCount; i++) {
                 if (other[i]->commandBuffers.size()) { // 앞에서 wait을 호출한 경우 세마포어 기다릴 필요 없어짐
                     submitInfo.waitSemaphoreCount++;
                     waits[i + 1] = other[i]->getSemaphore4Wait();
+                    waitStages[i + 1] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
                 }
             }
         }
