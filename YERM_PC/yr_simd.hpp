@@ -408,13 +408,13 @@ namespace onart{
     template<bool a, bool b, bool c, bool d>
     inline float128 toggleSigns(float128 x) { 
         constexpr float SA = a ? -0.0f : 0.0f, SB = b ? -0.0f : 0.0f, SC = c ? -0.0f : 0.0f, SD = d ? -0.0f : 0.0f;
-        return b_xor(_mm_set_ps(SA,SB,SC,SD), x);
+        return b_xor(_mm_set_ps(SD,SC,SB,SA), x);
     }
 
     template<bool a, bool b>
     inline double128 toggleSigns(double128 x) { 
         constexpr double SA = a ? -0.0 : 0.0, SB = b ? -0.0 : 0.0;
-        return b_xor(_mm_set_pd(SA,SB), x);
+        return b_xor(_mm_set_pd(SB,SA), x);
     }
 
     inline float128 neg(float128 a) { return toggleSigns<true,true,true,true>(a); }

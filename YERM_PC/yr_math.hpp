@@ -1465,13 +1465,14 @@ namespace onart{
 
         /// @brief 사원수끼리 곱합니다. 교환 법칙이 성립하지 않는 점(순서를 바꾸면 방향이 반대가 됨)에 유의하세요.
         inline Quaternion operator*(const Quaternion& q) const {
-            float128 q_c1 = mul(rg, load(c1));
-            float128 q_ci = mul(toggleSigns<true, false, true, false>(swizzle<SWIZZLE_Y, SWIZZLE_X, SWIZZLE_W, SWIZZLE_Z>(rg)), load(ci));
-            float128 q_cj = mul(toggleSigns<true, false, false, true>(swizzle<SWIZZLE_Z, SWIZZLE_W, SWIZZLE_X, SWIZZLE_Y>(rg)), load(cj));
-            float128 q_ck = mul(toggleSigns<true, true, false, false>(swizzle<SWIZZLE_W, SWIZZLE_Z, SWIZZLE_Y, SWIZZLE_X>(rg)), load(ck));
-            float128 res = add(add(q_c1, q_ci), add(q_cj, q_ck));
-            
-            return Quaternion(res);
+            vec4 q1(rg);
+            vec4 q2(q.rg);
+
+            vec3 im1 = q1.yzw();
+            vec3 im2 = q2.yzw();
+
+            vec4 result(im2 * q1.x + im1 * q2.x + cross(im1, im2), q1.x * q2.x - dot(im1, im2));
+            return Quaternion(result.wxyz().rg);
         }
 
         /// @brief 사원수 간의 사칙 연산입니다.
@@ -1734,6 +1735,14 @@ namespace onart{
         std::memcpy(&r[12], &itr, sizeof(vec3));
         r[15] = 1.0f;
         return r;
+    }
+
+    /// @brief 원점 기준의 회전을 리턴합니다.
+    /// @param v 방향 벡터
+    /// @param q 회전 사원수
+    inline vec3 rotate(const vec3& dir, const Quaternion& q) {
+        Quaternion vq(vec4(dir, 0).wxyz().rg);
+        return vec4(((q * vq) * q.conjugate()).rg).yzw();
     }
 }
 
