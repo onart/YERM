@@ -493,24 +493,7 @@ namespace onart {
         if (ret) {
             return ret;
         }
-        D3D11_BUFFER_DESC bufferInfo{};
-        bufferInfo.ByteWidth = vcount * 4;
-        bufferInfo.Usage = D3D11_USAGE_DEFAULT;
-        bufferInfo.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-        bufferInfo.CPUAccessFlags = 0;
-
-        ID3D11Buffer* vb{};
-        DXGI_FORMAT iFormat{};
-
-        HRESULT result = singleton->device->CreateBuffer(&bufferInfo, nullptr, &vb);
-        if (result != S_OK) {
-            LOGWITH("Failed to create vertex buffer:", result);
-            reason = result;
-            return {};
-        }
-
-        struct publicmesh :public Mesh { publicmesh(ID3D11Buffer* _1, ID3D11Buffer* _2, DXGI_FORMAT _3, size_t _4, size_t _5, UINT _6) :Mesh(_1, _2, _3, _4, _5, _6) {} };
-        ret = std::make_shared<publicmesh>(vb, nullptr, iFormat, vcount, 0, 1);
+        ret = std::make_shared<shp_t<Mesh>>(nullptr, nullptr, DXGI_FORMAT{}, vcount, 0, 1);
         return singleton->meshes[key] = ret;
     }
 
@@ -1346,7 +1329,12 @@ namespace onart {
             return;
         }
         UINT offset = 0;
-        singleton->context->IASetVertexBuffers(0, 1, &mesh->vb, &mesh->vStride, &offset);
+        if (mesh->vb) {
+            singleton->context->IASetVertexBuffers(0, 1, &mesh->vb, &mesh->vStride, &offset);
+        }
+        else {
+            singleton->context->IASetVertexBuffers(0, 0, 0, 0, 0);
+        }
         if (mesh->icount) {
             singleton->context->IASetIndexBuffer(mesh->ib, mesh->indexFormat, 0);
             if ((uint64_t)start + count > mesh->icount) {
@@ -1389,11 +1377,13 @@ namespace onart {
             LOGWITH("Invalid call: render pass not begun");
             return;
         }
-        ID3D11Buffer* vb[2] = { mesh->vb, instanceInfo->vb };
+        ID3D11Buffer* vb[2] = { mesh->vb };
         UINT strides[2] = { mesh->vStride };
         if (instanceInfo) {
-            vb[1] = instanceInfo->vb;
-            strides[1] = instanceInfo->vStride;
+            int instanceIndex = 1;
+            if (!mesh->vb) instanceIndex = 0;
+            vb[instanceIndex] = instanceInfo->vb;
+            strides[instanceIndex] = instanceInfo->vStride;
         }
         UINT offsets[2]{};
         singleton->context->IASetVertexBuffers(0, instanceInfo ? 2 : 1, vb, strides, offsets);
@@ -2146,7 +2136,12 @@ namespace onart {
     void D3D11Machine::RenderPass::invoke(const pMesh& mesh, uint32_t start, uint32_t count) {
         if (bound != mesh.get()) {
             UINT offset = 0;
-            singleton->context->IASetVertexBuffers(0, 1, &mesh->vb, &mesh->vStride, &offset);
+            if (mesh->vb) {
+                singleton->context->IASetVertexBuffers(0, 1, &mesh->vb, &mesh->vStride, &offset);
+            }
+            else {
+                singleton->context->IASetVertexBuffers(0, 0, 0, 0, 0);
+            }
             bound = mesh.get();
         }
         
@@ -2165,8 +2160,9 @@ namespace onart {
         ID3D11Buffer* buf[2] = { mesh->vb };
         UINT strides[2] = { mesh->vStride };
         if (instanceInfo) {
-            buf[1] = instanceInfo->vb;
-            strides[1] = instanceInfo->vStride;
+            int instanceIndex = mesh->vb ? 1 : 0;
+            buf[instanceIndex] = instanceInfo->vb;
+            strides[instanceIndex] = instanceInfo->vStride;
         }
         UINT offsets[2]{};
         singleton->context->IASetVertexBuffers(0, instanceInfo ? 2 : 1, buf, strides, offsets);

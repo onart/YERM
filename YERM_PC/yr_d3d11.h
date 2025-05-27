@@ -657,9 +657,10 @@ namespace onart {
             static void drop(int32_t key);
             void update(const void* input, uint32_t offset, uint32_t size);
             void updateIndex(const void* input, uint32_t offset, uint32_t size);
-        private:
+        protected:
             Mesh(ID3D11Buffer* vb, ID3D11Buffer* ib, DXGI_FORMAT indexFormat, size_t vcount, size_t icount, UINT vStride);
             ~Mesh();
+        private:
             ID3D11Buffer* vb;
             ID3D11Buffer* ib;
             const DXGI_FORMAT indexFormat;
