@@ -477,6 +477,7 @@ namespace onart {
     }
 
     void VkMachine::free() {
+        reap();
         vkDeviceWaitIdle(device);
         for(VkSampler& sampler: textureSampler) { vkDestroySampler(device, sampler, nullptr); sampler = VK_NULL_HANDLE; }
         vkDestroySampler(device, nearestSampler, nullptr); nearestSampler = VK_NULL_HANDLE;
@@ -518,8 +519,6 @@ namespace onart {
         pipelineLayouts.clear();
         textureSets.clear();
         shaders.clear();
-
-        reap();
         
         for (auto& wsi : windowSystems) {
             delete wsi.second;
