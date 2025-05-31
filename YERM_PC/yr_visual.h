@@ -88,8 +88,8 @@ namespace onart
         void removePred(IntermediateScene* scene);
         void draw();
         inline YRGraphics::pRenderPass& getRenderpass() { return target0; }
-    private:
         ~IntermediateScene();
+    private:
         std::set<IntermediateScene*> pred;
         std::set<IntermediateScene*> succ;
         std::set<class FinalScene*> succ2;
@@ -102,8 +102,8 @@ namespace onart
         void addPred(IntermediateScene* scene);
         void removePred(IntermediateScene* scene);
         void draw();
-    private:
         ~FinalScene();
+    private:
         std::set<IntermediateScene*> pred;
         YRGraphics::pRenderPass2Screen target0;
     };
