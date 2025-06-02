@@ -519,6 +519,8 @@ namespace onart {
         pipelineLayouts.clear();
         textureSets.clear();
         shaders.clear();
+
+        reap();
         
         for (auto& wsi : windowSystems) {
             delete wsi.second;
