@@ -19,8 +19,11 @@
 namespace onart{
     class Transform;
 
+
+    using _2dvertex_t = YRGraphics::Vertex<float[2], float[2]>;
     YRGraphics::pPipeline get2DDefaultPipeline();
     YRGraphics::pPipeline get2DInstancedPipeline();
+    YRGraphics::pMesh get2DDefaultQuad();
 
     class Sprite{
         public:

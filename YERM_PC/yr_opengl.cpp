@@ -1341,6 +1341,7 @@ namespace onart {
         std::memcpy(ret->vspec.data(), opts.vertexSpec, sizeof(opts.vertexSpec[0]) * opts.vertexAttributeCount);
         std::memcpy(ret->ispec.data(), opts.instanceSpec, sizeof(opts.instanceSpec[0]) * opts.instanceAttributeCount);
         ret->depthStencilOperation = opts.depthStencil;
+        ret->cullMode = opts.cullMode;
         if (key == INT32_MIN) return ret;
         return singleton->pipelines[key] = std::move(ret);
     }
@@ -1422,8 +1423,17 @@ namespace onart {
             return;
         }
         pipelines[subpass] = pipeline;
-        if(currentPass == subpass) { 
+        if (currentPass == subpass) {
             glUseProgram(pipeline->program);
+            if (pipeline->cullMode != CULL_NONE) {
+                static_assert(Culling::CULL_NONE == 0);
+                glEnable(GL_CULL_FACE);
+                const GLuint cullMode[] = { GL_NONE, GL_BACK, GL_FRONT, GL_FRONT_AND_BACK };
+                glCullFace(cullMode[pipeline->cullMode]);
+            }
+            else {
+                glDisable(GL_CULL_FACE);
+            }
             if (is4Screen) {
                 glBlendColor(pipeline->blendConstant[0], pipeline->blendConstant[1], pipeline->blendConstant[2], pipeline->blendConstant[3]);
                 setBlendParam(0, pipeline->blendOperation[0]);

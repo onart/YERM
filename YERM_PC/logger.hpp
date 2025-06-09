@@ -64,6 +64,13 @@ inline std::string toString(const T&... extra) {
         #define LOGHERE emscripten_mini_stdio_printf("%s:%d %s\n", __FILE__, __LINE__, __func__)
         #define LOGWITH(...) emscripten_mini_stdio_printf("%s", __getLogContent(__FILE__, __LINE__, __func__, __VA_ARGS__).c_str())
         #define LOGRAW(...) emscripten_mini_stdio_printf("%s", toString(__VA_ARGS__).c_str())
+    #elif defined(YR_NO_CONSOLE)
+    #define NOMINMAX
+    #include <Windows.h>
+        #define LOGHERE OutputDebugStringA( __getLogContent(__FILE__, __LINE__, __func__).c_str() )
+        #define LOGWITH(...) OutputDebugStringA(__getLogContent(__FILE__, __LINE__, __func__, __VA_ARGS__).c_str() )
+        #define LOGRAW(...) OutputDebugStringA(__getLogContent(__VA_ARGS__).c_str() )
+    #undef NOMINMAX
     #else
         #define LOGHERE __logPosition(__FILE__, __LINE__, __func__)
         #define LOGWITH(...) __logPosition(__FILE__, __LINE__, __func__, __VA_ARGS__)

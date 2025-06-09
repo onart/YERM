@@ -27,6 +27,7 @@ namespace onart{
             opts.depthStencil.stencilTest = false;
             opts.depthStencil.stencilFront.writeMask = 0;
             opts.depthStencil.stencilBack.writeMask = 0;
+            opts.cullMode = CULL_NONE;
 
             YRGraphics::pRenderPass temp = YRGraphics::createRenderPass(INT32_MIN, { 4,4 });
             opts.pass = temp.get();
@@ -37,7 +38,6 @@ namespace onart{
             opts.shaderResources.pos2 = ShaderResourceType::TEXTURE_1;
 
             opts.instanceAttributeCount = 0;
-            using _2dvertex_t = YRGraphics::Vertex<float[2], float[2]>;
             opts.vertexAttributeCount = 2;
             opts.vertexSize = sizeof(_2dvertex_t);
 
@@ -266,7 +266,6 @@ void main() {
             opts.shaderResources.pos1 = ShaderResourceType::DYNAMIC_UNIFORM_BUFFER_1;
             opts.shaderResources.pos2 = ShaderResourceType::TEXTURE_1;
 
-            using _2dvertex_t = YRGraphics::Vertex<float[2], float[2]>;
             opts.vertexAttributeCount = 2;
             opts.vertexSize = sizeof(_2dvertex_t);
 
@@ -494,5 +493,28 @@ void main() {
             YRGraphics::createPipeline(_2dppid, opts);
         }
         return YRGraphics::getPipeline(_2dppid);
+    }
+
+    YRGraphics::pMesh get2DDefaultQuad() {
+        static int32_t _2dmeshid = INT32_MIN;
+        if (_2dmeshid == INT32_MIN) {
+            _2dmeshid = YRGraphics::issueMeshKey();
+            MeshCreationOptions opts{};
+            opts.vertexCount = 4;
+            opts.indexCount = 6;
+            float verts[] = { 
+                -1,-1,0,0,
+                -1,1,0,1,
+                1,-1,1,0,
+                1,1,1,1
+            };
+            uint16_t inds[]{ 0,1,2,2,1,3 };
+            opts.vertices = verts;
+            opts.indices = inds;
+            opts.singleIndexSize = 2;
+            opts.singleVertexSize = sizeof(_2dvertex_t);
+            YRGraphics::createMesh(_2dmeshid, opts);
+        }
+        return YRGraphics::getMesh(_2dmeshid);
     }
 }

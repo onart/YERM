@@ -1314,6 +1314,7 @@ namespace onart {
             singleton->context->DSSetShader(pipeline->tes, nullptr, 0);
             singleton->context->GSSetShader(pipeline->gs, nullptr, 0);
             singleton->context->PSSetShader(pipeline->fs, nullptr, 0);
+            singleton->context->RSSetState(pipeline->rasterizerState);
             singleton->context->OMSetDepthStencilState(pipeline->dsState, pipeline->stencilRef);
             singleton->context->OMSetBlendState(pipeline->blendState, nullptr, 0xffffffff);
         }
@@ -1760,19 +1761,36 @@ namespace onart {
             return {};
         }
 
-        pPipeline ret = std::make_shared<shp_t<Pipeline>>(layout, vert, tctrl, teval, geom, frag, dsState, opts.depthStencil.stencilFront.reference, blendState);
+        ID3D11RasterizerState* rasterizerState{};
+        D3D11_RASTERIZER_DESC rasterizerInfo{};
+        const D3D11_CULL_MODE cullMode[] = { D3D11_CULL_NONE, D3D11_CULL_BACK, D3D11_CULL_FRONT, D3D11_CULL_BACK };
+        rasterizerInfo.CullMode = cullMode[opts.cullMode];
+        rasterizerInfo.FrontCounterClockwise = true;
+        rasterizerInfo.FillMode = D3D11_FILL_SOLID;
+        rasterizerInfo.ScissorEnable = true;
+        rasterizerInfo.MultisampleEnable = false;
+        result = singleton->device->CreateRasterizerState(&rasterizerInfo, &rasterizerState);
+        if (result != S_OK) {
+            LOGWITH("Failed to create blend state:", result);
+            dsState->Release();
+            blendState->Release();
+            return {};
+        }
+
+        pPipeline ret = std::make_shared<shp_t<Pipeline>>(layout, vert, tctrl, teval, geom, frag, dsState, opts.depthStencil.stencilFront.reference, blendState, rasterizerState);
         if (key == INT32_MIN) return ret;
         return singleton->pipelines[key] = std::move(ret);
     }
 
-    D3D11Machine::Pipeline::Pipeline(ID3D11InputLayout* layout, ID3D11VertexShader* v, ID3D11HullShader* h, ID3D11DomainShader* d, ID3D11GeometryShader* g, ID3D11PixelShader* p, ID3D11DepthStencilState* dss, UINT stencilRef, ID3D11BlendState* blend)
-        :vs(v), tcs(h), tes(d), gs(g), fs(p), dsState(dss), stencilRef(stencilRef), layout(layout), blendState(blend) {
+    D3D11Machine::Pipeline::Pipeline(ID3D11InputLayout* layout, ID3D11VertexShader* v, ID3D11HullShader* h, ID3D11DomainShader* d, ID3D11GeometryShader* g, ID3D11PixelShader* p, ID3D11DepthStencilState* dss, UINT stencilRef, ID3D11BlendState* blend, ID3D11RasterizerState* rasterizer)
+        :vs(v), tcs(h), tes(d), gs(g), fs(p), dsState(dss), stencilRef(stencilRef), layout(layout), blendState(blend), rasterizerState(rasterizer) {
     }
     
     D3D11Machine::Pipeline::~Pipeline() {
         blendState->Release();
         dsState->Release();
         layout->Release();
+        rasterizerState->Release();
     }
 
 
@@ -2024,6 +2042,7 @@ namespace onart {
             singleton->context->DSSetShader(pipeline->tes, nullptr, 0);
             singleton->context->GSSetShader(pipeline->gs, nullptr, 0);
             singleton->context->PSSetShader(pipeline->fs, nullptr, 0);
+            singleton->context->RSSetState(pipeline->rasterizerState);
             auto& currentTarget = targets[currentPass];
             singleton->context->OMSetDepthStencilState(pipelines[currentPass]->dsState, pipeline->stencilRef);
             singleton->context->OMSetBlendState(pipeline->blendState, nullptr, 0xffffffff);

@@ -10,6 +10,7 @@ namespace onart {
 
 	void Scene::insert(const std::shared_ptr<VisualElement>& e) {
 		ve.push_back(e);
+		e->sceneRefs++;
 	}
 
 	void Scene::clear() {
@@ -39,7 +40,7 @@ namespace onart {
 		for (size_t i = 0; i < size; i++) {
 			VisualElement* elem = ve[i].get();
 			if (!elem || elem->getSceneRefCount() == ve[i].use_count()) {
-				elem->sceneRefs--;
+				if (elem) { elem->sceneRefs--; }
 				ve[i].reset();
 				continue;
 			}
@@ -80,6 +81,9 @@ namespace onart {
 			if (elem->mesh1) { target0->invoke(elem->mesh0, elem->mesh1, elem->instanceCount, 0, elem->meshRangeCount, elem->meshRangeCount); }
 			else { target0->invoke(elem->mesh0, elem->meshRangeStart, elem->meshRangeCount); }
 		}
+		if (invalidHead < ve.size()) {
+			ve.resize(invalidHead);
+		}
 	}
 
 	IntermediateScene::IntermediateScene(const RenderPassCreationOptions& opts) {		
@@ -111,9 +115,13 @@ namespace onart {
 		Scene::draw(target0);
 		YRGraphics::RenderPass* prerequisites[16]{};
 		size_t idx = 0;
-		for (auto& pr : pred) { prerequisites[idx++] = pr->target0.get(); }
+		for (auto& pr : pred) { 
+			if (pr->ve.size()) {
+				prerequisites[idx++] = pr->target0.get();
+			}
+		}
 
-		target0->execute(succ.size() + succ2.size(), pred.size(), prerequisites);
+		target0->execute(succ.size() + succ2.size(), idx, prerequisites);
 	}
 
 	std::shared_ptr<VisualElement> VisualElement::create() {
@@ -141,9 +149,12 @@ namespace onart {
 		Scene::draw(target0);
 		YRGraphics::RenderPass* prerequisites[16]{};
 		size_t idx = 0;
-		for (auto& pr : pred) { prerequisites[idx++] = pr->target0.get(); }
-
-		target0->execute(pred.size(), prerequisites);
+		for (auto& pr : pred) { 
+			if (pr->ve.size()) {
+				prerequisites[idx++] = pr->target0.get();
+			}
+		}
+		target0->execute(idx, prerequisites);
 	}
 
 	FinalScene::~FinalScene() {

@@ -53,24 +53,30 @@ namespace onart{
             static const float& dt;
             /// @brief 이전 프레임과 현 프레임 간의 간격(초)의 역수입니다.
             static const float& idt;
+            /// @brief 이전 프레임과 현 프레임 간의 간격(나노초)입니다.
+            static const uint64_t& intDT;
             /// @brief 파일의 내용을 모두 읽어 옵니다.
             /// @param fileName 파일 이름
             /// @param buffer 데이터가 들어갈 위치. 이전에 내용이 있었더라도 무시됩니다.
             static void readFile(const char* fileName, std::basic_string<uint8_t>* buffer);
             /// @brief 프레임 당 한 번씩 호출되는 함수를 설정합니다. 등록한 함수는 반드시 1개의 스레드에서만 호출됩니다.
             static void setUpdate(std::function<void()>);
-            /// @brief 초기화 함수를 설정합니다.
+            /// @brief 초기화 함수를 설정합니다. 초기화 함수는 기반 클래스(ex: YRGraphics) 등의 초기화보다 나중에 호출됩니다.
             static void setInit(std::function<void()>);
+            /// @brief 정리 함수를 설정합니다. 정리 함수는 기반 클래스(ex: YRGraphics) 등의 정리보다 먼저 호출됩니다.
+            static void setFinalize(std::function<void()>);
         private:
             static Window* window;
             static YRGraphics* vk;
             static int32_t _frame;
             static float _dt, _idt; // float인 이유: 이 엔진 내에서는 SIMD에서 double보다 효율적인 float 자료형이 주로 사용되는데 이게 타임과 연산될 일이 잦은 편이기 때문
             static uint64_t _tp;
+            static uint64_t _intDT;
             static void* hd;
             static int32_t loopFlag;
             static std::function<void()> onInit;
             static std::function<void()> perFrameProc;
+            static std::function<void()> onFinal;
         private:
             static void windowResized(int x, int y);
             static void pollEvents();

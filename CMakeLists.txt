@@ -2,6 +2,14 @@ cmake_minimum_required(VERSION 3.13)
 
 project("yerm")
 
+set(APP_SOURCE
+    YERM_App/Update.cpp
+    YERM_App/Update.h
+    YERM_App/GenericUpdate.h
+    YERM_App/GenericUpdate.cpp
+    YERM_PC/yr_tmp.hpp
+)
+
 set(EXEC_COMMON_SOURCE 
         YERM_PC/logger.hpp
         YERM_PC/yr_simd.hpp
@@ -35,6 +43,8 @@ set(EXEC_COMMON_SOURCE
         YERM_PC/yr_scene.cpp
         YERM_PC/yr_2d.h
         YERM_PC/yr_2d.cpp
+
+        ${APP_SOURCE}
 )
 
 if (ANDROID)
@@ -203,6 +213,7 @@ endmacro()
     option(YERM_BUILD_VULKAN "Build Vulkan based graphics." ON)
     option(YERM_BUILD_OPENGL "Build OpenGL 4.0 based graphics." ON)
     option(YERM_BUILD_OPENGLES "Build OpenGL ES 3.0 based graphics." OFF)
+    option(YERM_USE_CONSOLE "Use console for debugging." ON)
 
     option(YERM_LINK_VULKAN "Link with Vulkan based graphics. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" ON)
     option(YERM_LINK_OPENGL "Link with OpenGL 4.0 based graphics. If multiple or no API selected, the priority will be vulkan > opengl > direct3d 12 > direct3d 11 > opengl es" OFF)
@@ -278,6 +289,11 @@ endmacro()
         set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
         set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
         add_compile_options("/utf-8")
+        if(${YERM_USE_CONSOLE})
+        else()
+            add_compile_definitions(YR_NO_CONSOLE)
+            set_target_properties(yerm PROPERTIES LINK_FLAGS "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
+        endif()
         set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT yerm) # 재생버튼 눌러서 바로 실행해볼 수 있게 됨
         target_link_libraries(yerm glfw vulkan-1 ktx ${YERM_GRAPHICS_LIB})
     else()

@@ -114,6 +114,7 @@ namespace onart {
                 DepthStencilTesting depthStencil;
                 AlphaBlend alphaBlend[3];
                 float blendConstant[4]{};
+                Culling cullMode = CULL_BACK;
                 __devnull vsByteCode;
                 __devnull vsByteCodeSize;
             };
@@ -592,6 +593,7 @@ namespace onart {
             vec4 clearColor;
             DepthStencilTesting depthStencilOperation;
             AlphaBlend blendOperation[3];
+            Culling cullMode;
             float blendConstant[4];
     };
 

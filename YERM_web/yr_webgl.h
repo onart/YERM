@@ -116,6 +116,7 @@ namespace onart {
                 PipelineLayoutOptions shaderResources;
                 DepthStencilTesting depthStencil;
                 AlphaBlend alphaBlend[3];
+                Culling cullMode = CULL_NONE;
                 float blendConstant[4]{};
                 __devnull vsByteCode;
                 __devnull vsByteCodeSize;
@@ -597,6 +598,7 @@ namespace onart {
             vec4 clearColor;
             DepthStencilTesting depthStencilOperation;
             AlphaBlend blendOperation[3];
+            Culling cullMode{};
             float blendConstant[4];
             unsigned textureIndices[4]{};
     };

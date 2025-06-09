@@ -519,13 +519,13 @@ namespace onart {
         pipelineLayouts.clear();
         textureSets.clear();
         shaders.clear();
-
-        reap();
         
         for (auto& wsi : windowSystems) {
             delete wsi.second;
         }
         windowSystems.clear();
+
+        reap();
 
         vmaDestroyAllocator(allocator);
         vkDestroyCommandPool(device, gCommandPool, nullptr);
@@ -2780,7 +2780,7 @@ namespace onart {
 
         VkPipelineRasterizationStateCreateInfo rtrInfo{};
         rtrInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-        rtrInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+        rtrInfo.cullMode = ((opts.cullMode & CULL_BACK) ? VK_CULL_MODE_BACK_BIT : 0) | ((opts.cullMode & CULL_FRONT) ? VK_CULL_MODE_FRONT_BIT : 0);
         rtrInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rtrInfo.lineWidth = 1.0f;
         rtrInfo.polygonMode = VK_POLYGON_MODE_FILL;

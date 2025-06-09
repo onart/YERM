@@ -110,6 +110,13 @@ namespace onart
         ONE_MINUS_SRC1_ALPHA = 18,
     };
 
+    enum Culling {
+        CULL_NONE = 0,
+        CULL_BACK = 1,
+        CULL_FRONT = 2,
+        CULL_ALL = CULL_BACK | CULL_FRONT
+    };
+
     // structure
     /// @brief 텍스처 생성에 사용하는 옵션입니다.
     struct TextureCreationOptions {

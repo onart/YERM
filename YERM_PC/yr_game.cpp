@@ -40,7 +40,9 @@ namespace onart{
 
     const std::chrono::steady_clock::time_point longTp = std::chrono::steady_clock::now();
     float Game::_dt = 0.016f, Game::_idt = 60.0f;
-    uint64_t Game::_tp = (longTp - std::chrono::steady_clock::time_point()).count();
+    uint64_t Game::_intDT = 16'000'000;
+    const uint64_t& Game::intDT(Game::_intDT);
+    uint64_t Game::_tp = 16'000'000;
     const float &Game::dt(Game::_dt), &Game::idt(Game::_idt);
     const uint64_t& Game::tp(Game::_tp);
     int32_t Game::_frame = 1;
@@ -51,6 +53,7 @@ namespace onart{
     int32_t Game::loopFlag = 0;
     std::function<void()> Game::perFrameProc;
     std::function<void()> Game::onInit;
+    std::function<void()> Game::onFinal;
 
 #ifndef YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
 #define YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD (BOOST_PLAT_ANDROID)
@@ -156,17 +159,17 @@ namespace onart{
                 return 1;
             }
             loopFlag = 1;
-            if (onInit) onInit();
 #ifdef EMSCRIPTEN
             window->waitEvents();
             Audio::init(false);
+            if (onInit) onInit();
             emscripten_set_main_loop(mainLoop, 0, 0);
 #else            
+            if (onInit) onInit();
             for (;loopFlag; _frame++) {
                 mainLoop();
             }
 #endif
-
             return 0;
 #if !YR_NO_NEED_TO_USE_SEPARATE_EVENT_THREAD
             });
@@ -192,8 +195,8 @@ namespace onart{
         // [0, 2^52 - 1] 범위 정수를 균등 간격의 [1.0, 2.0) 범위 double로 대응시키는 함수에 십억을 적용한 후 1을 뺀 결과에 곱하여 1로 만들 수 있는 수
         constexpr double ONE_SECOND = 1.0 / 0.0000002220446049250313080847263336181640625;
 
-        uint64_t ndt = longDt.count() - _tp;
-        double ddt = (fixedPointConversion64i(ndt) - 1.0) * ONE_SECOND; // 함수를 사용할 수 없는 ndt의 상한선: 4,503,599,627,370,496 > 52일
+        _intDT = longDt.count() - _tp;        
+        double ddt = (fixedPointConversion64i(_intDT) - 1.0) * ONE_SECOND; // 함수를 사용할 수 없는 ndt의 상한선: 4,503,599,627,370,496 > 52일
         double iddt = 1.0 / ddt;
         _tp = longDt.count();
         _dt = static_cast<float>(ddt);
@@ -243,6 +246,7 @@ namespace onart{
     }
 
     void Game::finalize(){
+        if (onFinal) { onFinal(); }
 #ifndef EMSCRIPTEN
         Audio::finalize();
 #endif
@@ -314,5 +318,9 @@ namespace onart{
 
     void Game::setInit(std::function<void()> proc) {
         onInit = proc;
+    }
+
+    void Game::setFinalize(std::function<void()> proc) {
+        onFinal = proc;
     }
 }
