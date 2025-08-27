@@ -638,8 +638,8 @@ namespace onart {
     VkMachine::pMesh VkMachine::createNullMesh(int32_t name, size_t vcount) {
         pMesh m = getMesh(name);
         if(m) { return m; }
-        if (name == INT32_MIN) return std::make_shared<shp_t<Mesh>>(VK_NULL_HANDLE, VK_NULL_HANDLE, vcount, 0, 0, nullptr, false);
-        return singleton->meshes[name] = std::make_shared<shp_t<Mesh>>(VK_NULL_HANDLE, VK_NULL_HANDLE, vcount, 0, 0, nullptr, false);
+        if (name == INT32_MIN) return std::make_shared<shp_t<Mesh>>(VK_NULL_HANDLE, VK_NULL_HANDLE, vcount, 0, 0, false);
+        return singleton->meshes[name] = std::make_shared<shp_t<Mesh>>(VK_NULL_HANDLE, VK_NULL_HANDLE, vcount, 0, 0, false);
     }
 
     VkMachine::pMesh VkMachine::createMesh(int32_t key, const MeshCreationOptions& opts) {
@@ -677,28 +677,21 @@ namespace onart {
         VmaAllocationCreateInfo vbaInfo{};
         vbaInfo.usage = VMA_MEMORY_USAGE_AUTO;
 
-        if (opts.fixed) {
+        const bool useStaging = opts.vertices || opts.indices;
+
+        if (useStaging) {
             vbInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT; // vma 목적지 버퍼 생성 시 HOST_VISIBLE이 있으면 스테이징을 할 필요가 없음, 그러면 재생성 필요 없이 그대로 리턴하도록
             vbaInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-        }
-        else {
-            vbInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-            vbaInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-        }
-        VmaAllocationInfo mapInfoV;
-        reason = vmaCreateBuffer(singleton->allocator, &vbInfo, &vbaInfo, &sb, &sba, &mapInfoV);
-        if (reason != VK_SUCCESS) {
-            LOGWITH("Failed to create stage buffer for vertex:", reason, resultAsString(reason));
-            return pMesh();
-        }
-        if (opts.vertices) std::memcpy(mapInfoV.pMappedData, opts.vertices, VBSIZE);
-        if (opts.indices) std::memcpy((uint8_t*)mapInfoV.pMappedData + VBSIZE, opts.indices, IBSIZE);
-        vmaInvalidateAllocation(singleton->allocator, sba, 0, VK_WHOLE_SIZE);
-        vmaFlushAllocation(singleton->allocator, sba, 0, VK_WHOLE_SIZE);
-
-        if (!opts.fixed) {
-            if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
-            return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
+            VmaAllocationInfo mapInfoV;
+            reason = vmaCreateBuffer(singleton->allocator, &vbInfo, &vbaInfo, &sb, &sba, &mapInfoV);
+            if (reason != VK_SUCCESS) {
+                LOGWITH("Failed to create stage buffer for vertex:", reason, resultAsString(reason));
+                return pMesh();
+            }
+            if (opts.vertices) std::memcpy(mapInfoV.pMappedData, opts.vertices, VBSIZE);
+            if (opts.indices) std::memcpy((uint8_t*)mapInfoV.pMappedData + VBSIZE, opts.indices, IBSIZE);
+            vmaInvalidateAllocation(singleton->allocator, sba, 0, VK_WHOLE_SIZE);
+            vmaFlushAllocation(singleton->allocator, sba, 0, VK_WHOLE_SIZE);
         }
 
         vbInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -710,69 +703,64 @@ namespace onart {
             vmaDestroyBuffer(singleton->allocator, sb, sba);
             return pMesh();
         }
-        VkMemoryPropertyFlags props;
-        vmaGetAllocationMemoryProperties(singleton->allocator, viba, &props);
-        if (props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-            vmaDestroyBuffer(singleton->allocator, vib, viba);
-            if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
-            return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
-        }
 
-        VkCommandBuffer copycb;
-        singleton->allocateCommandBuffers(1, true, false, &copycb);
-        if (!copycb) {
-            LOGHERE;
-            vmaDestroyBuffer(singleton->allocator, vib, viba);
-            if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
-            return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
-        }
-        VkCommandBufferBeginInfo cbInfo{};
-        cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        cbInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        VkBufferCopy copyRegion{};
-        copyRegion.srcOffset = 0;
-        copyRegion.dstOffset = 0;
-        copyRegion.size = VBSIZE + IBSIZE;
-        if ((reason = vkBeginCommandBuffer(copycb, &cbInfo)) != VK_SUCCESS) {
-            LOGWITH("Failed to begin command buffer:", reason, resultAsString(reason));
-            vmaDestroyBuffer(singleton->allocator, vib, viba);
+        if (useStaging) {
+            VkCommandBuffer copycb;
+            singleton->allocateCommandBuffers(1, true, false, &copycb);
+            if (!copycb) {
+                LOGHERE;
+                vmaDestroyBuffer(singleton->allocator, vib, viba);
+                vmaDestroyBuffer(singleton->allocator, sb, sba);
+                return pMesh();
+            }
+            VkCommandBufferBeginInfo cbInfo{};
+            cbInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+            cbInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            VkBufferCopy copyRegion{};
+            copyRegion.srcOffset = 0;
+            copyRegion.dstOffset = 0;
+            copyRegion.size = VBSIZE + IBSIZE;
+            if ((reason = vkBeginCommandBuffer(copycb, &cbInfo)) != VK_SUCCESS) {
+                LOGWITH("Failed to begin command buffer:", reason, resultAsString(reason));
+                vmaDestroyBuffer(singleton->allocator, vib, viba);
+                vmaDestroyBuffer(singleton->allocator, sb, sba);
+                vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
+                return pMesh();
+            }
+            vkCmdCopyBuffer(copycb, sb, vib, 1, &copyRegion);
+            if ((reason = vkEndCommandBuffer(copycb)) != VK_SUCCESS) {
+                LOGWITH("Failed to end command buffer:", reason, resultAsString(reason));
+                vmaDestroyBuffer(singleton->allocator, vib, viba);
+                vmaDestroyBuffer(singleton->allocator, sb, sba);
+                vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
+                return pMesh();
+            }
+            VkSubmitInfo submitInfo{};
+            submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submitInfo.commandBufferCount = 1;
+            submitInfo.pCommandBuffers = &copycb;
+            VkFence fence = singleton->createFence(); // TODO: 생성 시 쓰는 이런 자잘한 펜스를 매번 만들었다 없애지 말고 하나 생성해 두고 쓰는 걸로 통일
+            if (!fence) {
+                LOGHERE;
+                vmaDestroyBuffer(singleton->allocator, vib, viba);
+                vmaDestroyBuffer(singleton->allocator, sb, sba);
+                vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
+                return pMesh();
+            }
+            if ((reason = singleton->qSubmit(false, 1, &submitInfo, fence)) != VK_SUCCESS) {
+                LOGWITH("Failed to submit copy command");
+                vmaDestroyBuffer(singleton->allocator, vib, viba);
+                vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
+                vkDestroyFence(singleton->device, fence, nullptr);
+                return pMesh();
+            }
+            vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, UINT64_MAX);
+            vkDestroyFence(singleton->device, fence, nullptr);
+            vmaDestroyBuffer(singleton->allocator, sb, sba);
             vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-            if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
-            return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
         }
-        vkCmdCopyBuffer(copycb, sb, vib, 1, &copyRegion);
-        if ((reason = vkEndCommandBuffer(copycb)) != VK_SUCCESS) {
-            LOGWITH("Failed to end command buffer:", reason, resultAsString(reason));
-            vmaDestroyBuffer(singleton->allocator, vib, viba);
-            vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-            if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
-            return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
-        }
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &copycb;
-        VkFence fence = singleton->createFence(); // TODO: 생성 시 쓰는 이런 자잘한 펜스를 매번 만들었다 없애지 말고 하나 생성해 두고 쓰는 걸로 통일
-        if (!fence) {
-            LOGHERE;
-            vmaDestroyBuffer(singleton->allocator, vib, viba);
-            vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-            if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
-            return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
-        }
-        if ((reason = singleton->qSubmit(false, 1, &submitInfo, fence)) != VK_SUCCESS) {
-            LOGWITH("Failed to submit copy command");
-            vmaDestroyBuffer(singleton->allocator, vib, viba);
-            vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-            if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, mapInfoV.pMappedData, opts.singleIndexSize == 4);
-            return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(sb, sba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
-        }
-        vkWaitForFences(singleton->device, 1, &fence, VK_FALSE, UINT64_MAX);
-        vkDestroyFence(singleton->device, fence, nullptr);
-        vmaDestroyBuffer(singleton->allocator, sb, sba);
-        vkFreeCommandBuffers(singleton->device, singleton->tCommandPool, 1, &copycb);
-        if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(vib, viba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
-        return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(vib, viba, opts.vertexCount, opts.indexCount, VBSIZE, nullptr, opts.singleIndexSize == 4);
+        if (key == INT32_MIN) return std::make_shared<shp_t<Mesh>>(vib, viba, opts.vertexCount, opts.indexCount, VBSIZE, opts.singleIndexSize == 4);
+        return singleton->meshes[key] = std::make_shared<shp_t<Mesh>>(vib, viba, opts.vertexCount, opts.indexCount, VBSIZE, opts.singleIndexSize == 4);
     }
 
     VkMachine::RenderTarget* VkMachine::createRenderTarget2D(int width, int height, RenderTargetType type, bool useDepthInput, bool sampled, bool linear, bool canRead){
@@ -991,7 +979,7 @@ namespace onart {
         }
     }
     
-    void VkMachine::updateBuffer(VkBuffer dst, const BufferRangeSet& range, bool wait) {
+    void VkMachine::updateBuffer(VkBuffer dst, const BufferRangeSet& range, VkPipelineStageFlags pipelineDependency, bool wait) {
         // 1. 이전 복사명령 완료시 버퍼 놓아주기
         // 2. 복사
         // 3. 명령버퍼 + 배리어 제출
@@ -1008,12 +996,15 @@ namespace onart {
         reason = vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &sb->buffer, &sb->allocation, nullptr);
         if (reason != VK_SUCCESS) {
             LOGWITH("Failed to create staging buffer");
+            delete sb;
             return;
         }
         void* mmap{};
         reason = vmaMapMemory(allocator, sb->allocation, &mmap);
         if (reason != VK_SUCCESS) {
             LOGWITH("Failed to map memory to staging buffer");
+            vmaDestroyBuffer(allocator, sb->buffer, sb->allocation);
+            delete sb;
             return;
         }
         std::memcpy(mmap, range.sourceData.data(), range.sourceData.size());
@@ -1037,10 +1028,10 @@ namespace onart {
         bufB.size = VK_WHOLE_SIZE; // 과연 앞으로 여러 개의 offset과 size가 필요할지?
         bufB.srcQueueFamilyIndex = singleton->physicalDevice.gq;
         bufB.dstQueueFamilyIndex = singleton->physicalDevice.gq;
-        vkCmdPipelineBarrier(gCommandBuffers[cbi]->commandBuffer, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 1, &bufB, 0, nullptr);
+        vkCmdPipelineBarrier(gCommandBuffers[cbi]->commandBuffer, pipelineDependency, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 1, &bufB, 0, nullptr);
         vkCmdCopyBuffer(gCommandBuffers[cbi]->commandBuffer, sb->buffer, dst, range.ranges.size(), range.ranges.data());
         std::swap(bufB.srcAccessMask, bufB.dstAccessMask);
-        vkCmdPipelineBarrier(gCommandBuffers[cbi]->commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 1, &bufB, 0, nullptr);
+        vkCmdPipelineBarrier(gCommandBuffers[cbi]->commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, pipelineDependency, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 1, &bufB, 0, nullptr);
         vkEndCommandBuffer(gCommandBuffers[cbi]->commandBuffer);
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -3093,24 +3084,23 @@ namespace onart {
         return singleton->pipelineLayouts[key] = layout;
     }
 
-    VkMachine::Mesh::Mesh(VkBuffer vb, VmaAllocation vba, size_t vcount, size_t icount, size_t ioff, void *vmap, bool use32):vb(vb),vba(vba),vcount(vcount),icount(icount),ioff(ioff),vmap(vmap),idxType(use32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16){ }
+    VkMachine::Mesh::Mesh(VkBuffer vb, VmaAllocation vba, size_t vcount, size_t icount, size_t ioff, bool use32) :vb(vb), vba(vba), vcount(vcount), icount(icount), ioff(ioff), idxType(use32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16) {}
     VkMachine::Mesh::~Mesh() { 
-        if (vmap) { vmaUnmapMemory(singleton->allocator, vba); }
         singleton->reaper.push(vb, vba);
     }
 
     void VkMachine::Mesh::update(const void* input, uint32_t offset, uint32_t size){
-        if(!vmap) return;
-        std::memcpy((uint8_t*)vmap + offset, input, size);
-        vmaInvalidateAllocation(singleton->allocator, vba, offset, size);
-        vmaFlushAllocation(singleton->allocator, vba, offset, size);
+        staged.appendData(input, size, offset);
     }
 
     void VkMachine::Mesh::updateIndex(const void* input, uint32_t offset, uint32_t size){
-        if(!vmap || icount == 0) return;
-        std::memcpy((uint8_t*)vmap + ioff + offset, input, size);
-        vmaInvalidateAllocation(singleton->allocator, vba, ioff + offset, size);
-        vmaFlushAllocation(singleton->allocator, vba, ioff + offset, size);
+        staged.appendData(input, size, offset + ioff);
+    }
+
+    void VkMachine::Mesh::sync(bool wait) {
+        if (staged.sourceData.size() == 0) return;
+        singleton->updateBuffer(vb, staged, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, wait);
+        staged.clear();
     }
 
     void VkMachine::Mesh::collect(bool removeUsing) {
@@ -3706,6 +3696,7 @@ namespace onart {
             return;
         }
         if ((bound != mesh.get()) && (mesh->vb != VK_NULL_HANDLE)) {
+            mesh->sync();
             VkDeviceSize offs = 0;
             vkCmdBindVertexBuffers(recentCommandBuffer, 0, 1, &mesh->vb, &offs);
             if (mesh->icount) vkCmdBindIndexBuffer(recentCommandBuffer, mesh->vb, mesh->ioff, mesh->idxType);
@@ -3743,6 +3734,8 @@ namespace onart {
         VkDeviceSize offs[2] = { 0, 0 };
         VkBuffer buffs[2] = { mesh->vb };
         if (instanceInfo->vb) { buffs[1] = instanceInfo->vb; }
+        mesh->sync();
+        if (instanceInfo) instanceInfo->sync();
         vkCmdBindVertexBuffers(recentCommandBuffer, 0, instanceInfo ? 2 : 1, buffs, offs);
         if (mesh->icount) {
             if ((uint64_t)start + count > mesh->icount) {
@@ -4066,6 +4059,7 @@ namespace onart {
         }
         if((bound != mesh.get()) && (mesh->vb != VK_NULL_HANDLE)) {
             VkDeviceSize offs = 0;
+            mesh->sync();
             vkCmdBindVertexBuffers(scb, 0, 1, &mesh->vb, &offs);
             if(mesh->icount) vkCmdBindIndexBuffer(scb, mesh->vb, mesh->ioff, mesh->idxType);
         }
@@ -4400,7 +4394,7 @@ namespace onart {
         }
         if((bound != mesh.get()) && (mesh->vb != VK_NULL_HANDLE)) {
             VkDeviceSize offs = 0;
-            vkCmdBindVertexBuffers(cbs[currentCB], 0, 1, &mesh->vb, &offs);
+            mesh->sync();
             vkCmdBindVertexBuffers(cbs[currentCB], 0, 1, &mesh->vb, &offs);
             if(mesh->icount) vkCmdBindIndexBuffer(cbs[currentCB], mesh->vb, mesh->ioff, mesh->idxType);
         }
@@ -4437,6 +4431,8 @@ namespace onart {
         VkDeviceSize offs[2] = {0, 0};
         VkBuffer buffs[2] = { mesh->vb };
         if (instanceInfo) { buffs[1] = instanceInfo->vb; }
+        mesh->sync();
+        if (instanceInfo) instanceInfo->sync();
         vkCmdBindVertexBuffers(cbs[currentCB], 0, instanceInfo ? 2 : 1, buffs, offs);
         if(mesh->icount) {
             if((uint64_t)start + count > mesh->icount){
@@ -4761,7 +4757,7 @@ namespace onart {
 
     void VkMachine::UniformBuffer::sync(bool wait) {
         if (staged.sourceData.size() == 0) return;
-        singleton->updateBuffer(buffer, staged, wait);
+        singleton->updateBuffer(buffer, staged, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, wait);
         staged.clear();
     }
 

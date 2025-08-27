@@ -372,7 +372,7 @@ namespace onart {
             std::deque<StagingBuffer*> usingStagingBuffers;
             std::vector<VkSemaphore> semaphorePool;
 
-            void updateBuffer(VkBuffer dst, const BufferRangeSet& range, bool wait = false);
+            void updateBuffer(VkBuffer dst, const BufferRangeSet& range, VkPipelineStageFlags pipelineDependency, bool wait = false);
             void flushStagingBuffers(uint64_t wait);
             
             /// @brief 렌더패스용 커맨드 버퍼 래퍼 객체 인덱스를 할당합니다.
@@ -917,9 +917,11 @@ namespace onart {
             VmaAllocation vba;
             size_t vcount, icount, ioff;
             VkIndexType idxType;
-            void *vmap;
+            BufferRangeSet staged;
+            /// @brief 임시로 저장되어 있던 내용을 모두 GPU로 올립니다.
+            void sync(bool wait = false);
         protected:
-            Mesh(VkBuffer vb, VmaAllocation vba, size_t vcount, size_t icount, size_t ioff, void* vmap, bool use32);
+            Mesh(VkBuffer vb, VmaAllocation vba, size_t vcount, size_t icount, size_t ioff, bool use32);
             ~Mesh();
     };
 
@@ -1119,7 +1121,6 @@ namespace onart {
         inline static VkBuffer getBuffer(Mesh* ms) { return ms->vb; }
         inline static VmaAllocation getMemory(Mesh* ms) { return ms->vba; }
         inline static size_t getIndexBufferOffset(Mesh* ms) { return ms->ioff; }
-        inline static void* getBufferMap(Mesh* ms) { return ms->vmap; }
 
         // uniform buffer
         inline static VkDescriptorSet getDescriptorSet(UniformBuffer* ub) { return ub->dset; }
